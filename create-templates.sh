@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# create-templates.sh - legt die zwei RunPod-Templates an, die qwen38fast braucht.
-# Danach die ausgegebenen IDs setzen:
-#   export QWEN38_TEMPLATE=<voll-id>
+# create-templates.sh - creates the two RunPod templates that qwen38fast needs.
+# Afterwards set the printed ids:
+#   export QWEN38_TEMPLATE=<full-id>
 #   export QWEN38_TEMPLATE_PI=<pi-id>
-# oder direkt in bin/qwen38fast als Default eintragen.
+# or hardcode them as defaults in bin/qwen38fast.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 BOOTSTRAP="$HERE/scripts/bootstrap-sglang-openwebui.sh"
@@ -22,7 +22,7 @@ mk() { # name  ports  serve_webui
     --env "$ENV" -o json | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('id') or d)"
 }
 
-echo "Voll-Template (SGLang + OpenWebUI):"
+echo "Full template (SGLang + OpenWebUI):"
 echo "  QWEN38_TEMPLATE=$(mk qwen38-uncensored-sglang-nvfp4 '8000/http,8080/http,22/tcp' 1)"
-echo "pi-Template (nur SGLang API):"
+echo "pi template (SGLang API only):"
 echo "  QWEN38_TEMPLATE_PI=$(mk qwen38-uncensored-pi-sglang '8000/http,22/tcp' 0)"

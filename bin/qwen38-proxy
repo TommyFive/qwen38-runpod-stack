@@ -102,7 +102,7 @@ class Handler(BaseHTTPRequestHandler):
     def _relay(self, method: str) -> None:
         pod = current_pod()
         if not pod:
-            self._fail(503, "Kein RunPod-Pod läuft. Starte einen mit: qwen38fast")
+            self._fail(503, "No RunPod pod is running. Start one with: qwen38fast")
             return
 
         length = int(self.headers.get("Content-Length") or 0)
@@ -171,8 +171,8 @@ def main() -> int:
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     server.daemon_threads = True
     pod = current_pod()
-    print(f"qwen38-proxy auf http://127.0.0.1:{PORT}/v1", flush=True)
-    print(f"  Ziel: {pod or 'kein Pod, wartet'}", flush=True)
+    print(f"qwen38-proxy on http://127.0.0.1:{PORT}/v1", flush=True)
+    print(f"  target: {pod or 'no pod, waiting'}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

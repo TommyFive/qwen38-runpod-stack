@@ -16,7 +16,7 @@
 #     (sgl-project/sglang#32736), which would cost the entire FP4 speedup.
 #   DFlash2 posts the best measured accept length on this model (4.29).
 #
-# Full reasoning: ~/.claude/skills/runpod-llm/references/MAX_TPS_QWEN38.md
+# Full reasoning: docs/PERFORMANCE.md
 set -uo pipefail
 
 # Account-specific RunPod template IDs. Override via env, or recreate them with
@@ -44,15 +44,15 @@ case "${1:-}" in
         runpodctl user -o json | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-print(f\"Guthaben {d['clientBalance']:.2f} USD | laufend {d['currentSpendPerHr']} USD/h\")"
+print(f\"Balance {d['clientBalance']:.2f} USD | running {d['currentSpendPerHr']} USD/h\")"
         exit 0
         ;;
     stop)
         ids=$(runpodctl pod list -o json | python3 -c "
 import sys, json
 print(' '.join(p['id'] for p in json.load(sys.stdin)))")
-        [[ -z "$ids" ]] && { echo "nichts am Laufen"; exit 0; }
-        for id in $ids; do runpodctl pod delete "$id" >/dev/null && echo "terminiert: $id"; done
+        [[ -z "$ids" ]] && { echo "nothing running"; exit 0; }
+        for id in $ids; do runpodctl pod delete "$id" >/dev/null && echo "terminated: $id"; done
         rm -f "$POD_FILE"
         exit 0
         ;;
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
         --model)   MODEL_ID="$2"; shift 2 ;;
         --max-len) MAX_LEN="$2"; shift 2 ;;
         --pi)      PI_MODE=1; TEMPLATE_ID="$TEMPLATE_ID_PI"; POD_NAME="qwen38pi"; shift ;;
-        *)         echo "unbekannte Option: $1" >&2; exit 1 ;;
+        *)         echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
@@ -80,22 +80,22 @@ case "$GPU_KEY" in
     b300)    GPU_ID="NVIDIA B300 SXM6 AC";                          RATE="6.94" ;;
     5090)    GPU_ID="NVIDIA GeForce RTX 5090";                      RATE="0.69"
              MEM_FRAC="0.90"; MAX_LEN="65536" ;;   # 32GB card, cookbook pin
-    *)       echo "GPU unbekannt: $GPU_KEY (pro6000|b200|b300|5090)" >&2; exit 1 ;;
+    *)       echo "unknown GPU: $GPU_KEY (pro6000|b200|b300|5090)" >&2; exit 1 ;;
 esac
 
-[[ -r "$BOOTSTRAP" ]] || { echo "Bootstrap fehlt: $BOOTSTRAP" >&2; exit 1; }
+[[ -r "$BOOTSTRAP" ]] || { echo "bootstrap missing: $BOOTSTRAP" >&2; exit 1; }
 
 if [[ ! -s "$KEY_FILE" ]]; then
     mkdir -p "$(dirname "$KEY_FILE")"
     python3 -c "import secrets; print('sk-qwen38-' + secrets.token_urlsafe(24))" > "$KEY_FILE"
     chmod 600 "$KEY_FILE"
-    echo "Neuen API-Key erzeugt: $KEY_FILE"
+    echo "generated a new API key: $KEY_FILE"
 fi
 API_KEY=$(cat "$KEY_FILE")
 
 running=$(runpodctl pod list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
 if [[ "$running" != "0" ]]; then
-    echo "Es läuft bereits ein Pod. 'qwen38fast status' zeigt welchen, 'qwen38fast stop' beendet ihn."
+    echo "A pod is already running. 'qwen38fast status' shows which, 'qwen38fast stop' ends it."
     exit 1
 fi
 
@@ -121,10 +121,10 @@ print(json.dumps(env))
 PY
 )
 
-echo "Starte $POD_NAME"
-echo "  GPU:    $GPU_KEY (ab \$$RATE/h, ${HOURS}h Fenster)"
-echo "  Modell: $MODEL_ID"
-echo "  Spec:   $SPEC | Kontext: $MAX_LEN"
+echo "Starting $POD_NAME"
+echo "  GPU:     $GPU_KEY (from \$$RATE/h, ${HOURS}h window)"
+echo "  Model:   $MODEL_ID"
+echo "  Spec:    $SPEC | context: $MAX_LEN"
 echo
 
 create_pod() {
@@ -143,19 +143,19 @@ for line in raw.splitlines():
 try:
     d = json.loads(raw[raw.index('{'):])
 except Exception:
-    print('FEHLER beim Anlegen:', raw[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR creating pod:', raw[:300], file=sys.stderr); sys.exit(1)
 if 'error' in d:
-    print('FEHLER:', str(d['error'])[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR:', str(d['error'])[:300], file=sys.stderr); sys.exit(1)
 print(d['id'])"
 }
 
 POD_ID=$(create_pod "$CLOUD")
 if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
-    echo "Community Cloud hat die Karte nicht frei, versuche Secure Cloud." >&2
+    echo "Community cloud has no free card, trying secure cloud." >&2
     POD_ID=$(create_pod SECURE)
 fi
 
-[[ -z "$POD_ID" ]] && { echo "Pod konnte nicht angelegt werden." >&2; exit 1; }
+[[ -z "$POD_ID" ]] && { echo "Could not create the pod." >&2; exit 1; }
 
 mkdir -p "$(dirname "$POD_FILE")"
 echo "$POD_ID" > "$POD_FILE"
@@ -166,12 +166,12 @@ echo "Pod:       $POD_ID"
 [[ $PI_MODE -eq 0 ]] && echo "OpenWebUI: $OWUI"
 echo "API:       $API"
 echo
-echo "Warte auf das Modell. Image-Pull plus 20GB Gewichte, rechne mit 8 bis 15 Minuten."
+echo "Waiting for the model. Image pull plus 20GB of weights, expect 8 to 15 minutes."
 
 until curl -s --max-time 10 -H "Authorization: Bearer $API_KEY" "$API/models" 2>/dev/null | grep -q "qwen38-uncensored"; do
     sleep 20
 done
-echo "Modell antwortet."
+echo "Model is answering."
 
 if [[ $PI_MODE -eq 0 ]]; then
     # OpenWebUI cached its model list at boot, when SGLang was not up yet.
@@ -195,12 +195,12 @@ if [[ $PI_MODE -eq 1 ]]; then
 cat <<EOF
 
 ════════════════════════════════════════════════════════════
-  Läuft, nur SGLang, ohne OpenWebUI. Timer bis $DEADLINE Uhr.
+  Running, SGLang only, no OpenWebUI. Timer until $DEADLINE.
 
   In pi:     pi --model runpod/qwen38-uncensored
 
-  Messen:    qwen38bench $POD_ID
-  Beenden:   qwen38pi stop
+  Measure:   qwen38bench $POD_ID
+  Stop:      qwen38pi stop
 ════════════════════════════════════════════════════════════
 
 EOF
@@ -208,13 +208,13 @@ else
 cat <<EOF
 
 ════════════════════════════════════════════════════════════
-  Läuft. Timer bis $DEADLINE Uhr, dann terminiert RunPod selbst.
+  Running. Timer until $DEADLINE, then RunPod terminates it itself.
 
-  Im Terminal:   pi --model runpod/qwen38-uncensored
-  Im Browser:    $OWUI
+  In the terminal:   pi --model runpod/qwen38-uncensored
+  In the browser:    $OWUI
 
-  Messen:        qwen38bench $POD_ID
-  Beenden:       qwen38fast stop
+  Measure:           qwen38bench $POD_ID
+  Stop:              qwen38fast stop
 ════════════════════════════════════════════════════════════
 
 EOF

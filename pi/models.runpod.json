@@ -1,7 +1,7 @@
 {
   "providers": {
     "runpod": {
-      "name": "RunPod Qwen3.8 (lokal via Proxy)",
+      "name": "RunPod Qwen3.8 (local via proxy)",
       "api": "openai-completions",
       "baseUrl": "http://127.0.0.1:8388/v1",
       "apiKey": "local",

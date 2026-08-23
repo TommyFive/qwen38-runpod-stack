@@ -131,18 +131,18 @@ def main() -> int:
 
     with get(f"{api}/models") as r:
         model = json.loads(r.read())["data"][0]["id"]
-    print(f"Pod {pod} | Modell {model}")
-    print(f"ISL {args.isl} / OSL {args.osl}, Nebenläufigkeit 1\n")
+    print(f"Pod {pod} | model {model}")
+    print(f"ISL {args.isl} / OSL {args.osl}, concurrency 1\n")
 
-    print("Warmlauf (wird verworfen)...", flush=True)
+    print("Warmup (discarded)...", flush=True)
     one_run(api, model, args.isl, args.osl)
 
     results = []
     for i in range(args.runs):
         r = one_run(api, model, args.isl, args.osl)
         results.append(r)
-        print(f"  Lauf {i+1}: {r['tps']:6.1f} tok/s | TTFT {r['ttft']*1000:7.0f} ms "
-              f"| {r['out_tokens']} Tokens")
+        print(f"  run {i+1}: {r['tps']:6.1f} tok/s | TTFT {r['ttft']*1000:7.0f} ms "
+              f"| {r['out_tokens']} tokens")
 
     tps = sorted(x["tps"] for x in results)
     ttft = sorted(x["ttft"] for x in results)
@@ -156,8 +156,8 @@ def main() -> int:
         if key in info:
             print(f"  {key}: {info[key]}")
 
-    print("\nOhne Hardware, Engine-Version, Quantisierung und Kontextlänge "
-          "ist jede dieser Zahlen wertlos. Alle vier gehören ins Protokoll.")
+    print("\nWithout hardware, engine version, quantization and context length "
+          "every one of these numbers is worthless. All four belong in the log.")
     return 0
 
 
