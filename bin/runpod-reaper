@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""runpod-reaper - terminate RunPod pods that outlived their welcome.
+
+Backstop for pods created outside the `rp` wrapper (web console, plain
+runpodctl, another machine). Runs from a LaunchAgent every 10 minutes.
+
+Age comes from `pod get <id>` -> createdAt. Do NOT use `pod list --since`
+or `--created-after`: verified broken in runpodctl 2.6.1 on 2026-08-15,
+they return an empty list for every value, which would make this script
+kill every pod the moment it is created.
+
+Pods whose name starts with "keep-" are never touched.
+
+Env:
+  RUNPOD_MAX_AGE          default 1h   (accepts 30m, 1h, 2h30m, 7d)
+  RUNPOD_REAPER_DRY_RUN   set to 1 to only log what would happen
+  RUNPODCTL_BIN           path to runpodctl
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+RUNPODCTL = os.environ.get("RUNPODCTL_BIN", "/opt/homebrew/bin/runpodctl")
+MAX_AGE_RAW = os.environ.get("RUNPOD_MAX_AGE", "1h")
+DRY_RUN = os.environ.get("RUNPOD_REAPER_DRY_RUN", "0") == "1"
+KEEP_PREFIX = "keep-"
+
+LOG_DIR = Path.home() / ".runpod"
+LOG_FILE = LOG_DIR / "reaper.log"
+
+
+def log(message: str) -> None:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with LOG_FILE.open("a", encoding="utf-8") as fh:
+        fh.write(f"{stamp}  {message}\n")
+
+
+def notify(message: str) -> None:
+    subprocess.run(
+        ["/usr/bin/osascript", "-e",
+         f'display notification "{message}" with title "RunPod Reaper"'],
+        capture_output=True, check=False,
+    )
+
+
+def parse_duration(raw: str) -> int:
+    """'1h' -> 3600. Accepts combinations like '2h30m'."""
+    units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    matches = re.findall(r"(\d+)\s*([smhd])", raw.lower())
+    if not matches:
+        raise ValueError(f"cannot parse duration {raw!r}")
+    return sum(int(value) * units[unit] for value, unit in matches)
+
+
+def runpodctl(*args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            [RUNPODCTL, *args],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log(f"ERROR running runpodctl {' '.join(args)}: {exc}")
+        return None
+    if result.returncode != 0:
+        log(f"ERROR runpodctl {' '.join(args)} exited {result.returncode}: "
+            f"{result.stderr.strip()[:200]}")
+        return None
+    return result.stdout
+
+
+def parse_created_at(raw: str) -> datetime | None:
+    """RunPod returns Go time format: '2026-08-15 20:44:13.156 +0000 UTC'."""
+    cleaned = raw.strip().removesuffix(" UTC").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f %z", "%Y-%m-%d %H:%M:%S %z"):
+        try:
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def main() -> int:
+    try:
+        max_age = parse_duration(MAX_AGE_RAW)
+    except ValueError as exc:
+        log(f"ERROR {exc}, falling back to 1h")
+        max_age = 3600
+
+    raw = runpodctl("pod", "list", "--status", "RUNNING", "-o", "json")
+    if raw is None:
+        return 0
+
+    try:
+        pods = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        log("ERROR could not parse pod list output")
+        return 0
+
+    if not isinstance(pods, list) or not pods:
+        return 0  # nothing running, stay quiet
+
+    now = datetime.now(timezone.utc)
+    killed = []
+
+    for pod in pods:
+        pod_id = pod.get("id")
+        name = pod.get("name") or ""
+        cost = pod.get("costPerHr", 0)
+        if not pod_id:
+            continue
+        if name.startswith(KEEP_PREFIX):
+            continue
+
+        detail_raw = runpodctl("pod", "get", pod_id, "-o", "json")
+        if detail_raw is None:
+            continue
+        try:
+            detail = json.loads(detail_raw)
+        except json.JSONDecodeError:
+            log(f"ERROR could not parse details for {pod_id}")
+            continue
+
+        created = parse_created_at(str(detail.get("createdAt", "")))
+        if created is None:
+            # Unknown age is not a licence to kill. Leave it and shout.
+            log(f"WARN unparseable createdAt for {pod_id} ({name}), skipping")
+            continue
+
+        age = (now - created).total_seconds()
+        if age <= max_age:
+            continue
+
+        age_min = int(age // 60)
+        if DRY_RUN:
+            log(f"DRY-RUN would terminate {pod_id} ({name}, ${cost}/h), "
+                f"age {age_min} min > {MAX_AGE_RAW}")
+            continue
+
+        if runpodctl("pod", "delete", pod_id) is not None:
+            log(f"TERMINATED {pod_id} ({name}, ${cost}/h), "
+                f"age {age_min} min > {MAX_AGE_RAW}")
+            killed.append(name or pod_id)
+        else:
+            log(f"FAILED to terminate {pod_id} ({name})")
+
+    if killed:
+        notify(f"{len(killed)} Pod(s) terminiert: {', '.join(killed)}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

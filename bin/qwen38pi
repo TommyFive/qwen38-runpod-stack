@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# qwen38pi - Qwen3.8-27B abliterated, schlank für pi. Nur SGLang-API, kein OpenWebUI.
+#
+#   qwen38pi            startet den Pod, wartet bis die API antwortet
+#   qwen38pi 8h         längeres Fenster
+#   qwen38pi status     was läuft, was kostet es
+#   qwen38pi stop       terminieren
+#
+# Ist ein dünner Aufruf von `qwen38fast`. Der einzige Unterschied zum vollen
+# Stack: OpenWebUI wird gar nicht erst installiert, deshalb ist der Pod fertig,
+# sobald die API antwortet, statt noch auf Port 8080 zu warten. Alles andere
+# (Modell, Proxy, pi-Anbindung) ist identisch.
+
+# status und stop sind template-unabhängig und müssen als erstes Argument stehen,
+# deshalb NICHT --pi davorhängen, sonst greift die Erkennung in qwen38fast nicht.
+case "${1:-}" in
+    status|stop) exec qwen38fast "$@" ;;
+    *)           exec qwen38fast --pi "$@" ;;
+esac

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# rp - runpodctl wrapper that never lets a pod outlive its timer.
+#
+# Injects --terminate-after into every `pod create` that does not already
+# carry a timer flag. RunPod enforces this server-side, so it still fires
+# when the Mac is asleep or the session is gone.
+#
+# Usage: exactly like runpodctl, e.g.  rp pod create --name x --gpu-id "..."
+#
+#   rp pod create --name test ...              1h window, reaper may also kill it
+#   rp 6h pod create --name train ...          6h window, reaper keeps hands off
+#   RUNPOD_MAX_AGE_HOURS=6 rp pod create ...   same thing via env
+#
+# Anything longer than the reaper's own window gets a "keep-" name prefix,
+# otherwise the reaper would terminate the pod after 1h regardless of the
+# server-side timer, and the longer window would be a lie.
+
+set -uo pipefail
+
+RUNPODCTL="${RUNPODCTL_BIN:-/opt/homebrew/bin/runpodctl}"
+REAPER_WINDOW_HOURS=1   # must match RUNPOD_MAX_AGE in the LaunchAgent
+
+# Leading duration shorthand:  rp 6h pod create ...
+if [[ "${1:-}" =~ ^([0-9]+)h$ ]]; then
+    MAX_AGE_HOURS="${BASH_REMATCH[1]}"
+    shift
+else
+    MAX_AGE_HOURS="${RUNPOD_MAX_AGE_HOURS:-1}"
+fi
+
+if [[ ! -x "$RUNPODCTL" ]]; then
+    echo "rp: runpodctl not found at $RUNPODCTL" >&2
+    exit 127
+fi
+
+if [[ "${1:-}" == "pod" && "${2:-}" == "create" ]]; then
+    has_timer=0
+    for arg in "$@"; do
+        case "$arg" in
+            --terminate-after|--terminate-after=*|--stop-after|--stop-after=*)
+                has_timer=1
+                ;;
+        esac
+    done
+
+    if [[ $has_timer -eq 0 ]]; then
+        deadline=$(date -u -v "+${MAX_AGE_HOURS}H" '+%Y-%m-%dT%H:%M:%SZ')
+        echo "rp: auto-terminate set to $deadline (+${MAX_AGE_HOURS}h)" >&2
+        set -- "$@" --terminate-after "$deadline"
+    else
+        echo "rp: timer flag already present, leaving it alone" >&2
+    fi
+
+    # Shield longer-lived pods from the reaper by renaming them.
+    if [[ $MAX_AGE_HOURS -gt $REAPER_WINDOW_HOURS ]]; then
+        rebuilt=()
+        renamed=0
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --name)
+                    if [[ "${2:-}" != keep-* ]]; then
+                        rebuilt+=("$1" "keep-${2:-}")
+                        renamed=1
+                    else
+                        rebuilt+=("$1" "${2:-}")
+                    fi
+                    shift 2
+                    ;;
+                --name=*)
+                    value="${1#--name=}"
+                    if [[ "$value" != keep-* ]]; then
+                        rebuilt+=("--name=keep-$value")
+                        renamed=1
+                    else
+                        rebuilt+=("$1")
+                    fi
+                    shift
+                    ;;
+                *)
+                    rebuilt+=("$1")
+                    shift
+                    ;;
+            esac
+        done
+        set -- "${rebuilt[@]}"
+        if [[ $renamed -eq 1 ]]; then
+            echo "rp: window is longer than the reaper's ${REAPER_WINDOW_HOURS}h," \
+                 "prefixed the name with keep- so it survives" >&2
+        fi
+    fi
+fi
+
+exec "$RUNPODCTL" "$@"

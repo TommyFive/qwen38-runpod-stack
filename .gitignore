@@ -1,0 +1,11 @@
+# Niemals einchecken: Keys, Tokens, laufender Pod-Zustand, Logs
+*.key
+qwen38.key
+current-pod
+*.log
+.runpod/
+ssh/
+**/token
+*.pem
+id_ed25519*
+id_rsa*

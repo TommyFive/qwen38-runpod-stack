@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+# qwen38fast - Qwen3.8-27B abliterated at max decode speed on RunPod.
+#
+#   qwen38fast                 RTX PRO 6000 Blackwell, DFlash2 spec decoding, 4h window
+#   qwen38fast 2h              shorter window
+#   qwen38fast --gpu b200      run it on a B200 instead
+#   qwen38fast --spec mtp      in-checkpoint MTP head instead of DFlash2
+#   qwen38fast --model REPO    any NVFP4 checkpoint with a uniform pack-quantized format
+#   qwen38fast status | stop
+#
+# Why these defaults, in one line each:
+#   RTX PRO 6000 (SM120, 96GB, $1.69/h) is the card the SGLang Qwen3.8 cookbook
+#     validates end to end, and NVFP4 needs Blackwell FP4 tensor cores.
+#   The checkpoint is uniform `nvfp4-pack-quantized`, NOT `mixed-precision`:
+#     SGLang silently loads mixed-precision compressed-tensors UNQUANTIZED
+#     (sgl-project/sglang#32736), which would cost the entire FP4 speedup.
+#   DFlash2 posts the best measured accept length on this model (4.29).
+#
+# Full reasoning: ~/.claude/skills/runpod-llm/references/MAX_TPS_QWEN38.md
+set -uo pipefail
+
+# Account-specific RunPod template IDs. Override via env, or recreate them with
+# create-templates.sh and export QWEN38_TEMPLATE / QWEN38_TEMPLATE_PI.
+TEMPLATE_ID="${QWEN38_TEMPLATE:-bxwo0swnm9}"        # full stack: SGLang + OpenWebUI (8080)
+TEMPLATE_ID_PI="${QWEN38_TEMPLATE_PI:-f7gudhalzm}"  # lean: SGLang API only, for pi
+POD_NAME="qwen38fast"
+DISK_GB=150
+HOURS=4
+SPEC="dflash2"
+GPU_KEY="pro6000"
+MODEL_ID="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
+MAX_LEN="262144"
+MEM_FRAC="0.85"
+PI_MODE=0                         # --pi: no OpenWebUI, ready as soon as the API answers
+
+TOKEN_FILE="$HOME/.cache/huggingface/token"
+KEY_FILE="$HOME/.runpod/qwen38.key"
+POD_FILE="$HOME/.runpod/current-pod"
+BOOTSTRAP="$HOME/.claude/skills/runpod-llm/scripts/bootstrap-sglang-openwebui.sh"
+
+case "${1:-}" in
+    status)
+        runpodctl pod list
+        runpodctl user -o json | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f\"Guthaben {d['clientBalance']:.2f} USD | laufend {d['currentSpendPerHr']} USD/h\")"
+        exit 0
+        ;;
+    stop)
+        ids=$(runpodctl pod list -o json | python3 -c "
+import sys, json
+print(' '.join(p['id'] for p in json.load(sys.stdin)))")
+        [[ -z "$ids" ]] && { echo "nichts am Laufen"; exit 0; }
+        for id in $ids; do runpodctl pod delete "$id" >/dev/null && echo "terminiert: $id"; done
+        rm -f "$POD_FILE"
+        exit 0
+        ;;
+esac
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        [0-9]*h)   HOURS="${1%h}"; shift ;;
+        --gpu)     GPU_KEY="$2"; shift 2 ;;
+        --spec)    SPEC="$2"; shift 2 ;;
+        --model)   MODEL_ID="$2"; shift 2 ;;
+        --max-len) MAX_LEN="$2"; shift 2 ;;
+        --pi)      PI_MODE=1; TEMPLATE_ID="$TEMPLATE_ID_PI"; POD_NAME="qwen38pi"; shift ;;
+        *)         echo "unbekannte Option: $1" >&2; exit 1 ;;
+    esac
+done
+
+# Community cloud is the same card at roughly 20 percent less. It is not always
+# in stock, so fall back to secure rather than fail the launch.
+CLOUD="${RUNPOD_CLOUD:-COMMUNITY}"
+
+case "$GPU_KEY" in
+    pro6000) GPU_ID="NVIDIA RTX PRO 6000 Blackwell Server Edition"; RATE="1.69" ;;
+    b200)    GPU_ID="NVIDIA B200";                                  RATE="5.98" ;;
+    b300)    GPU_ID="NVIDIA B300 SXM6 AC";                          RATE="6.94" ;;
+    5090)    GPU_ID="NVIDIA GeForce RTX 5090";                      RATE="0.69"
+             MEM_FRAC="0.90"; MAX_LEN="65536" ;;   # 32GB card, cookbook pin
+    *)       echo "GPU unbekannt: $GPU_KEY (pro6000|b200|b300|5090)" >&2; exit 1 ;;
+esac
+
+[[ -r "$BOOTSTRAP" ]] || { echo "Bootstrap fehlt: $BOOTSTRAP" >&2; exit 1; }
+
+if [[ ! -s "$KEY_FILE" ]]; then
+    mkdir -p "$(dirname "$KEY_FILE")"
+    python3 -c "import secrets; print('sk-qwen38-' + secrets.token_urlsafe(24))" > "$KEY_FILE"
+    chmod 600 "$KEY_FILE"
+    echo "Neuen API-Key erzeugt: $KEY_FILE"
+fi
+API_KEY=$(cat "$KEY_FILE")
+
+running=$(runpodctl pod list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
+if [[ "$running" != "0" ]]; then
+    echo "Es läuft bereits ein Pod. 'qwen38fast status' zeigt welchen, 'qwen38fast stop' beendet ihn."
+    exit 1
+fi
+
+# --env replaces the template env object completely, so everything goes in here.
+ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" <<'PY'
+import base64, json, pathlib, sys
+b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
+env = {
+    "BOOTSTRAP_B64": b64,
+    "MODEL_ID":      sys.argv[3],
+    "SERVED_NAME":   "qwen38-uncensored",
+    "SPEC":          sys.argv[4],
+    "MAX_LEN":       sys.argv[5],
+    "MEM_FRAC":      sys.argv[6],
+    "MAMBA_RATIO":   "4.59",
+    "SGLANG_API_KEY": pathlib.Path(sys.argv[7]).read_text().strip(),
+    "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
+}
+tokfile = pathlib.Path(sys.argv[2])
+if tokfile.is_file():
+    env["HF_TOKEN"] = tokfile.read_text().strip()
+print(json.dumps(env))
+PY
+)
+
+echo "Starte $POD_NAME"
+echo "  GPU:    $GPU_KEY (ab \$$RATE/h, ${HOURS}h Fenster)"
+echo "  Modell: $MODEL_ID"
+echo "  Spec:   $SPEC | Kontext: $MAX_LEN"
+echo
+
+create_pod() {
+    rp "${HOURS}h" pod create \
+        --template-id "$TEMPLATE_ID" \
+        --gpu-id "$GPU_ID" \
+        --cloud-type "$1" \
+        --name "$POD_NAME" \
+        --container-disk-in-gb "$DISK_GB" \
+        --env "$ENV_JSON" 2>&1 | python3 -c "
+import sys, json
+raw = sys.stdin.read()
+for line in raw.splitlines():
+    if line.startswith('rp:'):
+        print(line, file=sys.stderr)
+try:
+    d = json.loads(raw[raw.index('{'):])
+except Exception:
+    print('FEHLER beim Anlegen:', raw[:300], file=sys.stderr); sys.exit(1)
+if 'error' in d:
+    print('FEHLER:', str(d['error'])[:300], file=sys.stderr); sys.exit(1)
+print(d['id'])"
+}
+
+POD_ID=$(create_pod "$CLOUD")
+if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
+    echo "Community Cloud hat die Karte nicht frei, versuche Secure Cloud." >&2
+    POD_ID=$(create_pod SECURE)
+fi
+
+[[ -z "$POD_ID" ]] && { echo "Pod konnte nicht angelegt werden." >&2; exit 1; }
+
+mkdir -p "$(dirname "$POD_FILE")"
+echo "$POD_ID" > "$POD_FILE"
+
+OWUI="https://${POD_ID}-8080.proxy.runpod.net"
+API="https://${POD_ID}-8000.proxy.runpod.net/v1"
+echo "Pod:       $POD_ID"
+[[ $PI_MODE -eq 0 ]] && echo "OpenWebUI: $OWUI"
+echo "API:       $API"
+echo
+echo "Warte auf das Modell. Image-Pull plus 20GB Gewichte, rechne mit 8 bis 15 Minuten."
+
+until curl -s --max-time 10 -H "Authorization: Bearer $API_KEY" "$API/models" 2>/dev/null | grep -q "qwen38-uncensored"; do
+    sleep 20
+done
+echo "Modell antwortet."
+
+if [[ $PI_MODE -eq 0 ]]; then
+    # OpenWebUI cached its model list at boot, when SGLang was not up yet.
+    IP=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['ip'])")
+    PORT=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['port'])")
+    ssh -i ~/.runpod/ssh/runpodctl-ssh-key -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 "root@$IP" -p "$PORT" 'bash -s' <<'REMOTE' >/dev/null 2>&1
+pkill -f open-webui
+sleep 2
+setsid /workspace/start-openwebui.sh > /workspace/openwebui.log 2>&1 < /dev/null &
+disown
+REMOTE
+    until curl -s -o /dev/null --max-time 10 -w "%{http_code}" "$OWUI/" 2>/dev/null | grep -q 200; do
+        sleep 5
+    done
+fi
+
+DEADLINE=$(date -v "+${HOURS}H" '+%H:%M')
+
+if [[ $PI_MODE -eq 1 ]]; then
+cat <<EOF
+
+════════════════════════════════════════════════════════════
+  Läuft, nur SGLang, ohne OpenWebUI. Timer bis $DEADLINE Uhr.
+
+  In pi:     pi --model runpod/qwen38-uncensored
+
+  Messen:    qwen38bench $POD_ID
+  Beenden:   qwen38pi stop
+════════════════════════════════════════════════════════════
+
+EOF
+else
+cat <<EOF
+
+════════════════════════════════════════════════════════════
+  Läuft. Timer bis $DEADLINE Uhr, dann terminiert RunPod selbst.
+
+  Im Terminal:   pi --model runpod/qwen38-uncensored
+  Im Browser:    $OWUI
+
+  Messen:        qwen38bench $POD_ID
+  Beenden:       qwen38fast stop
+════════════════════════════════════════════════════════════
+
+EOF
+command -v open >/dev/null && open "$OWUI"
+fi
