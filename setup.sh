@@ -22,6 +22,7 @@ mkdir -p "$BOOTSTRAP_DIR"
 install -m 700 \
   "$HERE/scripts/bootstrap-sglang-openwebui.sh" \
   "$BOOTSTRAP_DIR/bootstrap-sglang-openwebui.sh"
+install -m 600 "$HERE/scripts/benchmark_sglang.py" "$BOOTSTRAP_DIR/benchmark_sglang.py"
 
 echo "== 2) LaunchAgents (macOS)"
 if [ "$(uname)" = "Darwin" ]; then
