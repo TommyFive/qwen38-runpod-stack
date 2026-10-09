@@ -34,6 +34,19 @@ MEM_FRAC="0.85"
 PI_MODE=0                         # --pi: no OpenWebUI, ready as soon as the API answers
 # Set QWEN38_ENABLE_SSH=1 only when an SSH debugging session is needed.
 ENABLE_SSH="${QWEN38_ENABLE_SSH:-0}"
+# Trace defaults on; set QWEN38_COLDSTART_TRACE=0 to disable diagnostic probes.
+COLDSTART_TRACE="${QWEN38_COLDSTART_TRACE:-1}"
+cold_mark() {
+  [[ "$COLDSTART_TRACE" == "1" ]] || return 0
+  python3 - "$1" <<'PY_COLD'
+import datetime, json, sys, time
+event = {"schema": 1, "event": sys.argv[1], "source": "host",
+         "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+         "mono": round(time.monotonic(), 6)}
+print("QWEN38_COLDSTART " + json.dumps(event, separators=(",", ":")), flush=True)
+PY_COLD
+}
+
 
 TOKEN_FILE="$HOME/.cache/huggingface/token"
 KEY_FILE="$HOME/.runpod/qwen38.key"
@@ -73,6 +86,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ "$COLDSTART_TRACE" != "0" && "$COLDSTART_TRACE" != "1" ]]; then
+    echo "QWEN38_COLDSTART_TRACE must be 0 or 1" >&2
+    exit 1
+fi
+export QWEN38_COLDSTART_TRACE="$COLDSTART_TRACE"
+
 if [[ "$ENABLE_SSH" != "0" && "$ENABLE_SSH" != "1" ]]; then
     echo "QWEN38_ENABLE_SSH must be 0 or 1" >&2
     exit 1
@@ -109,7 +128,7 @@ fi
 
 # --env replaces the template env object completely, so everything goes in here.
 ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" <<'PY'
-import base64, json, pathlib, sys
+import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
     "BOOTSTRAP_B64": b64,
@@ -122,6 +141,7 @@ env = {
     "SGLANG_API_KEY": pathlib.Path(sys.argv[7]).read_text().strip(),
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
+    "COLDSTART_TRACE": os.environ.get("QWEN38_COLDSTART_TRACE", "1"),
 }
 tokfile = pathlib.Path(sys.argv[2])
 if tokfile.is_file():
@@ -158,6 +178,7 @@ if 'error' in d:
 print(d['id'])"
 }
 
+cold_mark pod_create_request
 POD_ID=$(create_pod "$CLOUD")
 if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
     echo "Community cloud has no free card, trying secure cloud." >&2
@@ -165,6 +186,7 @@ if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
 fi
 
 [[ -z "$POD_ID" ]] && { echo "Could not create the pod." >&2; exit 1; }
+cold_mark pod_created
 
 mkdir -p "$(dirname "$POD_FILE")"
 echo "$POD_ID" > "$POD_FILE"
@@ -180,7 +202,29 @@ echo "Waiting for the model. Image pull plus 20GB of weights, expect 8 to 15 min
 until curl -s --max-time 10 -H "Authorization: Bearer $API_KEY" "$API/models" 2>/dev/null | grep -q "qwen38-uncensored"; do
     sleep 20
 done
+cold_mark api_models_ready
 echo "Model is answering."
+
+# End-to-end TTFI requires a successful completion, not merely /v1/models 200.
+# Never print the response, API key or prompt; a failed probe stays unmeasured.
+if [[ "$COLDSTART_TRACE" == "1" ]]; then
+    if curl -fsS --max-time 120 -H "Authorization: Bearer $API_KEY" \
+        -H "Content-Type: application/json" \
+        -d '{"model":"qwen38-uncensored","messages":[{"role":"user","content":"Reply OK"}],"max_tokens":8,"temperature":0}' \
+        "$API/chat/completions" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    response = json.load(sys.stdin)
+    assert response.get("choices") and response["choices"][0].get("message") is not None
+except (ValueError, AssertionError, KeyError, TypeError):
+    sys.exit(1)
+' >/dev/null; then
+        cold_mark first_inference_ok
+    else
+        cold_mark first_inference_failed
+        echo "WARNING: cold-start inference probe failed; TTFI unavailable" >&2
+    fi
+fi
 
 if [[ $PI_MODE -eq 0 ]]; then
     # OpenWebUI cached its model list at boot, when SGLang was not up yet.
@@ -196,6 +240,7 @@ REMOTE
     until curl -s -o /dev/null --max-time 10 -w "%{http_code}" "$OWUI/" 2>/dev/null | grep -q 200; do
         sleep 5
     done
+    cold_mark webui_ready
 fi
 
 DEADLINE=$(date -v "+${HOURS}H" '+%H:%M')
