@@ -252,6 +252,9 @@ with contextlib.redirect_stderr(buffer):
 assert buffer.getvalue()==""
 PY
 echo '=== cross-feature private + storage + benchmark + cold-start smoke ==='
+# The launcher fallback check intentionally unsets HF_TOKEN above. Restore it
+# for the mocked direct checkpoint download (whose provider requires a token).
+export HF_TOKEN="$TEST_HF_TOKEN"
 cat > "$RAM/fake-tailnet.sh" <<'FAKE_TAILNET'
 ts_start() { TS_ACTIVE=1; export TS_ACTIVE; echo "TAILSCALE: mock private enrollment"; }
 ts_serve() { [[ "${TS_ACTIVE:-0}" == 1 ]]; }
