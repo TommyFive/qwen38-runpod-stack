@@ -4,21 +4,27 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  bootstrap:
+  integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v5
-      - name: Check shell syntax
+      - name: Syntax and Python compilation
         shell: bash
         run: |
           set -euo pipefail
           bash -n scripts/bootstrap-sglang-openwebui.sh
+          bash -n scripts/tailscale-runtime.sh
           bash -n bin/qwen38fast
           bash -n setup.sh
           bash -n create-templates.sh
-          bash -n tests/test-privacy.sh
-      - name: Keep installs out of the serving environment
+          for script in tests/*.sh; do bash -n "$script"; done
+          python3 -m compileall -q bin/qwen38cold bin/qwen38bench bin/qwen38-proxy scripts tests
+      - name: Keep isolated UI environment
         shell: bash
         run: |
           set -euo pipefail
@@ -28,6 +34,18 @@ jobs:
           fi
           grep -Fq 'uv venv --python /usr/bin/python3 "$WEBUI_VENV"' scripts/bootstrap-sglang-openwebui.sh
           grep -Fq 'uv pip install --python "$WEBUI_VENV/bin/python"' scripts/bootstrap-sglang-openwebui.sh
-      - name: Privacy security and credential regression suite
+      - name: Security / privacy contracts
         shell: bash
         run: bash tests/test-privacy.sh
+      - name: Tailscale native SSH contracts
+        shell: bash
+        run: bash tests/test-tailscale.sh
+      - name: Public vs portless private template / launcher
+        shell: bash
+        run: bash tests/test-launch-network.sh
+      - name: Model storage launcher / template contracts
+        shell: bash
+        run: bash tests/test-storage-integration.sh
+      - name: Python integration and regression
+        shell: bash
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
