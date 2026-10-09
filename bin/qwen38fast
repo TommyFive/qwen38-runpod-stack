@@ -18,6 +18,8 @@
 #
 # Full reasoning: docs/PERFORMANCE.md
 set -uo pipefail
+set +x
+umask 077
 
 # Account-specific RunPod template IDs. Override via env, or recreate them with
 # create-templates.sh and export QWEN38_TEMPLATE / QWEN38_TEMPLATE_PI.
@@ -34,6 +36,16 @@ MODEL_ID="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
 MAX_LEN="262144"
 MEM_FRAC="0.85"
 PI_MODE=0                         # --pi: no OpenWebUI, ready as soon as the API answers
+MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
+MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
+MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
+BENCHMARK="${BENCHMARK:-0}"
+BENCHMARK_RUNS="${BENCHMARK_RUNS:-3}"
+BENCHMARK_MAX_TOKENS="${BENCHMARK_MAX_TOKENS:-512}"
+BENCHMARK_TIMEOUT_SECONDS="${BENCHMARK_TIMEOUT_SECONDS:-900}"
+BENCHMARK_REPORT_PATH="${BENCHMARK_REPORT_PATH:-/dev/shm/qwen38-benchmark.json}"
+COLDSTART_TRACE="${QWEN38_COLDSTART_TRACE:-1}"
+DEBUG="${QWEN38_DEBUG:-0}"
 # Set QWEN38_ENABLE_SSH=1 only when an SSH debugging session is needed.
 ENABLE_SSH="${QWEN38_ENABLE_SSH:-0}"
 NETWORK_MODE="${QWEN38_NETWORK_MODE:-runpod}"
@@ -49,6 +61,20 @@ ENDPOINT_FILE="$HOME/.runpod/current-endpoint.json"
 # Installed by setup.sh; override to test a working-tree bootstrap before deploying.
 BOOTSTRAP="${QWEN38_BOOTSTRAP:-$HOME/.local/share/qwen38-runpod-stack/bootstrap-sglang-openwebui.sh}"
 TS_RUNTIME="${QWEN38_TAILSCALE_RUNTIME:-$HOME/.local/share/qwen38-runpod-stack/tailscale-runtime.sh}"
+STORAGE_HELPER="${QWEN38_STORAGE_HELPER:-$HOME/.local/share/qwen38-runpod-stack/model-storage.py}"
+BENCHMARK_SCRIPT="${QWEN38_BENCHMARK_SCRIPT:-$HOME/.local/share/qwen38-runpod-stack/benchmark_sglang.py}"
+WEBUI_PASSWORD_FILE="$HOME/.runpod/qwen38-webui-password"
+WEBUI_ADMIN_EMAIL="${QWEN38_WEBUI_ADMIN_EMAIL:-admin@qwen38.example.com}"
+
+cold_mark() {
+  [[ "$COLDSTART_TRACE" == 1 ]] || return 0
+  python3 - "$1" <<'PY_COLD'
+import datetime, json, sys, time
+print("QWEN38_COLDSTART " + json.dumps({"schema": 1, "event": sys.argv[1], "source": "host",
+      "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00","Z"),
+      "mono": round(time.monotonic(),6)}, separators=(",",":")), flush=True)
+PY_COLD
+}
 
 case "${1:-}" in
     status)
@@ -77,6 +103,10 @@ while [[ $# -gt 0 ]]; do
         --spec)    SPEC="$2"; shift 2 ;;
         --model)   MODEL_ID="$2"; shift 2 ;;
         --max-len) MAX_LEN="$2"; shift 2 ;;
+        --storage) MODEL_STORAGE="$2"; shift 2 ;;
+        --ram-dir) MODEL_RAM_DIR="$2"; shift 2 ;;
+        --ssd-dir) MODEL_SSD_DIR="$2"; shift 2 ;;
+        --benchmark) BENCHMARK=1; shift ;;
         --network) NETWORK_MODE="$2"; shift 2 ;;
         --ts-hostname) TS_HOSTNAME="$2"; shift 2 ;;
         --pi)      PI_MODE=1; POD_NAME="qwen38pi"; shift ;;
@@ -84,6 +114,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+for v in COLDSTART_TRACE DEBUG BENCHMARK; do
+    [[ "${!v}" == 0 || "${!v}" == 1 ]] || { echo "$v must be 0 or 1" >&2; exit 64; }
+done
+case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
+if [[ "$BENCHMARK" == 1 ]]; then
+    for item in "BENCHMARK_RUNS:$BENCHMARK_RUNS:20" "BENCHMARK_MAX_TOKENS:$BENCHMARK_MAX_TOKENS:4096" "BENCHMARK_TIMEOUT_SECONDS:$BENCHMARK_TIMEOUT_SECONDS:7200"; do
+        IFS=: read -r label value max <<< "$item"
+        [[ "$value" =~ ^[0-9]+$ ]] || { echo "$label must be numeric" >&2; exit 64; }
+        (( 10#$value >= 1 && 10#$value <= max )) || { echo "$label out of range" >&2; exit 64; }
+    done
+fi
+export QWEN38_COLDSTART_TRACE="$COLDSTART_TRACE"
 if [[ "$NETWORK_MODE" != runpod && "$NETWORK_MODE" != tailnet ]]; then
     echo "QWEN38_NETWORK_MODE must be runpod or tailnet" >&2; exit 1
 fi
@@ -136,6 +178,10 @@ esac
 
 [[ -r "$BOOTSTRAP" ]] || { echo "bootstrap missing: $BOOTSTRAP" >&2; exit 1; }
 [[ -r "$TS_RUNTIME" ]] || { echo "Tailscale helper missing: $TS_RUNTIME (rerun ./setup.sh)" >&2; exit 1; }
+[[ -r "$STORAGE_HELPER" ]] || { echo "storage helper missing: $STORAGE_HELPER (rerun ./setup.sh)" >&2; exit 1; }
+if [[ "$BENCHMARK" == 1 ]]; then
+    [[ -r "$BENCHMARK_SCRIPT" ]] || { echo "benchmark helper missing: $BENCHMARK_SCRIPT" >&2; exit 64; }
+fi
 
 if [[ ! -s "$KEY_FILE" ]]; then
     mkdir -p "$(dirname "$KEY_FILE")"
@@ -144,6 +190,22 @@ if [[ ! -s "$KEY_FILE" ]]; then
     echo "generated a new API key: $KEY_FILE"
 fi
 API_KEY=$(cat "$KEY_FILE")
+[[ -n "$API_KEY" ]] || { echo "empty SGLANG_API_KEY" >&2; exit 64; }
+WEBUI_ADMIN_PASSWORD=""
+if [[ $PI_MODE -eq 0 ]]; then
+    if [[ -n "${QWEN38_WEBUI_ADMIN_PASSWORD:-}" ]]; then
+        WEBUI_ADMIN_PASSWORD="$QWEN38_WEBUI_ADMIN_PASSWORD"
+    else
+        if [[ ! -s "$WEBUI_PASSWORD_FILE" ]]; then
+            mkdir -p "$(dirname "$WEBUI_PASSWORD_FILE")"
+            (umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(36))' > "$WEBUI_PASSWORD_FILE")
+            chmod 600 "$WEBUI_PASSWORD_FILE"
+            echo "Generated OpenWebUI admin password at: $WEBUI_PASSWORD_FILE"
+        fi
+        WEBUI_ADMIN_PASSWORD=$(cat "$WEBUI_PASSWORD_FILE")
+    fi
+    [[ ${#WEBUI_ADMIN_PASSWORD} -ge 16 ]] || { echo "WEBUI password must be >=16 chars" >&2; exit 64; }
+fi
 
 running=$(runpodctl pod list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
 if [[ "$running" != "0" ]]; then
@@ -152,7 +214,7 @@ if [[ "$running" != "0" ]]; then
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" <<'PY'
+ENV_JSON=$(WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
 import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
@@ -161,6 +223,14 @@ env = {
     "NETWORK_MODE": sys.argv[11],
     "TS_HOSTNAME": sys.argv[12],
     "TS_ENABLE_SSH": sys.argv[13],
+    "STORAGE_HELPER_B64": base64.b64encode(pathlib.Path(sys.argv[14]).read_bytes()).decode(),
+    "MODEL_STORAGE": sys.argv[15],
+    "MODEL_RAM_DIR": sys.argv[16],
+    "MODEL_SSD_DIR": sys.argv[17],
+    "BENCHMARK": sys.argv[19],
+    "DEBUG": sys.argv[24],
+    "COLDSTART_TRACE": sys.argv[25],
+    "RUNTIME_LOG_DIR": "/dev/shm/qwen38-runtime",
     "MODEL_ID":      sys.argv[3],
     "SERVED_NAME":   "qwen38-uncensored",
     "SPEC":          sys.argv[4],
@@ -171,11 +241,25 @@ env = {
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
 }
+if sys.argv[8] != "1":
+    env["WEBUI_ADMIN_PASSWORD"] = os.environ["WEBUI_ADMIN_PASSWORD"]
+    env["WEBUI_ADMIN_EMAIL"] = os.environ["WEBUI_ADMIN_EMAIL"]
+if sys.argv[19] == "1":
+    env.update({
+        "BENCHMARK_B64": base64.b64encode(pathlib.Path(sys.argv[18]).read_bytes()).decode(),
+        "BENCHMARK_RUNS": sys.argv[20],
+        "BENCHMARK_MAX_TOKENS": sys.argv[21],
+        "BENCHMARK_TIMEOUT_SECONDS": sys.argv[22],
+        "BENCHMARK_REPORT_PATH": sys.argv[23]
+    })
 if os.environ.get("TS_AUTHKEY"):
     env["TS_AUTHKEY"] = os.environ["TS_AUTHKEY"]
+token = os.environ.get("HF_TOKEN","")
 tokfile = pathlib.Path(sys.argv[2])
-if tokfile.is_file():
-    env["HF_TOKEN"] = tokfile.read_text().strip()
+if not token and tokfile.is_file():
+    token = tokfile.read_text().strip()
+if token:
+    env["HF_TOKEN"] = token
 print(json.dumps(env))
 PY
 )
@@ -185,6 +269,8 @@ echo "  GPU:     $GPU_KEY (from \$$RATE/h, ${HOURS}h window)"
 echo "  Model:   $MODEL_ID"
 echo "  Spec:    $SPEC | context: $MAX_LEN"
 echo "  Network: $NETWORK_MODE"
+echo "  Storage: $MODEL_STORAGE"
+[[ "$BENCHMARK" == 1 ]] && echo "  Benchmark: $BENCHMARK_RUNS runs, timeout $BENCHMARK_TIMEOUT_SECONDS sec"
 [[ "$NETWORK_MODE" == tailnet ]] && echo "  Tailnet: $TS_HOSTNAME.$TAILNET_DOMAIN"
 echo
 
@@ -203,7 +289,7 @@ import sys, json
 raw = sys.stdin.read()
 for line in raw.splitlines():
     if line.startswith('rp:'):
-        print(line, file=sys.stderr)
+        print('rp: wrapper notice suppressed to protect secrets', file=sys.stderr)
 try:
     d = json.loads(raw[raw.index('{'):])
 except Exception:
@@ -213,13 +299,16 @@ if 'error' in d:
 print(d['id'])"
 }
 
+cold_mark pod_create_request
 POD_ID=$(create_pod "$CLOUD")
 if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
     echo "Community cloud has no free card, trying secure cloud." >&2
     POD_ID=$(create_pod SECURE)
 fi
 
+unset ENV_JSON WEBUI_ADMIN_PASSWORD
 [[ -z "$POD_ID" ]] && { echo "Could not create the pod." >&2; exit 1; }
+cold_mark pod_created
 
 mkdir -p "$(dirname "$POD_FILE")"
 echo "$POD_ID" > "$POD_FILE"
@@ -260,22 +349,44 @@ if [[ "$ready" != 1 ]]; then
     echo "ERROR: model readiness timeout; the pod may still be running. Use qwen38fast stop." >&2
     exit 1
 fi
+cold_mark api_models_ready
 echo "Model is answering."
+if [[ "$COLDSTART_TRACE" == 1 ]]; then
+    if curl -fsS --max-time 120 -H "Authorization: Bearer $API_KEY" \
+        -H "Content-Type: application/json" \
+        -d '{"model":"qwen38-uncensored","messages":[{"role":"user","content":"Reply OK"}],"max_tokens":8,"temperature":0}' \
+        "$API/chat/completions" 2>/dev/null | python3 -c '
+import json,sys
+try:
+    r=json.load(sys.stdin)
+    assert r.get("choices") and r["choices"][0].get("message") is not None
+except (ValueError,AssertionError,KeyError,TypeError):
+    sys.exit(1)
+' >/dev/null; then
+        cold_mark first_inference_ok
+    else
+        cold_mark first_inference_failed
+        echo "WARNING: TTFI inference probe failed" >&2
+    fi
+fi
 
 # On the pod, OpenWebUI is now started only after model readiness. No remote
 # SSH restart is needed, including in private/portless tailnet-only mode.
 if [[ $PI_MODE -eq 0 ]]; then
     ui_ready=0
     for ((attempt=0; attempt<60; attempt++)); do
-        if curl -fsS --max-time 10 -o /dev/null "$OWUI/"; then
+        if curl -fsS --max-time 10 "$OWUI/api/config" 2>/dev/null |
+            python3 -c 'import json,sys; c=json.load(sys.stdin); sys.exit(0 if c.get("features", {}).get("auth") is True else 1)' 2>/dev/null; then
             ui_ready=1
             break
         fi
         sleep 5
     done
     if [[ "$ui_ready" != 1 ]]; then
-        echo "WARNING: OpenWebUI is not ready; SGLang API is available" >&2
+        echo "ERROR: OpenWebUI authentication not verified; do not open UI" >&2
+        exit 70
     fi
+    cold_mark webui_ready
 fi
 
 DEADLINE=$(date -v "+${HOURS}H" '+%H:%M')
