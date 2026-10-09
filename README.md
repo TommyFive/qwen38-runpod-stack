@@ -299,3 +299,27 @@ which throws away the whole FP4 speedup without any error. Use a uniform
 ## License
 
 MIT, see [LICENSE](LICENSE). The model itself is Apache 2.0.
+
+## Integrated pre-release branch — #7, #8, #9, #10, #11 (2026-10-10)
+
+A common integration branch, `integration/issues-7-11-20261010`,
+combines the five still-separate feature PRs **#12, #13, #14, #15, #16**.
+It includes native **Tailscale SSH** and a private/portless tailnet path,
+credentialed **SGLang/OpenWebUI** with private tmpfs runtime state, RAM-only
+checkpoint and HF cache by default (explicit `--storage ssd` opt-in),
+opt-in authenticated **in-pod benchmarking** (`--benchmark`), and
+cold-start tracing/`qwen38cold` reporting.
+
+See **[complete integration/test guide](docs/INTEGRATION_SMOKE_20261010.md)**
+before renting a pod. The integration CI runs all offline contracts
+together; **a paid GPU, public-port exposure check, Tailscale Serve,
+OpenWebUI authentication and real model storage still require an on-demand
+RunPod smoke test**. Running pods and existing embedded RunPod templates
+do **not** update when GitHub changes; recreate all four templates
+before using this code. This branch is not merged into `main`.
+
+Detailed explanations: [Tailscale setup above](#optional-tailscale-native-ssh-and-private-network-mode),
+[privacy and threat model](docs/SECURITY.md),
+[RAM/SSD storage](docs/INTEGRATION_SMOKE_20261010.md),
+[benchmark metrics](docs/BENCHMARK.md),
+[cold-start methodology](docs/COLD_START.md).
