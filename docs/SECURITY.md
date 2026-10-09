@@ -34,8 +34,15 @@ snapshot. Child request/server logs are discarded. New start scripts,
 bootstrap.log, snapshot.json, optional debug logs and OpenWebUI conversation
 database are under verified tmpfs (\`/dev/shm/qwen38-runtime\`,
 \`/dev/shm/qwen38-webui-data\`). \`umask 077\` and mode 700 directories
-keep other local users out. Model weights, HF cache and isolated OpenWebUI
-**packages** remain under \`/workspace\` (distinct from conversations).
+keep other local users out. Tailscale userspace state, socket, helper binaries,
+and optional benchmark logs also remain in private tmpfs.
+
+**Model weights, the selected draft checkpoint and all Hugging Face/Xet
+caches default to verified tmpfs** (\`MODEL_STORAGE=ram\`), with capacity
+admission that fails closed before downloading if memory or tmpfs is insufficient.
+Explicit `MODEL_STORAGE=ssd\` instead stores them in `/workspace/hf\`.
+The isolated OpenWebUI **packages** remain under `/workspace\`
+(distinct from conversation data).
 The separate OpenWebUI virtualenv avoids changing SGLang/PyTorch/NCCL.
 
 Set \`DEBUG=1\` or launcher \`QWEN38_DEBUG=1\` explicitly to retain
