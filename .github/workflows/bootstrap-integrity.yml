@@ -16,6 +16,7 @@ jobs:
           bash -n scripts/bootstrap-sglang-openwebui.sh
           bash -n scripts/tailscale-runtime.sh
           bash -n tests/test-tailscale.sh
+          bash -n tests/test-launch-network.sh
           bash -n bin/qwen38fast
           bash -n setup.sh
           bash -n create-templates.sh
@@ -36,6 +37,7 @@ jobs:
           set -euo pipefail
           bash tests/test-rp.sh
           bash tests/test-tailscale.sh
+          bash tests/test-launch-network.sh
           python3 -m unittest discover -s tests -p 'test_*.py' -v
       - name: Check Python syntax and whitespace
         shell: bash
