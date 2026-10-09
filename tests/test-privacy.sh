@@ -267,8 +267,12 @@ TAILSCALE_RUNTIME_B64="$(base64 < "$RAM/fake-tailnet.sh" | tr -d '\n')"
 BENCHMARK_B64="$(base64 < "$RAM/mock-benchmark.py" | tr -d '\n')"
 TS_AUTHKEY="SENTINEL_TS_AUTHKEY_44b870"
 rm -rf "$RUNTIME_LOG_DIR" "$WEBUI_DATA_DIR"
-NETWORK_MODE=tailnet BENCHMARK=1 COLDSTART_TRACE=1 DEBUG=0 \
-    bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/private-integrated" 2>&1
+if ! NETWORK_MODE=tailnet BENCHMARK=1 COLDSTART_TRACE=1 DEBUG=0 \
+    bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/private-integrated" 2>&1; then
+    echo "Cross-feature bootstrap failed; sanitized output:" >&2
+    sed -E 's/SENTINEL_[A-Za-z0-9_]+/[REDACTED]/g; s/sk-qwen38-[A-Za-z0-9_-]+/[REDACTED]/g' "$TMP/private-integrated" >&2
+    exit 1
+fi
 /bin/sleep 1
 test -f "$TEST_BENCH_MARKER"
 test -f "$RUNTIME_LOG_DIR/start-sglang.sh"
