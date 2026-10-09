@@ -38,6 +38,7 @@ ENABLE_SSH="${QWEN38_ENABLE_SSH:-0}"
 TOKEN_FILE="$HOME/.cache/huggingface/token"
 KEY_FILE="$HOME/.runpod/qwen38.key"
 POD_FILE="$HOME/.runpod/current-pod"
+# Installed by setup.sh; override to test a working-tree bootstrap before deploying.
 BOOTSTRAP="${QWEN38_BOOTSTRAP:-$HOME/.local/share/qwen38-runpod-stack/bootstrap-sglang-openwebui.sh}"
 
 case "${1:-}" in
