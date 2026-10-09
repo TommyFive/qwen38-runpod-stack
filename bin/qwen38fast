@@ -18,6 +18,8 @@
 #
 # Full reasoning: docs/PERFORMANCE.md
 set -uo pipefail
+set +x
+umask 077
 
 # Account-specific RunPod template IDs. Override via env, or recreate them with
 # create-templates.sh and export QWEN38_TEMPLATE / QWEN38_TEMPLATE_PI.
@@ -36,6 +38,10 @@ PI_MODE=0                         # --pi: no OpenWebUI, ready as soon as the API
 ENABLE_SSH="${QWEN38_ENABLE_SSH:-0}"
 
 TOKEN_FILE="$HOME/.cache/huggingface/token"
+WEBUI_PASSWORD_FILE="$HOME/.runpod/qwen38-webui-password"
+DEBUG="${QWEN38_DEBUG:-0}"
+[[ "$DEBUG" == 0 || "$DEBUG" == 1 ]] || { echo "QWEN38_DEBUG must be 0 or 1" >&2; exit 64; }
+
 KEY_FILE="$HOME/.runpod/qwen38.key"
 POD_FILE="$HOME/.runpod/current-pod"
 # Installed by setup.sh; override to test a working-tree bootstrap before deploying.
@@ -100,6 +106,23 @@ if [[ ! -s "$KEY_FILE" ]]; then
     echo "generated a new API key: $KEY_FILE"
 fi
 API_KEY=$(cat "$KEY_FILE")
+[[ -n "$API_KEY" ]] || { echo "ERROR: empty SGLANG_API_KEY" >&2; exit 64; }
+WEBUI_ADMIN_EMAIL="${QWEN38_WEBUI_ADMIN_EMAIL:-admin@qwen38.invalid}"
+WEBUI_ADMIN_PASSWORD=""
+if [[ $PI_MODE -eq 0 ]]; then
+    if [[ -n "${QWEN38_WEBUI_ADMIN_PASSWORD:-}" ]]; then
+        WEBUI_ADMIN_PASSWORD="$QWEN38_WEBUI_ADMIN_PASSWORD"
+    else
+        if [[ ! -s "$WEBUI_PASSWORD_FILE" ]]; then
+            mkdir -p "$(dirname "$WEBUI_PASSWORD_FILE")"
+            ( umask 077; python3 -c "import secrets; print(secrets.token_urlsafe(36))" > "$WEBUI_PASSWORD_FILE" )
+            chmod 600 "$WEBUI_PASSWORD_FILE"
+            echo "Generated OpenWebUI admin password in: $WEBUI_PASSWORD_FILE"
+        fi
+        WEBUI_ADMIN_PASSWORD=$(cat "$WEBUI_PASSWORD_FILE")
+    fi
+    [[ ${#WEBUI_ADMIN_PASSWORD} -ge 16 ]] || { echo "OpenWebUI admin password must be >=16 characters" >&2; exit 64; }
+fi
 
 running=$(runpodctl pod list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
 if [[ "$running" != "0" ]]; then
@@ -108,24 +131,35 @@ if [[ "$running" != "0" ]]; then
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" <<'PY'
-import base64, json, pathlib, sys
+# RunPod's CLI passes --env through argv/control plane. Avoid shell tracing,
+# never echo raw responses, and document the unavoidable host/provider exposure.
+ENV_JSON=$(QWEN38_WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" QWEN38_WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$DEBUG" <<'PY'
+import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
     "BOOTSTRAP_B64": b64,
-    "MODEL_ID":      sys.argv[3],
-    "SERVED_NAME":   "qwen38-uncensored",
-    "SPEC":          sys.argv[4],
-    "MAX_LEN":       sys.argv[5],
-    "MEM_FRAC":      sys.argv[6],
-    "MAMBA_RATIO":   "4.59",
+    "MODEL_ID": sys.argv[3],
+    "SERVED_NAME": "qwen38-uncensored",
+    "SPEC": sys.argv[4],
+    "MAX_LEN": sys.argv[5],
+    "MEM_FRAC": sys.argv[6],
+    "MAMBA_RATIO": "4.59",
     "SGLANG_API_KEY": pathlib.Path(sys.argv[7]).read_text().strip(),
-    "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
-    "ENABLE_SSH":    sys.argv[9],
+    "SERVE_WEBUI": "0" if sys.argv[8] == "1" else "1",
+    "ENABLE_SSH": sys.argv[9],
+    "DEBUG": sys.argv[10],
 }
-tokfile = pathlib.Path(sys.argv[2])
-if tokfile.is_file():
-    env["HF_TOKEN"] = tokfile.read_text().strip()
+if sys.argv[8] != "1":
+    env["WEBUI_ADMIN_EMAIL"] = os.environ["QWEN38_WEBUI_ADMIN_EMAIL"]
+    env["WEBUI_ADMIN_PASSWORD"] = os.environ["QWEN38_WEBUI_ADMIN_PASSWORD"]
+# Explicit launcher HF_TOKEN wins over the optional cached token file.
+tok = os.environ.get("HF_TOKEN", "")
+if not tok:
+    tokfile = pathlib.Path(sys.argv[2])
+    if tokfile.is_file():
+        tok = tokfile.read_text().strip()
+if tok:
+    env["HF_TOKEN"] = tok
 print(json.dumps(env))
 PY
 )
@@ -152,9 +186,9 @@ for line in raw.splitlines():
 try:
     d = json.loads(raw[raw.index('{'):])
 except Exception:
-    print('ERROR creating pod:', raw[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR creating pod: unexpected RunPod response (hidden to protect credentials)', file=sys.stderr); sys.exit(1)
 if 'error' in d:
-    print('ERROR:', str(d['error'])[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR: RunPod rejected the request (response hidden to protect credentials)', file=sys.stderr); sys.exit(1)
 print(d['id'])"
 }
 
@@ -164,6 +198,7 @@ if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
     POD_ID=$(create_pod SECURE)
 fi
 
+unset ENV_JSON WEBUI_ADMIN_PASSWORD
 [[ -z "$POD_ID" ]] && { echo "Could not create the pod." >&2; exit 1; }
 
 mkdir -p "$(dirname "$POD_FILE")"
@@ -183,19 +218,18 @@ done
 echo "Model is answering."
 
 if [[ $PI_MODE -eq 0 ]]; then
-    # OpenWebUI cached its model list at boot, when SGLang was not up yet.
-    IP=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['ip'])")
-    PORT=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['port'])")
-    ssh -i ~/.runpod/ssh/runpodctl-ssh-key -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 "root@$IP" -p "$PORT" 'bash -s' <<'REMOTE' >/dev/null 2>&1
-pkill -f open-webui
-sleep 2
-setsid /workspace/start-openwebui.sh > /workspace/openwebui.log 2>&1 < /dev/null &
-disown
-REMOTE
-    until curl -s -o /dev/null --max-time 10 -w "%{http_code}" "$OWUI/" 2>/dev/null | grep -q 200; do
+    # Bootstrap starts OpenWebUI after authenticated SGLang is ready.
+    # A 200 login page is NOT proof of authentication; verify feature flag.
+    ui_ready=0
+    for ((attempt=0; attempt<120; attempt++)); do
+        if curl -fsS --max-time 10 "$OWUI/api/config" 2>/dev/null |
+             python3 -c 'import json,sys; c=json.load(sys.stdin); sys.exit(0 if c.get("features", {}).get("auth") is True else 1)' 2>/dev/null; then
+            ui_ready=1
+            break
+        fi
         sleep 5
     done
+    [[ "$ui_ready" == 1 ]] || { echo "ERROR: OpenWebUI authentication was not verified; not opening UI" >&2; exit 70; }
 fi
 
 DEADLINE=$(date -v "+${HOURS}H" '+%H:%M')
