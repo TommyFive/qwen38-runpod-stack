@@ -29,9 +29,22 @@ API_KEY="${SGLANG_API_KEY:-}"
 SERVE_WEBUI="${SERVE_WEBUI:-1}"
 ENABLE_SSH="${ENABLE_SSH:-0}"
 
+# Diagnostic-only, opt-out by COLDSTART_TRACE=0. No credentials/paths in events.
+COLDSTART_TRACE="${COLDSTART_TRACE:-1}"
+cold_mark() {
+  [[ "$COLDSTART_TRACE" == "1" ]] || return 0
+  python3 - "$1" <<'PY_COLD'
+import datetime, json, sys, time
+event = {"schema": 1, "event": sys.argv[1], "source": "pod",
+         "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+         "mono": round(time.monotonic(), 6)}
+print("QWEN38_COLDSTART " + json.dumps(event, separators=(",", ":")), flush=True)
+PY_COLD
+}
 mkdir -p /workspace
 LOG=/workspace/bootstrap.log
 exec > >(tee -a "$LOG") 2>&1
+cold_mark bootstrap_start
 echo "=== bootstrap $(date -u +%FT%TZ) ==="
 echo "model=$MODEL_ID spec=$SPEC max_len=$MAX_LEN mem_frac=$MEM_FRAC"
 
@@ -114,7 +127,7 @@ SSHD_CONFIG
 
 if [[ "$ENABLE_SSH" == "1" ]]; then
     echo "--- early SSH initialization"
-    start_ssh || echo "WARNING: continuing bootstrap without SSH"
+    if start_ssh; then cold_mark ssh_ready; else echo "WARNING: continuing bootstrap without SSH"; fi
 else
     echo "--- SSH disabled (set ENABLE_SSH=1 to enable)"
 fi
@@ -128,10 +141,12 @@ nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader || tr
 
 # Network sanity check. A broken host looks exactly like a config bug and
 # costs hours at the wrong end. Anything under 10 MB/s means throw the pod away.
+cold_mark network_probe_start
 echo "--- network check"
 SPEED=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 20 \
     https://huggingface.co/Qwen/Qwen3.8-27B-FP8/resolve/main/config.json 2>/dev/null || echo 0)
 echo "download probe: $(python3 -c "print(f'{float('${SPEED:-0}')/1e6:.1f} MB/s')" 2>/dev/null || echo '?')"
+cold_mark network_probe_end
 
 # Both packages are preinstalled in the SGLang image. Never use pip to change
 # the live SGLang/PyTorch/NCCL environment during bootstrap.
@@ -140,8 +155,9 @@ if ! python3 -c 'import huggingface_hub, hf_xet'; then
   exit 1
 fi
 
+cold_mark main_download_start
 echo "--- fetching weights"
-python3 - <<PY
+if ! python3 - <<PY
 import os
 from huggingface_hub import snapshot_download
 p = snapshot_download(
@@ -152,6 +168,12 @@ p = snapshot_download(
 open("/workspace/model_path", "w").write(p)
 print("downloaded to", p)
 PY
+then
+  cold_mark main_download_failed
+  echo "ERROR: main HF model download failed" >&2
+  exit 1
+fi
+cold_mark main_download_end
 MODEL_PATH=$(cat /workspace/model_path)
 du -sh "$MODEL_PATH" || true
 
@@ -204,9 +226,27 @@ exec python3 -m sglang.launch_server \\
 EOF
 chmod +x /workspace/start-sglang.sh
 
+cold_mark sglang_start
 echo "--- starting SGLang"
 setsid /workspace/start-sglang.sh > /workspace/sglang.log 2>&1 < /dev/null &
 disown
+cold_mark sglang_process_started
+
+# Loopback-only health probe; cannot assert platform image-pull time or first inference.
+if [[ "$COLDSTART_TRACE" == "1" ]]; then
+  (
+    for ((attempt=0; attempt<300; attempt++)); do
+      if curl -fsS --max-time 3 -o /dev/null \
+        -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8000/health_generate; then
+        cold_mark health_generate_ready
+        exit 0
+      fi
+      sleep 2
+    done
+    cold_mark health_generate_timeout
+  ) &
+  disown
+fi
 
 if [[ "$SERVE_WEBUI" == "1" ]]; then
   # OpenWebUI caches its model list at startup, so it has to come up AFTER
@@ -227,6 +267,7 @@ EOF
   # running SGLang environment can replace its PyTorch/NCCL shared libraries
   # while the scheduler imports DeepEP, leading to a '(deleted)' NCCL crash.
   # uv ships with the SGLang image and does not require ensurepip in the venv.
+  cold_mark openwebui_install_start
   echo "--- installing OpenWebUI ${WEBUI_VERSION} in isolated environment"
   if ! command -v uv >/dev/null 2>&1; then
     echo "ERROR: uv missing; OpenWebUI disabled (SGLang unaffected)" >&2
@@ -237,6 +278,7 @@ EOF
   else
     echo "ERROR: OpenWebUI installation failed; SGLang remains running" >&2
   fi
+  cold_mark openwebui_install_end
 else
   echo "--- SERVE_WEBUI=0, skipping OpenWebUI, SGLang API only"
 fi
