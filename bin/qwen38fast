@@ -307,5 +307,7 @@ cat <<EOF
 ════════════════════════════════════════════════════════════
 
 EOF
-command -v open >/dev/null && open "$OWUI"
+if command -v open >/dev/null 2>&1; then
+    open "$OWUI" || true
+fi
 fi
