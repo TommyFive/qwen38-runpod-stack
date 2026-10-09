@@ -43,7 +43,7 @@ import os, sys, json
 args = sys.argv[1:]
 assert "--api-key" in args and args[args.index("--api-key") + 1] == os.environ["SGLANG_API_KEY"]
 assert "--log-requests" not in args
-assert args[args.index("--host") + 1] == "0.0.0.0"
+assert args[args.index("--host") + 1] == ("127.0.0.1" if os.getenv("NETWORK_MODE") == "tailnet" else "0.0.0.0")
 assert args[args.index("--log-level") + 1] == ("info" if os.getenv("DEBUG") == "1" else "warning")
 print(os.environ["SGLANG_API_KEY"] + " " + os.environ["HF_TOKEN"], flush=True)
 PY
@@ -251,4 +251,33 @@ with contextlib.redirect_stderr(buffer):
     mod.Handler.log_message(None, "%s", "SENTINEL_PROXY_SECRET")
 assert buffer.getvalue()==""
 PY
-echo 'privacy regression suite passed'
+echo '=== cross-feature private + storage + benchmark + cold-start smoke ==='
+cat > "$RAM/fake-tailnet.sh" <<'FAKE_TAILNET'
+ts_start() { TS_ACTIVE=1; export TS_ACTIVE; echo "TAILSCALE: mock private enrollment"; }
+ts_serve() { [[ "${TS_ACTIVE:-0}" == 1 ]]; }
+FAKE_TAILNET
+cat > "$RAM/mock-benchmark.py" <<'FAKE_BENCH'
+from pathlib import Path
+import os
+Path(os.environ["TEST_BENCH_MARKER"]).write_text("benchmark invoked without serving interruption")
+FAKE_BENCH
+export TEST_BENCH_MARKER="$TMP/benchmark.started"
+export TAILSCALE_RUNTIME_B64 BENCHMARK_B64 TS_AUTHKEY
+TAILSCALE_RUNTIME_B64="$(base64 < "$RAM/fake-tailnet.sh" | tr -d '\n')"
+BENCHMARK_B64="$(base64 < "$RAM/mock-benchmark.py" | tr -d '\n')"
+TS_AUTHKEY="SENTINEL_TS_AUTHKEY_44b870"
+rm -rf "$RUNTIME_LOG_DIR" "$WEBUI_DATA_DIR"
+NETWORK_MODE=tailnet BENCHMARK=1 COLDSTART_TRACE=1 DEBUG=0 \
+    bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/private-integrated" 2>&1
+/bin/sleep 1
+test -f "$TEST_BENCH_MARKER"
+test -f "$RUNTIME_LOG_DIR/start-sglang.sh"
+test -f "$RUNTIME_LOG_DIR/start-openwebui.sh"
+grep -Fq 'QWEN38_COLDSTART' "$RUNTIME_LOG_DIR/bootstrap.log"
+grep -Fq 'TAILSCALE: mock private enrollment' "$RUNTIME_LOG_DIR/bootstrap.log"
+grep -Fq -- 'source "$RUNTIME_LOG_DIR/model-storage-env.sh"' "$RUNTIME_LOG_DIR/start-sglang.sh"
+if grep -ER 'SENTINEL_(API_KEY|HF_TOKEN|WEBUI_PASSWORD|TS_AUTHKEY)' "$RUNTIME_LOG_DIR" "$TMP/private-integrated"; then
+    echo "cross-feature private mode leaked credentials" >&2; exit 1
+fi
+unset TAILSCALE_RUNTIME_B64 BENCHMARK_B64 TS_AUTHKEY
+echo 'privacy and cross-feature regression suite passed'
