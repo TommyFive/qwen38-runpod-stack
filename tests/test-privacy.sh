@@ -82,7 +82,9 @@ cat > "$TMP/bin/rp" <<'MOCK'
 import json, os, sys
 args=sys.argv[1:]
 env=json.loads(args[args.index("--env")+1])
-assert env["SGLANG_API_KEY"] == os.environ["SGLANG_API_KEY"]
+from pathlib import Path
+assert env["SGLANG_API_KEY"] == (Path.home() / ".runpod/qwen38.key").read_text().strip()
+assert env["SGLANG_API_KEY"] != env["HF_TOKEN"]
 assert env["WEBUI_ADMIN_PASSWORD"] == os.environ["WEBUI_ADMIN_PASSWORD"]
 assert env["DEBUG"] == os.environ["QWEN38_DEBUG"]
 assert env["HF_TOKEN"] == os.environ["HF_TOKEN"]
