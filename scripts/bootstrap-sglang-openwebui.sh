@@ -17,6 +17,11 @@
 #   SERVE_WEBUI     1 (default) also runs OpenWebUI on :8080; 0 = SGLang only,
 #                   the lean path for a coding agent like pi that talks the API
 #   ENABLE_SSH      1 starts sshd for debugging; 0 (default) leaves SSH disabled
+#   BENCHMARK       1 runs a bounded loopback benchmark after SGLang launches;
+#                   0 (default) does not install or launch benchmark code
+#   BENCHMARK_B64   base64 of scripts/benchmark_sglang.py, required when enabled
+#   BENCHMARK_RUNS / BENCHMARK_MAX_TOKENS / BENCHMARK_TIMEOUT_SECONDS
+#   BENCHMARK_REPORT_PATH: see docs/BENCHMARK.md
 set -uo pipefail
 
 MODEL_ID="${MODEL_ID:?MODEL_ID missing}"
@@ -28,6 +33,11 @@ MAMBA_RATIO="${MAMBA_RATIO:-4.59}"
 API_KEY="${SGLANG_API_KEY:-}"
 SERVE_WEBUI="${SERVE_WEBUI:-1}"
 ENABLE_SSH="${ENABLE_SSH:-0}"
+BENCHMARK="${BENCHMARK:-0}"
+if [[ "$BENCHMARK" != "0" && "$BENCHMARK" != "1" ]]; then
+    echo "ERROR: BENCHMARK must be 0 or 1" >&2
+    exit 64
+fi
 
 mkdir -p /workspace
 LOG=/workspace/bootstrap.log
@@ -241,5 +251,37 @@ else
   echo "--- SERVE_WEBUI=0, skipping OpenWebUI, SGLang API only"
 fi
 
+# Benchmark is opt-in and never affects the SGLang command or its lifetime.
+# The worker itself polls authenticated loopback, has a total deadline and
+# emits only allowlisted metadata and token timings. Do not log its key.
+BENCH_PID=""
+if [[ "$BENCHMARK" == "1" ]]; then
+    if [[ -z "${BENCHMARK_B64:-}" ]]; then
+        echo "WARNING: BENCHMARK=1 but BENCHMARK_B64 is missing; SGLang unaffected" >&2
+    else
+        BENCH_DIR=/tmp/qwen38-benchmark
+        install -d -m 700 "$BENCH_DIR"
+        if printf '%s' "$BENCHMARK_B64" | base64 -d > "$BENCH_DIR/benchmark_sglang.py"; then
+            chmod 600 "$BENCH_DIR/benchmark_sglang.py"
+            export MODEL_ID MODEL_PATH SERVED_NAME MAX_LEN SPEC MEM_FRAC MAMBA_RATIO
+            python3 "$BENCH_DIR/benchmark_sglang.py" > /tmp/qwen38-benchmark.log 2>&1 &
+            BENCH_PID=$!
+            echo "Benchmark scheduled; logs /tmp/qwen38-benchmark.log (independent of server)"
+        else
+            rm -f "$BENCH_DIR/benchmark_sglang.py"
+            echo "WARNING: invalid BENCHMARK_B64; SGLang unaffected" >&2
+        fi
+    fi
+fi
+
 echo "=== bootstrap done, SGLang is loading weights ==="
-sleep infinity
+if [[ -n "$BENCH_PID" ]]; then
+    # On pod shutdown stop the benchmark; never kill/restart healthy SGLang
+    # because of a benchmark failure or timeout.
+    trap 'kill "$BENCH_PID" 2>/dev/null || true; kill "$KEEPALIVE_PID" 2>/dev/null || true; exit 0' TERM INT
+    sleep infinity &
+    KEEPALIVE_PID=$!
+    wait "$KEEPALIVE_PID"
+else
+    sleep infinity
+fi
