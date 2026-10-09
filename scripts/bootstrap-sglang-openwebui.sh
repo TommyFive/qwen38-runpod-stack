@@ -57,7 +57,7 @@ if [[ "$(stat -f -c %T "$WEBUI_DATA_DIR" 2>/dev/null)" != tmpfs &&
     echo "ERROR: WEBUI_DATA_DIR must be tmpfs unless ALLOW_PERSISTENT_WEBUI_DATA=1" >&2
     exit 70
 fi
-export DEBUG RUNTIME_LOG_DIR WEBUI_DATA_DIR API_BIND_HOST WEBUI_BIND_HOST
+export DEBUG RUNTIME_LOG_DIR WEBUI_DATA_DIR API_BIND_HOST WEBUI_BIND_HOST NETWORK_MODE SERVE_WEBUI
 # One streaming redactor for console/bootstrap and opt-in child diagnostics.
 # No raw stdout/stderr is written to disk before passing through this filter.
 cat > "$RUNTIME_LOG_DIR/redact-log.py" <<'REDACTOR'
@@ -220,6 +220,24 @@ from pathlib import Path
 v = {k.lower(): os.environ.get(k, "") for k in
     ("MODEL_ID", "SERVED_NAME", "SPEC", "MAX_LEN", "NETWORK_MODE", "DEBUG", "SERVE_WEBUI")}
 v["runtime_fs"] = "tmpfs" if os.path.realpath(os.environ["RUNTIME_LOG_DIR"]).startswith("/dev/shm/") else "explicit-opt-in"
+# Fixed nvidia-smi query, with bounded/sanitized fields only; never dump env.
+import re, subprocess
+try:
+    gpu = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,compute_cap",
+                          "--format=csv,noheader"], capture_output=True,
+                         text=True, timeout=5, check=False).stdout
+except (OSError, subprocess.TimeoutExpired):
+    gpu = ""
+v["gpu"] = []
+for row in gpu.splitlines()[:8]:
+    cols = [s.strip() for s in row.split(",")]
+    if len(cols) < 3:
+        continue
+    name = re.sub(r"[^A-Za-z0-9 ._-]", "", cols[0])[:80]
+    mem = re.search(r"^[0-9]+", cols[1])
+    compute = re.fullmatch(r"[0-9]+\.[0-9]+", cols[2])
+    if name and mem and compute:
+        v["gpu"].append({"name": name, "memory_mib": int(mem.group()), "compute": compute.group()})
 Path(os.environ["RUNTIME_LOG_DIR"], "snapshot.json").write_text(json.dumps(v, sort_keys=True) + "\n")
 PY
 
@@ -275,7 +293,7 @@ launch_private() {
     disown || true
 }
 echo "--- starting SGLang (authenticated API; DEBUG=$DEBUG)"
-launch_private sglang bash "$RUNTIME_LOG_DIR/start-sglang.sh"
+launch_private sglang env -u WEBUI_ADMIN_PASSWORD -u WEBUI_ADMIN_EMAIL bash "$RUNTIME_LOG_DIR/start-sglang.sh"
 
 if [[ "$SERVE_WEBUI" == 1 ]]; then
   # Public OpenWebUI must have a preprovisioned administrator. In particular,
@@ -300,6 +318,7 @@ export WEBUI_SESSION_COOKIE_SECURE=True
 export ENABLE_OLLAMA_API=False
 export ENABLE_COMMUNITY_SHARING=False
 export ANONYMIZED_TELEMETRY=False
+export ENABLE_VERSION_UPDATE_CHECK=False
 export DO_NOT_TRACK=1
 export SCARF_NO_ANALYTICS=1
 export DATA_DIR="$WEBUI_DATA_DIR"
