@@ -211,6 +211,8 @@ disown
 if [[ "$SERVE_WEBUI" == "1" ]]; then
   # OpenWebUI caches its model list at startup, so it has to come up AFTER
   # the API answers. The launcher restarts it anyway once the model is live.
+  WEBUI_VENV=/workspace/openwebui-venv
+  WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
   cat > /workspace/start-openwebui.sh <<EOF
 #!/usr/bin/env bash
 export DATA_DIR=/workspace/openwebui
@@ -225,8 +227,6 @@ EOF
   # running SGLang environment can replace its PyTorch/NCCL shared libraries
   # while the scheduler imports DeepEP, leading to a '(deleted)' NCCL crash.
   # uv ships with the SGLang image and does not require ensurepip in the venv.
-  WEBUI_VENV=/workspace/openwebui-venv
-  WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
   echo "--- installing OpenWebUI ${WEBUI_VERSION} in isolated environment"
   if ! command -v uv >/dev/null 2>&1; then
     echo "ERROR: uv missing; OpenWebUI disabled (SGLang unaffected)" >&2
