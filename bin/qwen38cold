@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""Cold-start trace evaluation for #11. Stdlib only; no RunPod credentials required."""
+import argparse
+import datetime as dt
+import json
+import math
+import pathlib
+import statistics
+import sys
+
+PREFIX = "QWEN38_COLDSTART "
+EVENTS = {
+    "pod_create_request", "pod_created", "api_models_ready", "first_inference_ok",
+    "first_inference_failed", "webui_ready", "bootstrap_start", "ssh_ready",
+    "network_probe_start", "network_probe_end", "main_download_start",
+    "main_download_end", "main_download_failed", "sglang_start",
+    "sglang_process_started", "health_generate_ready", "health_generate_timeout",
+    "openwebui_install_start", "openwebui_install_end",
+    "scheduling_start", "image_pull_start", "image_pull_end", "container_started",
+    "target_weights_start", "target_weights_end", "draft_weights_start",
+    "draft_weights_end", "cuda_graphs_start", "cuda_graphs_end",
+}
+# Values are exact instrumentation events, not guessed from a weight-loading log.
+PAIRS = {
+    "pod_creation_sec": ("pod_create_request", "pod_created"),
+    "platform_scheduling_sec": ("scheduling_start", "image_pull_start"),
+    "image_pull_sec": ("image_pull_start", "image_pull_end"),
+    "image_to_bootstrap_sec": ("container_started", "bootstrap_start"),
+    "network_probe_sec": ("network_probe_start", "network_probe_end"),
+    "hf_main_download_sec": ("main_download_start", "main_download_end"),
+    "target_weights_sec": ("target_weights_start", "target_weights_end"),
+    "draft_weights_sec": ("draft_weights_start", "draft_weights_end"),
+    "cuda_graph_capture_sec": ("cuda_graphs_start", "cuda_graphs_end"),
+    "openwebui_install_sec": ("openwebui_install_start", "openwebui_install_end"),
+    "sglang_health_ready_sec": ("sglang_start", "health_generate_ready"),
+    "api_ready_since_create_sec": ("pod_create_request", "api_models_ready"),
+    "ttfi_sec": ("pod_create_request", "first_inference_ok"),
+}
+
+def parse_utc(value):
+    if not isinstance(value, str):
+        raise ValueError("utc must be a string")
+    parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("timestamps require an explicit UTC offset")
+    return parsed.astimezone(dt.timezone.utc)
+
+def load_log(path, source):
+    events = []
+    for lineno, line in enumerate(pathlib.Path(path).read_text(encoding="utf-8").splitlines(), 1):
+        if PREFIX not in line:
+            continue
+        try:
+            item = json.loads(line.split(PREFIX, 1)[1])
+            if not isinstance(item, dict) or item.get("event") not in EVENTS:
+                continue
+            utc = parse_utc(item["utc"])
+            mono = item.get("mono")
+            if mono is not None and (not isinstance(mono, (int, float)) or not math.isfinite(mono)):
+                raise ValueError("mono must be finite")
+            events.append({"event": item["event"], "utc": utc, "mono": mono, "source": source})
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            raise ValueError(f"{path}:{lineno}: invalid cold-start event: {exc}") from exc
+    return events
+
+def load_platform(path):
+    """Optional manually recorded RunPod UI/API events; absent phases stay unknown."""
+    payload = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("platform-events JSON must be an event-to-timestamp object")
+    result = []
+    allowed = EVENTS - {
+        "pod_create_request", "pod_created", "bootstrap_start", "first_inference_ok",
+        "api_models_ready", "health_generate_ready",
+    }
+    for event, stamp in payload.items():
+        if event not in allowed:
+            raise ValueError(f"unsupported platform event: {event}")
+        result.append({"event": event, "utc": parse_utc(stamp), "mono": None, "source": "platform"})
+    return result
+
+def collect(inputs):
+    events = []
+    for source, path in (("host", inputs.host), ("pod", inputs.bootstrap)):
+        if path:
+            events.extend(load_log(path, source))
+    if inputs.platform:
+        events.extend(load_platform(inputs.platform))
+    # First event for a given source/name, to avoid last-event ambiguity.
+    indexed = {}
+    for item in events:
+        indexed.setdefault(item["event"], item)
+    return indexed
+
+def elapsed(start, end):
+    if start["source"] == end["source"] and start["mono"] is not None and end["mono"] is not None:
+        seconds = end["mono"] - start["mono"]
+    else:
+        # Cross-machine clocks can drift: UTC durations are approximate, not monotonic.
+        seconds = (end["utc"] - start["utc"]).total_seconds()
+    return round(seconds, 3) if seconds >= 0 else None
+
+def build_report(events, metadata):
+    result = {"schema": 1, "metadata": metadata,
+              "events_utc": {name: value["utc"].isoformat().replace("+00:00", "Z")
+                             for name, value in sorted(events.items())},
+              "durations_sec": {}, "warnings": []}
+    for key, (a, b) in PAIRS.items():
+        if a not in events or b not in events:
+            result["durations_sec"][key] = None
+            continue
+        value = elapsed(events[a], events[b])
+        result["durations_sec"][key] = value
+        if value is None:
+            result["warnings"].append(f"negative elapsed interval for {key}; check timestamp clock skew")
+        elif events[a]["source"] != events[b]["source"]:
+            result["warnings"].append(f"{key} depends on cross-host UTC clock synchronization")
+    if result["durations_sec"]["ttfi_sec"] is None:
+        result["warnings"].append("TTFI is unknown: no successful inference event; /v1/models is NOT inference")
+    if not {"scheduling_start", "image_pull_start", "image_pull_end", "container_started"}.issubset(events):
+        result["warnings"].append("RunPod platform/image stages not completely observed; container instrumentation cannot see image pull")
+    return result
+
+def report(args):
+    if not (args.host or args.bootstrap or args.platform):
+        raise ValueError("at least one input log is required")
+    meta = {name: getattr(args, name) for name in
+            ("label", "cloud", "region", "gpu", "storage", "cache", "startup")
+            if getattr(args, name) is not None}
+    r = build_report(collect(args), meta)
+    doc = json.dumps(r, indent=2, sort_keys=True) + "\n"
+    if args.output:
+        pathlib.Path(args.output).write_text(doc, encoding="utf-8")
+    else:
+        print(doc, end="")
+    return 0
+
+def percentile95(values):
+    # Nearest rank (not interpolated): transparent for small N.
+    ordered = sorted(values)
+    return ordered[math.ceil(0.95 * len(ordered)) - 1]
+
+def summary(args):
+    groups = {}
+    for filename in args.reports:
+        sample = json.loads(pathlib.Path(filename).read_text(encoding="utf-8"))
+        if sample.get("schema") != 1:
+            raise ValueError(f"unsupported report schema in {filename}")
+        metadata = sample.get("metadata", {})
+        key = tuple(metadata.get(field, "?") for field in args.by)
+        number = sample.get("durations_sec", {}).get("ttfi_sec")
+        if isinstance(number, (int, float)) and math.isfinite(number) and number >= 0:
+            groups.setdefault(key, []).append(float(number))
+    print("Group | N | median TTFI (s) | p95 TTFI (s) | quality")
+    print("--- | ---: | ---: | ---: | ---")
+    for key, values in sorted(groups.items()):
+        quality = "exploratory (N<5)" if len(values) < 5 else "measured"
+        print(f"{'/'.join(map(str, key))} | {len(values)} | "
+              f"{statistics.median(values):.1f} | {percentile95(values):.1f} | {quality}")
+    if not groups:
+        print("No valid first-inference samples. Do not substitute model readiness.")
+        return 2
+    return 0
+
+def main():
+    parser = argparse.ArgumentParser(description="Measure Qwen38 pod cold-start, not just weight-to-VRAM time.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    p = sub.add_parser("report", help="Parse logs and optional platform events into one JSON sample")
+    p.add_argument("--host", help="qwen38fast terminal output (must include timestamped trace lines)")
+    p.add_argument("--bootstrap", help="pod bootstrap.log or container stdout")
+    p.add_argument("--platform", help="optional JSON event/timestamp map from RunPod UI/API")
+    p.add_argument("--output", help="output JSON sample path (otherwise stdout)")
+    for name in ("label", "cloud", "region", "gpu", "storage", "cache", "startup"):
+        p.add_argument("--" + name, help="comparison label; does not invent missing telemetry")
+    p.set_defaults(fn=report)
+    p = sub.add_parser("summary", help="Median and nearest-rank p95 of confirmed TTFI")
+    p.add_argument("reports", nargs="+", help="one or more report JSON files")
+    p.add_argument("--by", nargs="+", default=["cloud", "region", "storage", "cache", "startup"],
+                   choices=["label", "cloud", "region", "gpu", "storage", "cache", "startup"])
+    p.set_defaults(fn=summary)
+    args = parser.parse_args()
+    try:
+        return args.fn(args)
+    except (ValueError, OSError, KeyError, json.JSONDecodeError) as exc:
+        print(f"qwen38cold: {exc}", file=sys.stderr)
+        return 2
+
+if __name__ == "__main__":
+    sys.exit(main())
