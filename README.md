@@ -175,6 +175,11 @@ Measure the real decode rate:
 qwen38bench                              # picks the running pod, 5 runs + warmup
 ```
 
+### Cold-start analysis (Issue #11)
+
+New pods emit timestamped, credential-free milestones and run a bounded, authenticated first-inference probe. Compare end-to-end cold-start times, HF downloads, SGLang readiness, and **measured** RunPod image-pull phases with `qwen38cold` (`QWEN38_COLDSTART_TRACE=0` disables tracing). The host’s `/v1/models` response alone is **not** the time to first inference. See [docs/COLD_START.md](docs/COLD_START.md) for sample collection, known timing limitations, and median/p95 comparisons.
+
+
 ## Cost control
 
 Cost protection is layered:
