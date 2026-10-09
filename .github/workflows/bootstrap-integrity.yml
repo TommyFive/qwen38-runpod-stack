@@ -14,6 +14,8 @@ jobs:
         run: |
           set -euo pipefail
           bash -n scripts/bootstrap-sglang-openwebui.sh
+          bash -n scripts/tailscale-runtime.sh
+          bash -n tests/test-tailscale.sh
           bash -n bin/qwen38fast
           bash -n setup.sh
           bash -n create-templates.sh
@@ -27,3 +29,28 @@ jobs:
           fi
           grep -Fq 'uv venv --python /usr/bin/python3 "$WEBUI_VENV"' scripts/bootstrap-sglang-openwebui.sh
           grep -Fq 'uv pip install --python "$WEBUI_VENV/bin/python"' scripts/bootstrap-sglang-openwebui.sh
+
+      - name: Run offline regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/test-rp.sh
+          bash tests/test-tailscale.sh
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Check Python syntax and whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile bin/qwen38-proxy tests/test_network_proxy.py
+          git diff --check
+      - name: Guard native SSH / public-port isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq -- '--tun=userspace-networking' scripts/tailscale-runtime.sh
+          grep -Fq -- '--state=mem:' scripts/tailscale-runtime.sh
+          grep -Fq -- '--auth-key="file:$auth_file"' scripts/tailscale-runtime.sh
+          grep -Fq -- 'args+=(--ssh)' scripts/tailscale-runtime.sh
+          ! grep -Eq 'serve[[:space:]].*--tcp=22' scripts/tailscale-runtime.sh
+          grep -Fq '[[ "$5" == runpod ]]' create-templates.sh
+          grep -Fq 'options+=(--ssh=false)' bin/qwen38fast
