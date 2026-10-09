@@ -34,6 +34,12 @@ MEM_FRAC="0.85"
 PI_MODE=0                         # --pi: no OpenWebUI, ready as soon as the API answers
 # Set QWEN38_ENABLE_SSH=1 only when an SSH debugging session is needed.
 ENABLE_SSH="${QWEN38_ENABLE_SSH:-0}"
+BENCHMARK="${BENCHMARK:-0}"
+BENCHMARK_RUNS="${BENCHMARK_RUNS:-3}"
+BENCHMARK_MAX_TOKENS="${BENCHMARK_MAX_TOKENS:-512}"
+BENCHMARK_TIMEOUT_SECONDS="${BENCHMARK_TIMEOUT_SECONDS:-900}"
+BENCHMARK_REPORT_PATH="${BENCHMARK_REPORT_PATH:-/tmp/qwen38-benchmark.json}"
+BENCHMARK_SCRIPT="${QWEN38_BENCHMARK_SCRIPT:-$HOME/.local/share/qwen38-runpod-stack/benchmark_sglang.py}"
 
 TOKEN_FILE="$HOME/.cache/huggingface/token"
 KEY_FILE="$HOME/.runpod/qwen38.key"
@@ -69,10 +75,25 @@ while [[ $# -gt 0 ]]; do
         --model)   MODEL_ID="$2"; shift 2 ;;
         --max-len) MAX_LEN="$2"; shift 2 ;;
         --pi)      PI_MODE=1; TEMPLATE_ID="$TEMPLATE_ID_PI"; POD_NAME="qwen38pi"; shift ;;
+        --benchmark) BENCHMARK=1; shift ;;
         *)         echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
+if [[ "$BENCHMARK" != "0" && "$BENCHMARK" != "1" ]]; then
+    echo "BENCHMARK must be 0 or 1" >&2
+    exit 64
+fi
+if [[ "$BENCHMARK" == "1" ]]; then
+    for pair in "BENCHMARK_RUNS:$BENCHMARK_RUNS:20" "BENCHMARK_MAX_TOKENS:$BENCHMARK_MAX_TOKENS:4096" "BENCHMARK_TIMEOUT_SECONDS:$BENCHMARK_TIMEOUT_SECONDS:7200"; do
+        IFS=: read -r label value maximum <<< "$pair"
+        if [[ ! "$value" =~ ^[0-9]+$ ]] || (( 10#$value < 1 || 10#$value > maximum )); then
+            echo "$label must be a positive integer at most $maximum" >&2
+            exit 64
+        fi
+    done
+    [[ -r "$BENCHMARK_SCRIPT" ]] || { echo "benchmark script missing: $BENCHMARK_SCRIPT" >&2; exit 64; }
+fi
 if [[ "$ENABLE_SSH" != "0" && "$ENABLE_SSH" != "1" ]]; then
     echo "QWEN38_ENABLE_SSH must be 0 or 1" >&2
     exit 1
@@ -108,7 +129,7 @@ if [[ "$running" != "0" ]]; then
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" <<'PY'
+ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$BENCHMARK" "$BENCHMARK_SCRIPT" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" <<'PY'
 import base64, json, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
@@ -122,7 +143,16 @@ env = {
     "SGLANG_API_KEY": pathlib.Path(sys.argv[7]).read_text().strip(),
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
+    "BENCHMARK":     sys.argv[10],
 }
+if sys.argv[10] == "1":
+    env.update({
+        "BENCHMARK_B64": base64.b64encode(pathlib.Path(sys.argv[11]).read_bytes()).decode(),
+        "BENCHMARK_RUNS": sys.argv[12],
+        "BENCHMARK_MAX_TOKENS": sys.argv[13],
+        "BENCHMARK_TIMEOUT_SECONDS": sys.argv[14],
+        "BENCHMARK_REPORT_PATH": sys.argv[15],
+    })
 tokfile = pathlib.Path(sys.argv[2])
 if tokfile.is_file():
     env["HF_TOKEN"] = tokfile.read_text().strip()
@@ -134,6 +164,7 @@ echo "Starting $POD_NAME"
 echo "  GPU:     $GPU_KEY (from \$$RATE/h, ${HOURS}h window)"
 echo "  Model:   $MODEL_ID"
 echo "  Spec:    $SPEC | context: $MAX_LEN"
+[[ "$BENCHMARK" == "1" ]] && echo "  Benchmark: enabled ($BENCHMARK_RUNS measured runs/workload; deadline ${BENCHMARK_TIMEOUT_SECONDS}s)"
 echo
 
 create_pod() {
