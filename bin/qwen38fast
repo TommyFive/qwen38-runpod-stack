@@ -152,11 +152,15 @@ if [[ "$running" != "0" ]]; then
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" <<'PY'
-import base64, json, pathlib, sys
+ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" <<'PY'
+import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
     "BOOTSTRAP_B64": b64,
+    "TAILSCALE_RUNTIME_B64": base64.b64encode(pathlib.Path(sys.argv[10]).read_bytes()).decode(),
+    "NETWORK_MODE": sys.argv[11],
+    "TS_HOSTNAME": sys.argv[12],
+    "TS_ENABLE_SSH": sys.argv[13],
     "MODEL_ID":      sys.argv[3],
     "SERVED_NAME":   "qwen38-uncensored",
     "SPEC":          sys.argv[4],
@@ -167,6 +171,8 @@ env = {
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
 }
+if os.environ.get("TS_AUTHKEY"):
+    env["TS_AUTHKEY"] = os.environ["TS_AUTHKEY"]
 tokfile = pathlib.Path(sys.argv[2])
 if tokfile.is_file():
     env["HF_TOKEN"] = tokfile.read_text().strip()
@@ -178,15 +184,20 @@ echo "Starting $POD_NAME"
 echo "  GPU:     $GPU_KEY (from \$$RATE/h, ${HOURS}h window)"
 echo "  Model:   $MODEL_ID"
 echo "  Spec:    $SPEC | context: $MAX_LEN"
+echo "  Network: $NETWORK_MODE"
+[[ "$NETWORK_MODE" == tailnet ]] && echo "  Tailnet: $TS_HOSTNAME.$TAILNET_DOMAIN"
 echo
 
 create_pod() {
+    local options=()
+    [[ "$NETWORK_MODE" == tailnet ]] && options+=(--ssh=false)
     rp "${HOURS}h" pod create \
         --template-id "$TEMPLATE_ID" \
         --gpu-id "$GPU_ID" \
         --cloud-type "$1" \
         --name "$POD_NAME" \
         --container-disk-in-gb "$DISK_GB" \
+        "${options[@]}" \
         --env "$ENV_JSON" 2>&1 | python3 -c "
 import sys, json
 raw = sys.stdin.read()
@@ -196,9 +207,9 @@ for line in raw.splitlines():
 try:
     d = json.loads(raw[raw.index('{'):])
 except Exception:
-    print('ERROR creating pod:', raw[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR creating pod (RunPod response redacted to protect env secrets)', file=sys.stderr); sys.exit(1)
 if 'error' in d:
-    print('ERROR:', str(d['error'])[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR: RunPod rejected pod creation (details redacted)', file=sys.stderr); sys.exit(1)
 print(d['id'])"
 }
 
