@@ -19,6 +19,9 @@ export QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh"
 export QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
 export QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh"
 export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
+# Direct in-pod bootstrap must receive the same embedded storage helper as RunPod.
+export STORAGE_HELPER_B64
+STORAGE_HELPER_B64="$(base64 < "$ROOT/scripts/model-storage.py" | tr -d '\n')"
 export SGLANG_API_KEY="SENTINEL_API_KEY_91e6f9"
 export HF_TOKEN="SENTINEL_HF_TOKEN_8174bd"
 export WEBUI_ADMIN_EMAIL="admin@example.invalid"
