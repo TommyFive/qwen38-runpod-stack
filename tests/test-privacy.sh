@@ -216,4 +216,21 @@ fi
 if grep -E "SENTINEL_(API_KEY|HF_TOKEN|WEBUI_PASSWORD|STALE_HF_FILE)" "$TMP/launcher-output" "$TMP/launcher-fallback-output"; then
     echo "launcher leaked a secret" >&2; exit 1
 fi
+echo '=== proxy never logs request paths or credentials ==='
+python3 - "$ROOT/bin/qwen38-proxy" <<'PY'
+import contextlib, importlib.machinery, io, os, sys, types
+mod=types.ModuleType("qwen38_proxy_privacy_test")
+importlib.machinery.SourceFileLoader(mod.__name__, sys.argv[1]).exec_module(mod)
+buffer=io.StringIO()
+os.environ["QWEN38_PROXY_VERBOSE"]="1"
+with contextlib.redirect_stderr(buffer):
+    mod.Handler.log_message(None, "%s", "Authorization: Bearer SENTINEL_PROXY_SECRET")
+assert "SENTINEL_PROXY_SECRET" not in buffer.getvalue()
+assert "HTTP exchange" in buffer.getvalue()
+os.environ.pop("QWEN38_PROXY_VERBOSE", None)
+buffer=io.StringIO()
+with contextlib.redirect_stderr(buffer):
+    mod.Handler.log_message(None, "%s", "SENTINEL_PROXY_SECRET")
+assert buffer.getvalue()==""
+PY
 echo 'privacy regression suite passed'

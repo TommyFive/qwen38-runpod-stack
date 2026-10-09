@@ -180,9 +180,8 @@ create_pod() {
         --env "$ENV_JSON" 2>&1 | python3 -c "
 import sys, json
 raw = sys.stdin.read()
-for line in raw.splitlines():
-    if line.startswith('rp:'):
-        print(line, file=sys.stderr)
+if any(line.startswith('rp:') for line in raw.splitlines()):
+    print('rp: timer/wrapper notice suppressed to avoid argument disclosure', file=sys.stderr)
 try:
     d = json.loads(raw[raw.index('{'):])
 except Exception:
