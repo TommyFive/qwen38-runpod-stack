@@ -27,11 +27,8 @@ SERVE_WEBUI="${SERVE_WEBUI:-1}"
 [[ "$SERVE_WEBUI" == 0 || "$SERVE_WEBUI" == 1 ]] || { echo "ERROR: SERVE_WEBUI must be 0 or 1" >&2; exit 64; }
 NETWORK_MODE="${NETWORK_MODE:-runpod}"
 [[ "$NETWORK_MODE" == runpod || "$NETWORK_MODE" == tailnet ]] || { echo "ERROR: NETWORK_MODE must be runpod or tailnet" >&2; exit 64; }
-# The tailnet-only networking implementation lives in separate issue #7.
-# This bootstrap refuses a fake "private" mode until that implementation lands.
-if [[ "$NETWORK_MODE" == tailnet && "${TS_ACTIVE:-0}" != 1 ]]; then
-    echo "ERROR: tailnet-only networking requires active Tailscale (issue #7)" >&2; exit 70
-fi
+# Issue #7 initializes Tailscale later, before the SSH and model phases.
+# Validate its completed connection below rather than blocking startup here.
 [[ -n "${SGLANG_API_KEY:-}" ]] || { echo "ERROR: SGLANG_API_KEY required (no unauthenticated public API)" >&2; exit 64; }
 API_BIND_HOST=0.0.0.0
 WEBUI_BIND_HOST=0.0.0.0
@@ -178,6 +175,11 @@ else
     echo "--- SSH disabled (set ENABLE_SSH=1 to enable)"
 fi
 
+# Fail closed until #7's verified native Tailscale/Serve enrollment completes.
+if [[ "$NETWORK_MODE" == tailnet && "${TS_ACTIVE:-0}" != 1 ]]; then
+    echo "ERROR: tailnet-only networking requires active Tailscale (issue #7)" >&2
+    exit 70
+fi
 export HF_HOME="${QWEN38_WORKSPACE:-/workspace}/hf"
 export HF_XET_HIGH_PERFORMANCE=1
 mkdir -p "$HF_HOME" "${QWEN38_WORKSPACE:-/workspace}"
