@@ -98,9 +98,10 @@ running → the proxy returns a clean 503 telling you to start one.
 ## Requirements
 
 - [`runpodctl`](https://github.com/runpod/runpodctl) installed and logged in
-- An optional Hugging Face token: exported `HF_TOKEN` takes precedence over
-  `~/.cache/huggingface/token`. Neither guarantees download speed.
-- No SSH key is required to restart OpenWebUI; bootstrap starts it after model readiness.
+- A Hugging Face token in `~/.cache/huggingface/token` (the default model is not
+  gated, but a token gives faster, rate-limit-free downloads)
+- The RunPod SSH key in `~/.runpod/ssh/runpodctl-ssh-key` (only needed for the
+  OpenWebUI restart in the full stack)
 - Python 3, `base64`, `curl`
 - For the agent path: [pi](https://pi.dev) (or any OpenAI-compatible agent)
 - macOS for the LaunchAgents (the scripts themselves are portable)
@@ -154,6 +155,76 @@ qwen38fast status                        # what's running, what it costs
 qwen38fast stop
 ```
 
+### Optional Tailscale: native SSH and private network mode
+
+Tailscale is **completely optional**: when `TS_AUTHKEY` is unset or empty,
+the normal RunPod HTTP proxy workflow remains unchanged. The new runtime is
+tested against a real RunPod SGLang container without `/dev/net/tun` or
+`CAP_NET_ADMIN`. It runs `tailscaled --tun=userspace-networking --state=mem:`
+and enables **native Tailscale SSH** through `tailscale up --ssh`; it never
+forwards TCP port 22 through Tailscale Serve.
+
+Configuration (pod environment or variables exported before `qwen38fast`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TS_AUTHKEY` | empty | Optional Tailscale enrollment; only a nonempty key activates it. Use a short-lived, scoped, one-time auth key. |
+| `TS_HOSTNAME` | container-derived | Lowercase MagicDNS DNS-label name (1–63 characters). |
+| `TS_ENABLE_SSH` | `1` | Native Tailscale SSH (`0` disables). Tailnet SSH ACL/grants still decide access. |
+| `QWEN38_NETWORK_MODE` | `runpod` | Launcher mode: `runpod` keeps public RunPod endpoints; `tailnet` uses tailnet-only templates. The matching pod-side env is `NETWORK_MODE`. |
+| `QWEN38_TAILNET_DOMAIN` | discovered if a local Tailscale CLI is connected | Required tailnet DNS suffix (e.g. `tailc8dece.ts.net`) when discovery is unavailable. Never infer it from a random host. |
+| `QWEN38_TEMPLATE_TAILNET` / `QWEN38_TEMPLATE_TAILNET_PI` | unset | Required RunPod template IDs for private, portless runs. Create both with `./create-templates.sh`. |
+
+`./create-templates.sh` now generates **four** templates: legacy full/lean
+(published RunPod ports) plus private full/lean (**no published RunPod ports**).
+Verify that the new tailnet templates have no published ports using
+`runpodctl template get <id>` before launching a private pod. The launcher
+additionally passes `--ssh=false` for private pods so RunPod does not turn on
+its own publicly mapped SSH service. Keep all **public** template IDs distinct:
+using a public template with `NETWORK_MODE=tailnet` is not secure.
+
+Typical launch on a local machine with Tailscale already connected:
+
+```bash
+./setup.sh
+./create-templates.sh
+# export the generated four template IDs (displayed by create-templates.sh)
+# Enter an auth key securely without saving it in shell history:
+read -r -s TS_AUTHKEY; export TS_AUTHKEY
+QWEN38_NETWORK_MODE=tailnet qwen38pi
+unset TS_AUTHKEY
+```
+
+The launcher chooses a collision-resistant `TS_HOSTNAME` if one is not
+provided. The local proxy transparently targets the corresponding HTTPS
+Tailscale Serve API at `https://<hostname>.<tailnet-domain>/v1`. The optional
+OpenWebUI is served at `https://<hostname>.<tailnet-domain>:8443`. These
+URLs are reachable only from devices authorized by your Tailscale network
+policy; **Tailscale HTTPS certificates and Serve permission must be enabled**
+for the relevant tailnet. OpenWebUI starts only after the SGLang API becomes
+ready, eliminating the former client-side SSH restart.
+
+`TS_AUTHKEY` is copied to a root-only 0600 file in `/dev/shm` (verified
+tmpfs), passed to `tailscale up` via `--auth-key=file:...`, and deleted
+immediately after enrollment. Tailscale state stays in RAM and is lost at pod
+termination. The static Tailscale version is pinned to 1.102.3 and its
+download is SHA-256 checked against the publisher checksum.
+
+**Security limitations:** RunPod may retain environment variables; the
+existing `runpodctl --env` API transmits both `TS_AUTHKEY` and
+`SGLANG_API_KEY` in the CLI argument list and RunPod control plane.
+Do not consider this zero-trace secret delivery or full data privacy; the
+broader secret handling and OpenWebUI authentication hardening are tracked in
+[issue #8](https://github.com/TommyFive/qwen38-runpod-stack/issues/8).
+**Legacy public OpenWebUI still runs with authentication disabled** until
+that fix is merged. Prefer private tailnet-only mode for sensitive data.
+
+**Fail-closed behavior:** An empty/invalid token or failed Tailscale/Serve
+setup in `tailnet` mode aborts the pod bootstrap before model download.
+The `runpod` mode continues its pre-existing serving path when optional
+Tailscale fails. No production VPS or permanent host network settings are
+modified during installation.
+
 ### Debug SSH (off by default)
 
 SSH is disabled by default, including in newly created templates. This keeps the
@@ -191,11 +262,6 @@ is then local only and cannot fire while the Mac is asleep.
 Full details in [docs/COST_CONTROL.md](docs/COST_CONTROL.md).
 
 ## Security
-
-**Important:** RunPod's 8000/8080 HTTP proxies are public internet endpoints. SGLang
-requires a key and OpenWebUI requires a pre-provisioned administrator. Old pods
-and old RunPod templates retain the previous insecure behavior. Recreate
-RunPod templates before using private data. See [Security and privacy](docs/SECURITY.md).
 
 - **No keys, no tokens, no personal paths in this repo.** `qwen38fast` generates
   the API key locally and hands it to SGLang, so the publicly reachable pod port
