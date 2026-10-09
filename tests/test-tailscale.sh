@@ -3,10 +3,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
-trap 'if [[ -f "$TMP/daemon.pid" ]]; then kill "$(cat "$TMP/daemon.pid")" 2>/dev/null || :; fi; rm -rf "$TMP"' EXIT
+TS_SECRET_DIR="$(mktemp -d /dev/shm/qwen38-ci.XXXXXXXX)"
+trap 'if [[ -f "$TMP/daemon.pid" ]]; then kill "$(cat "$TMP/daemon.pid")" 2>/dev/null || :; fi; rm -rf "$TMP" "$TS_SECRET_DIR"' EXIT
 mkdir -p "$TMP/bin" "$TMP/work"
 export TS_RUNTIME_DIR="$TMP/work"
-export TS_SECRET_DIR="$TMP/secrets"
+export TS_SECRET_DIR
 export TEST_CALL_LOG="$TMP/calls"
 export PATH="$TMP/bin:$PATH"
 
@@ -83,12 +84,12 @@ ts_start
 printf '%s\n' "$TS_DAEMON_PID" > "$TMP/daemon.pid"
 [[ "$TS_ACTIVE" == 1 ]]
 [[ "$TS_DNS_NAME" == qwen38-ci.tailc8dece.ts.net ]]
-[[ ! -e "$TS_SECRET_DIR/ts-authkey" ]]
+if find "$TS_SECRET_DIR" -type f | grep -q .; then echo "FAIL: temporary secret file not deleted" >&2; exit 1; fi
 [[ -z "${TS_AUTHKEY:-}" ]]
 ts_serve
 grep -Fq -- "--tun=userspace-networking --state=mem:" "$TEST_CALL_LOG"
 grep -Fq -- "--ssh" "$TEST_CALL_LOG"
-grep -Fq -- "--auth-key=file:$TS_SECRET_DIR/ts-authkey" "$TEST_CALL_LOG"
+grep -Fq -- "--auth-key=file:$TS_SECRET_DIR/ts-authkey." "$TEST_CALL_LOG"
 grep -Fq -- "--https=443 http://127.0.0.1:8000" "$TEST_CALL_LOG"
 grep -Fq -- "--https=8443 http://127.0.0.1:8080" "$TEST_CALL_LOG"
 if grep -Fq 'serve --tcp=22' "$TEST_CALL_LOG"; then echo "FAIL: legacy TCP/22 forwarding" >&2; exit 1; fi
