@@ -129,6 +129,55 @@ an uninstalled working-tree version. For deployments launched from the RunPod
 web UI, run `./create-templates.sh` again and use the newly printed template IDs:
 existing RunPod templates retain their embedded bootstrap code.
 
+### Model storage: RAM by default (Issue #9)
+
+New pods default to `MODEL_STORAGE=ram`: the checkpoint **and** its speculative
+DFlash2/DSpark draft, Hugging Face hub/assets/Xet caches, temporary downloads,
+and supporting caches are routed to verified tmpfs at
+`/dev/shm/qwen38-hf`. In RAM mode, bootstrap fetches Hugging Face file-size
+metadata for **both** checkpoints before downloading and requires enough space
+for a 2.5× combined-model peak, 8 GiB tmpfs headroom and 8 GiB additional
+process/cgroup headroom. It checks real tmpfs free space, the **finite cgroup v2**
+memory budget and the host's MemAvailable; host RAM on its own is *not*
+container capacity. Missing metadata, unsupported mounts, read-only directories,
+small `/dev/shm` (including the default tiny Docker shm), or insufficient RAM
+fail closed **before** a model download. GPU VRAM does not count as host RAM.
+
+```bash
+qwen38pi                                 # default: RAM
+qwen38fast --storage ssd                 # original disk cache behavior
+QWEN38_MODEL_STORAGE=ssd qwen38pi        # equivalent environment override
+QWEN38_MODEL_RAM_DIR=/dev/shm/models qwen38fast # custom tmpfs subdirectory
+QWEN38_MODEL_SSD_DIR=/workspace/hf qwen38pi --storage ssd
+```
+
+For RunPod web-UI launches, recreate both templates with
+`QWEN38_MODEL_STORAGE=ssd ./create-templates.sh` (or omit this to keep RAM
+default). `qwen38fast` / `qwen38pi` include every storage setting and both
+version-matched bootstrap/helper payloads explicitly: the CLI's `--env`
+**replaces**, rather than adds to, the template environment. Restarted SGLang
+and OpenWebUI processes receive the same cache variables.
+
+**Tradeoffs:** RAM mode is cold on every new pod/container lifetime and cannot
+preserve weights across termination. Select a pod with sufficient **host** RAM,
+cgroup allowance and `/dev/shm` size, not just a 96 GiB VRAM GPU. Increase
+RunPod shared-memory allocation if the provider supports it; otherwise use
+`MODEL_STORAGE=ssd`. SSD mode keeps HF's normal cache at `/workspace/hf`
+and can reuse files when that volume survives. SSD deletion is **not**
+guaranteed secure erasure. tmpfs avoids intentionally persisting checkpoints
+to an ordinary disk, but it is *not* a guarantee against host swap, hypervisor
+snapshots, crash dumps, administrator access, or provider-side storage.
+Assess platform controls separately. Do not assume RAM-only has been validated
+just because an environment variable is set.
+
+**Pod GPU acceptance check (after deployment):**
+`bash /workspace/smoke-storage.sh` prints `/proc/self/mountinfo`,
+`df -B1`, `du`, process RSS, and audits actual model/draft cache symlinks and
+the authenticated SGLang `/v1/models` readiness endpoint. It runs entirely
+inside the pod. For the first rollout, verify no HF model caches appear on
+ordinary volumes and observe peak RAM through a cold startup. The GitHub CI
+tests are intentionally offline and cannot substitute for this GPU smoke test.
+
 **Dependency isolation:** On full-stack deployments, OpenWebUI is installed
 into its own virtual environment (`/workspace/openwebui-venv`) using the `uv`
 bundled in the SGLang image. It defaults to OpenWebUI `0.11.4`; set

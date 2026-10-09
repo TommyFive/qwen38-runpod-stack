@@ -17,6 +17,13 @@ jobs:
           bash -n bin/qwen38fast
           bash -n setup.sh
           bash -n create-templates.sh
+          bash -n tests/test-storage-integration.sh
+      - name: Offline model-storage and integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_model_storage.py' -v
+          bash tests/test-storage-integration.sh
       - name: Keep installs out of the serving environment
         shell: bash
         run: |

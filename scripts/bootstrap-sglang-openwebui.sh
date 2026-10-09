@@ -12,6 +12,10 @@
 #   SPEC            none | mtp | dflash2 | dspark
 #   MEM_FRAC        --mem-fraction-static
 #   MAMBA_RATIO     --mamba-full-memory-ratio
+#   MODEL_STORAGE   ram (default) | ssd. RAM preflight fails closed.
+#   MODEL_RAM_DIR   /dev/shm/qwen38-hf (must reside on tmpfs)
+#   MODEL_SSD_DIR   /workspace/hf (persistent volume)
+#   STORAGE_HELPER_B64  bundled scripts/model-storage.py
 #   HF_TOKEN        optional, only needed for gated repos
 #   SGLANG_API_KEY  optional, locks the public proxy endpoint down
 #   SERVE_WEBUI     1 (default) also runs OpenWebUI on :8080; 0 = SGLang only,
@@ -119,10 +123,54 @@ else
     echo "--- SSH disabled (set ENABLE_SSH=1 to enable)"
 fi
 
-export HF_HOME=/workspace/hf
-export HF_XET_HIGH_PERFORMANCE=1
-mkdir -p "$HF_HOME" /workspace
+# A separate, version-matched storage helper is embedded by BOTH launch paths.
+# Only small bootstrap logs/scripts live on /workspace; model weights, all HF
+# caches and HF/Xet temporary files live on the verified selected filesystem.
+if [[ -z "${STORAGE_HELPER_B64:-}" ]]; then
+  echo "ERROR: STORAGE_HELPER_B64 is required; recreate the RunPod template or update the launcher" >&2
+  exit 64
+fi
+if ! printf '%s' "$STORAGE_HELPER_B64" | base64 -d > /workspace/model-storage.py; then
+  echo "ERROR: unable to unpack storage helper" >&2
+  exit 64
+fi
+chmod 600 /workspace/model-storage.py
+if ! python3 /workspace/model-storage.py prepare > /workspace/model-storage-env.sh; then
+  echo "ERROR: storage preflight failed before downloading any checkpoint" >&2
+  exit 64
+fi
+# shellcheck source=/dev/null
+source /workspace/model-storage-env.sh
+rm -f /workspace/model-storage-env.sh
 [[ -n "${HF_TOKEN:-}" ]] && export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+echo "model_storage=${MODEL_STORAGE:-ram} hf_home=$HF_HOME"
+
+# Local-only GPU smoke/audit; no network changes and no credentials printed.
+cat > /workspace/smoke-storage.sh <<'SMOKE'
+#!/usr/bin/env bash
+set -euo pipefail
+storage="${MODEL_STORAGE:-ram}"
+if [[ "$storage" == ram ]]; then
+  root="${MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
+else
+  root="${MODEL_SSD_DIR:-/workspace/hf}"
+fi
+echo '=== STORAGE AUDIT (all snapshots and symlinks) ==='
+python3 /workspace/model-storage.py audit
+echo '=== MOUNT NAMESPACE ==='
+cat /proc/self/mountinfo
+echo '=== FREE SPACE / CACHE SIZE ==='
+df -B1 "$root" /workspace
+du -sh "$root" "$root"/hub "$root"/xet 2>/dev/null || true
+echo '=== PROCESS RSS (KiB) ==='
+ps -eo pid,rss,comm,args | grep -E 'PID|sglang|python3' | head -n 30 || true
+echo '=== SGLANG READINESS ==='
+headers=()
+[[ -n "${SGLANG_API_KEY:-}" ]] && headers=(-H "Authorization: Bearer ${SGLANG_API_KEY}")
+curl --fail --silent --show-error --max-time 30 "${headers[@]}" http://127.0.0.1:8000/v1/models |
+  python3 -c 'import json,sys; d=json.load(sys.stdin); models=[x["id"] for x in d["data"]]; print("ready:",models); assert models'
+SMOKE
+chmod 700 /workspace/smoke-storage.sh
 
 nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader || true
 
@@ -140,19 +188,14 @@ if ! python3 -c 'import huggingface_hub, hf_xet'; then
   exit 1
 fi
 
-echo "--- fetching weights"
-python3 - <<PY
-import os
-from huggingface_hub import snapshot_download
-p = snapshot_download(
-    "${MODEL_ID}",
-    max_workers=16,
-    token=os.environ.get("HUGGING_FACE_HUB_TOKEN"),
-)
-open("/workspace/model_path", "w").write(p)
-print("downloaded to", p)
-PY
+echo "--- fetching main and any speculative draft checkpoints"
+if ! python3 /workspace/model-storage.py download; then
+  echo "ERROR: checkpoint download or storage verification failed" >&2
+  exit 64
+fi
 MODEL_PATH=$(cat /workspace/model_path)
+DRAFT_PATH=""
+[[ -f /workspace/draft_path ]] && DRAFT_PATH=$(cat /workspace/draft_path)
 du -sh "$MODEL_PATH" || true
 
 # --- speculative decoding flags -------------------------------------------
@@ -167,22 +210,30 @@ case "$SPEC" in
         ;;
     dflash2)
         SPEC_FLAGS=(--speculative-algorithm DFLASH
-                    --speculative-draft-model-path incoai/Qwen3.8-27B-DFlash2
+                    --speculative-draft-model-path "$DRAFT_PATH"
                     --speculative-num-draft-tokens 8)
         ;;
     dspark)
         SPEC_FLAGS=(--speculative-algorithm DSPARK
-                    --speculative-draft-model-path RadixArk/Qwen3.8-27B-DSpark)
+                    --speculative-draft-model-path "$DRAFT_PATH")
         ;;
-    none|*)
+    none)
         SPEC_FLAGS=()
+        ;;
+    *)
+        echo "ERROR: unknown SPEC=$SPEC" >&2
+        exit 64
         ;;
 esac
 
+# Generated runtime scripts must retain the same cache paths even when
+# restarted from SSH (outside the bootstrap's environment).
+RUNTIME_STORAGE_ENV=$(for name in HF_HOME HF_HUB_CACHE HF_XET_CACHE HF_ASSETS_CACHE HF_DATASETS_CACHE XDG_CACHE_HOME TORCH_HOME TMPDIR HF_XET_HIGH_PERFORMANCE; do
+  printf 'export %s=%q\\n' "$name" "${!name}"
+done)
 cat > /workspace/start-sglang.sh <<EOF
 #!/usr/bin/env bash
-export HF_HOME=/workspace/hf
-export HF_XET_HIGH_PERFORMANCE=1
+$RUNTIME_STORAGE_ENV
 ${HF_TOKEN:+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"}
 exec python3 -m sglang.launch_server \\
   --model-path "$MODEL_PATH" \\
@@ -215,6 +266,7 @@ if [[ "$SERVE_WEBUI" == "1" ]]; then
   WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
   cat > /workspace/start-openwebui.sh <<EOF
 #!/usr/bin/env bash
+$RUNTIME_STORAGE_ENV
 export DATA_DIR=/workspace/openwebui
 export OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=${API_KEY:-EMPTY}

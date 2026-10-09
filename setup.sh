@@ -22,6 +22,7 @@ mkdir -p "$BOOTSTRAP_DIR"
 install -m 700 \
   "$HERE/scripts/bootstrap-sglang-openwebui.sh" \
   "$BOOTSTRAP_DIR/bootstrap-sglang-openwebui.sh"
+install -m 600 "$HERE/scripts/model-storage.py" "$BOOTSTRAP_DIR/model-storage.py"
 
 echo "== 2) LaunchAgents (macOS)"
 if [ "$(uname)" = "Darwin" ]; then
