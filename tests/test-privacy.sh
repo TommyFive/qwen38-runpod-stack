@@ -10,6 +10,7 @@ export HOME="$TMP/home" PATH="$TMP/bin:$PATH" PYTHONPATH="$TMP/mocks"
 export QWEN38_WORKSPACE="$RAM/workspace" RUNTIME_LOG_DIR="$RAM/runtime"
 export WEBUI_DATA_DIR="$RAM/data" TEST_WEBUI_FLAGS="$TMP/webui-flags.json"
 export TEST_LAUNCH_FLAGS="$TMP/launch-flags.json"
+export TEST_TEMPLATE_FLAGS="$TMP/template-flags.jsonl"
 export MODEL_ID="example/test-model" SERVE_WEBUI=1
 export SGLANG_API_KEY="SENTINEL_API_KEY_91e6f9"
 export HF_TOKEN="SENTINEL_HF_TOKEN_8174bd"
@@ -74,8 +75,24 @@ WEBUI
 fi
 MOCK
 cat > "$TMP/bin/runpodctl" <<'MOCK'
-#!/usr/bin/env bash
-if [[ "$1 $2" == "pod list" ]]; then echo '[]'; else exit 64; fi
+#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+if args[:2] == ["pod", "list"]:
+    print("[]")
+elif args[:2] == ["template", "create"]:
+    env = json.loads(args[args.index("--env") + 1])
+    assert env["DEBUG"] == "0"
+    assert env["RUNTIME_LOG_DIR"] == "/dev/shm/qwen38-runtime"
+    assert env["ENABLE_SSH"] == "0"
+    assert env["BOOTSTRAP_B64"] and env["MODEL_ID"]
+    assert "SGLANG_API_KEY" not in env
+    assert "WEBUI_ADMIN_PASSWORD" not in env
+    with open(os.environ["TEST_TEMPLATE_FLAGS"], "a") as out:
+        out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":args[args.index("--ports")+1]})+"\n")
+    print(json.dumps({"id":"template-ci-"+env["SERVE_WEBUI"]}))
+else:
+    raise SystemExit("unexpected mock runpodctl invocation")
 MOCK
 cat > "$TMP/bin/rp" <<'MOCK'
 #!/usr/bin/env python3
@@ -87,7 +104,7 @@ assert env["SGLANG_API_KEY"] == (Path.home() / ".runpod/qwen38.key").read_text()
 assert env["SGLANG_API_KEY"] != env["HF_TOKEN"]
 assert env["WEBUI_ADMIN_PASSWORD"] == os.environ["WEBUI_ADMIN_PASSWORD"]
 assert env["DEBUG"] == os.environ["QWEN38_DEBUG"]
-assert env["HF_TOKEN"] == os.environ["HF_TOKEN"]
+assert env["HF_TOKEN"] == os.environ["TEST_EXPECTED_LAUNCH_HF"]
 assert env["SERVE_WEBUI"] == "1"
 with open(os.environ["TEST_LAUNCH_FLAGS"],"w") as f:
     json.dump({"hf_override": True, "webui_auth_supplied": True, "debug": env["DEBUG"]},f)
@@ -166,9 +183,22 @@ WEBUI_ADMIN_PASSWORD='' DEBUG=0 bash "$ROOT/scripts/bootstrap-sglang-openwebui.s
 test ! -e "$RUNTIME_LOG_DIR/start-openwebui.sh"
 grep -Fq 'OpenWebUI disabled' "$TMP/no-admin"
 
+echo '=== direct RunPod template contract ==='
+bash "$ROOT/create-templates.sh" > "$TMP/templates-out" 2>&1
+grep -Fq 'QWEN38_TEMPLATE=' "$TMP/templates-out"
+grep -Fq 'QWEN38_TEMPLATE_PI=' "$TMP/templates-out"
+python3 - "$TEST_TEMPLATE_FLAGS" <<'PY'
+import json, sys
+data=[json.loads(line) for line in open(sys.argv[1])]
+assert len(data)==2
+assert data[0]["ui"]=="1" and "8080/http" in data[0]["ports"]
+assert data[1]["ui"]=="0" and "8080/http" not in data[1]["ports"]
+PY
+
 echo '=== launcher HF_TOKEN precedence and password provision ==='
 export QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh"
 export QWEN38_DEBUG=1
+export TEST_EXPECTED_LAUNCH_HF="$HF_TOKEN"
 mkdir -p "$HOME/.cache/huggingface"
 echo 'SENTINEL_STALE_HF_FILE_5b' > "$HOME/.cache/huggingface/token"
 if ! bash "$ROOT/bin/qwen38fast" > "$TMP/launcher-output" 2>&1; then
@@ -177,7 +207,13 @@ if ! bash "$ROOT/bin/qwen38fast" > "$TMP/launcher-output" 2>&1; then
     exit 1
 fi
 test -f "$TEST_LAUNCH_FLAGS"
-if grep -E "SENTINEL_(API_KEY|HF_TOKEN|WEBUI_PASSWORD)" "$TMP/launcher-output"; then
+unset HF_TOKEN
+export TEST_EXPECTED_LAUNCH_HF='SENTINEL_STALE_HF_FILE_5b'
+if ! bash "$ROOT/bin/qwen38fast" > "$TMP/launcher-fallback-output" 2>&1; then
+    echo 'Launcher token-file fallback failed' >&2
+    exit 1
+fi
+if grep -E "SENTINEL_(API_KEY|HF_TOKEN|WEBUI_PASSWORD|STALE_HF_FILE)" "$TMP/launcher-output" "$TMP/launcher-fallback-output"; then
     echo "launcher leaked a secret" >&2; exit 1
 fi
 echo 'privacy regression suite passed'
