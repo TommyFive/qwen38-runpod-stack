@@ -16,7 +16,14 @@
 #   SGLANG_API_KEY  optional, locks the public proxy endpoint down
 #   SERVE_WEBUI     1 (default) also runs OpenWebUI on :8080; 0 = SGLang only,
 #                   the lean path for a coding agent like pi that talks the API
-#   ENABLE_SSH      1 starts sshd for debugging; 0 (default) leaves SSH disabled
+#   ENABLE_SSH      1 starts legacy OpenSSH; 0 disables it
+#   NETWORK_MODE   runpod | tailnet (loopback and Tailscale Serve only)
+#   TAILSCALE_RUNTIME_B64 optional bundled native SSH userspace helper
+#   STORAGE_HELPER_B64 required bundled RAM/SSD cache helper
+#   MODEL_STORAGE   ram (default), ssd opt-in
+#   BENCHMARK       0 (default), 1 bounded authenticated offline benchmark
+#   BENCHMARK_B64   bundled Python benchmark when enabled
+#   COLDSTART_TRACE 1 (default), 0 disables timing milestones
 set -uo pipefail
 # Never trace inherited RunPod secrets, even if the caller invoked bash -x.
 set +x
@@ -66,7 +73,7 @@ secrets = sorted({os.environ.get(k, "") for k in (
     "SGLANG_API_KEY", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN",
     "WEBUI_ADMIN_PASSWORD", "TS_AUTHKEY", "OPENAI_API_KEY"
 ) if os.environ.get(k, "")}, key=len, reverse=True)
-allow = re.compile(r"^(===|---|ERROR:|WARNING:|SSH_READY|SSH disabled|model=|download probe:|GPU:|privacy:)")
+allow = re.compile(r"^(===|---|ERROR:|WARNING:|SSH_READY|SSH disabled|TAILSCALE:|QWEN38_COLDSTART |Benchmark |MODEL STORAGE ERROR:|Storage mode:|RAM mode verified:|model=|download probe:|GPU:|privacy:)")
 for line in sys.stdin:
     for secret in secrets:
         line = line.replace(secret, "[REDACTED]")
@@ -86,9 +93,51 @@ MEM_FRAC="${MEM_FRAC:-0.85}"
 MAMBA_RATIO="${MAMBA_RATIO:-4.59}"
 API_KEY="${SGLANG_API_KEY}"
 ENABLE_SSH="${ENABLE_SSH:-0}"
+BENCHMARK="${BENCHMARK:-0}"
+COLDSTART_TRACE="${COLDSTART_TRACE:-1}"
+[[ "$BENCHMARK" == 0 || "$BENCHMARK" == 1 ]] || { echo "ERROR: BENCHMARK must be 0 or 1" >&2; exit 64; }
+[[ "$COLDSTART_TRACE" == 0 || "$COLDSTART_TRACE" == 1 ]] || { echo "ERROR: COLDSTART_TRACE must be 0 or 1" >&2; exit 64; }
+cold_mark() {
+    [[ "$COLDSTART_TRACE" == 1 ]] || return 0
+    python3 - "$1" <<'PY_COLD'
+import datetime, json, sys, time
+print("QWEN38_COLDSTART " + json.dumps({"schema": 1, "event":sys.argv[1],
+    "source":"pod","utc":datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00","Z"),
+    "mono":round(time.monotonic(),6)}, separators=(",",":")), flush=True)
+PY_COLD
+}
+cold_mark bootstrap_start
 
 echo "=== bootstrap $(date -u +%FT%TZ) ==="
 echo "model=$MODEL_ID spec=$SPEC max_len=$MAX_LEN mem_frac=$MEM_FRAC"
+
+# --- Optional native Tailscale SSH and HTTPS Serve (no TCP/22 forwarding) ----
+if [[ -n "${TAILSCALE_RUNTIME_B64:-}" ]]; then
+    if ! printf '%s' "$TAILSCALE_RUNTIME_B64" | base64 -d > "$RUNTIME_LOG_DIR/tailscale-runtime.sh"; then
+        echo "ERROR: invalid TAILSCALE_RUNTIME_B64" >&2
+        exit 70
+    fi
+    unset TAILSCALE_RUNTIME_B64
+    # shellcheck source=tailscale-runtime.sh
+    source "$RUNTIME_LOG_DIR/tailscale-runtime.sh"
+    if ! ts_start; then
+        if [[ "$NETWORK_MODE" == tailnet ]]; then
+            echo "ERROR: Tailscale enrollment required for tailnet mode" >&2
+            exit 70
+        fi
+        echo "WARNING: optional Tailscale unavailable; public RunPod mode unchanged" >&2
+    fi
+    if ! ts_serve; then
+        if [[ "$NETWORK_MODE" == tailnet ]]; then
+            echo "ERROR: tailnet-only mode requires Tailscale Serve" >&2
+            exit 70
+        fi
+        echo "WARNING: Tailscale Serve unavailable" >&2
+    fi
+elif [[ "$NETWORK_MODE" == tailnet || -n "${TS_AUTHKEY:-}" ]]; then
+    echo "ERROR: TAILSCALE_RUNTIME_B64 required with Tailscale" >&2
+    exit 70
+fi
 
 # --- Early SSH access -----------------------------------------------------
 # RunPod injects the account's registered SSH keys through PUBLIC_KEY.  The
@@ -170,7 +219,7 @@ SSHD_CONFIG
 
 if [[ "$ENABLE_SSH" == "1" ]]; then
     echo "--- early SSH initialization"
-    start_ssh || echo "WARNING: continuing bootstrap without SSH"
+    if start_ssh; then cold_mark ssh_ready; else echo "WARNING: continuing bootstrap without SSH"; fi
 else
     echo "--- SSH disabled (set ENABLE_SSH=1 to enable)"
 fi
@@ -180,19 +229,45 @@ if [[ "$NETWORK_MODE" == tailnet && "${TS_ACTIVE:-0}" != 1 ]]; then
     echo "ERROR: tailnet-only networking requires active Tailscale (issue #7)" >&2
     exit 70
 fi
-export HF_HOME="${QWEN38_WORKSPACE:-/workspace}/hf"
-export HF_XET_HIGH_PERFORMANCE=1
-mkdir -p "$HF_HOME" "${QWEN38_WORKSPACE:-/workspace}"
+# Preflight and select all model and temporary caches BEFORE Hugging Face imports.
+[[ -n "${STORAGE_HELPER_B64:-}" ]] || { echo "ERROR: STORAGE_HELPER_B64 is required" >&2; exit 64; }
+if ! printf '%s' "$STORAGE_HELPER_B64" | base64 -d > "$RUNTIME_LOG_DIR/model-storage.py"; then
+    echo "ERROR: cannot decode storage helper" >&2
+    exit 64
+fi
+unset STORAGE_HELPER_B64
+chmod 600 "$RUNTIME_LOG_DIR/model-storage.py"
+export QWEN38_STATE_DIR="$RUNTIME_LOG_DIR"
+if ! python3 "$RUNTIME_LOG_DIR/model-storage.py" prepare > "$RUNTIME_LOG_DIR/model-storage-env.sh"; then
+    echo "ERROR: model storage admission failed; no fallback to SSD" >&2
+    exit 64
+fi
+# shellcheck source=/dev/null
+source "$RUNTIME_LOG_DIR/model-storage-env.sh"
+[[ -n "${HF_TOKEN:-}" ]] && export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+cat > /workspace/smoke-storage.sh <<'SMOKE'
+#!/usr/bin/env bash
+set -euo pipefail
+python3 /dev/shm/qwen38-runtime/model-storage.py audit
+df -B1 "${HF_HOME}" /workspace
+du -sh "${HF_HOME}" 2>/dev/null || true
+curl -fsS --max-time 30 -H "Authorization: Bearer ${SGLANG_API_KEY:?}" http://127.0.0.1:8000/v1/models |
+  python3 -c 'import json,sys; assert json.load(sys.stdin).get("data"); print("SGLang: ready")'
+SMOKE
+chmod 700 /workspace/smoke-storage.sh
 [[ -n "${HF_TOKEN:-}" ]] && export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 
 nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader || true
 
 # Network sanity check. A broken host looks exactly like a config bug and
 # costs hours at the wrong end. Anything under 10 MB/s means throw the pod away.
+cold_mark network_probe_start
 echo "--- network check"
 SPEED=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 20 \
     https://huggingface.co/Qwen/Qwen3.8-27B-FP8/resolve/main/config.json 2>/dev/null || echo 0)
 echo "download probe: $(python3 -c "print(f'{float('${SPEED:-0}')/1e6:.1f} MB/s')" 2>/dev/null || echo '?')"
+
+cold_mark network_probe_end
 
 # Both packages are preinstalled in the SGLang image. Never use pip to change
 # the live SGLang/PyTorch/NCCL environment during bootstrap.
@@ -201,18 +276,19 @@ if ! python3 -c 'import huggingface_hub, hf_xet'; then
   exit 1
 fi
 
-echo "--- fetching weights"
-export MODEL_ID
-export QWEN38_WORKSPACE="${QWEN38_WORKSPACE:-/workspace}"
-python3 - <<'PY' || { echo "ERROR: model download failed" >&2; exit 70; }
-import os
-from pathlib import Path
-from huggingface_hub import snapshot_download
-p = snapshot_download(os.environ["MODEL_ID"], max_workers=16, token=os.environ.get("HF_TOKEN") or None)
-Path(os.environ["RUNTIME_LOG_DIR"], "model_path").write_text(p)
-PY
+cold_mark main_download_start
+echo "--- fetching main and speculative draft checkpoints"
+export MODEL_ID SPEC
+if ! python3 "$RUNTIME_LOG_DIR/model-storage.py" download; then
+    cold_mark main_download_failed
+    echo "ERROR: checkpoint download or storage verification failed" >&2
+    exit 70
+fi
+cold_mark main_download_end
 MODEL_PATH=$(cat "$RUNTIME_LOG_DIR/model_path")
-export MODEL_PATH SERVED_NAME MAX_LEN SPEC MEM_FRAC MAMBA_RATIO SGLANG_API_KEY
+DRAFT_PATH=""
+[[ -f "$RUNTIME_LOG_DIR/draft_path" ]] && DRAFT_PATH=$(cat "$RUNTIME_LOG_DIR/draft_path")
+export MODEL_PATH DRAFT_PATH SERVED_NAME MAX_LEN SPEC MEM_FRAC MAMBA_RATIO SGLANG_API_KEY
 du -sh "$MODEL_PATH" >/dev/null 2>&1 || true
 
 # Only allowlisted, non-secret details belong in this inventory.
@@ -251,13 +327,13 @@ cat > "$RUNTIME_LOG_DIR/start-sglang.sh" <<'SGLANG_SCRIPT'
 set -euo pipefail
 set +x
 umask 077
-export HF_HOME="${QWEN38_WORKSPACE:-/workspace}/hf"
-export HF_XET_HIGH_PERFORMANCE=1
+# Restore the preflight-approved cache paths on independent SSH restarts.
+source "$RUNTIME_LOG_DIR/model-storage-env.sh"
 SPEC_FLAGS=()
 case "$SPEC" in
   mtp) SPEC_FLAGS=(--speculative-algorithm EAGLE --speculative-num-steps 3 --speculative-eagle-topk 1 --speculative-num-draft-tokens 4) ;;
-  dflash2) SPEC_FLAGS=(--speculative-algorithm DFLASH --speculative-draft-model-path incoai/Qwen3.8-27B-DFlash2 --speculative-num-draft-tokens 8) ;;
-  dspark) SPEC_FLAGS=(--speculative-algorithm DSPARK --speculative-draft-model-path RadixArk/Qwen3.8-27B-DSpark) ;;
+  dflash2) SPEC_FLAGS=(--speculative-algorithm DFLASH --speculative-draft-model-path "$DRAFT_PATH" --speculative-num-draft-tokens 8) ;;
+  dspark) SPEC_FLAGS=(--speculative-algorithm DSPARK --speculative-draft-model-path "$DRAFT_PATH") ;;
   none) ;;
   *) echo "ERROR: invalid SPEC" >&2; exit 64 ;;
 esac
@@ -294,8 +370,24 @@ launch_private() {
     fi
     disown || true
 }
+cold_mark sglang_start
 echo "--- starting SGLang (authenticated API; DEBUG=$DEBUG)"
 launch_private sglang env -u WEBUI_ADMIN_PASSWORD -u WEBUI_ADMIN_EMAIL bash "$RUNTIME_LOG_DIR/start-sglang.sh"
+cold_mark sglang_process_started
+if [[ "$COLDSTART_TRACE" == 1 ]]; then
+    (
+        for ((attempt=0; attempt<300; attempt++)); do
+            if curl -fsS --max-time 3 -o /dev/null -H "Authorization: Bearer $SGLANG_API_KEY" \
+                http://127.0.0.1:8000/health_generate 2>/dev/null; then
+                cold_mark health_generate_ready
+                exit 0
+            fi
+            sleep 2
+        done
+        cold_mark health_generate_timeout
+    ) &
+    disown || true
+fi
 
 if [[ "$SERVE_WEBUI" == 1 ]]; then
   # Public OpenWebUI must have a preprovisioned administrator. In particular,
@@ -325,6 +417,7 @@ export ENABLE_VERSION_UPDATE_CHECK=False
 export DO_NOT_TRACK=1
 export SCARF_NO_ANALYTICS=1
 export DATA_DIR="$WEBUI_DATA_DIR"
+source "$RUNTIME_LOG_DIR/model-storage-env.sh"
 export OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY="$SGLANG_API_KEY"
 export WEBUI_SECRET_KEY="${WEBUI_SECRET_KEY:-$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')}"
@@ -332,6 +425,7 @@ exec "$WEBUI_VENV/bin/open-webui" serve --host "$WEBUI_BIND_HOST" --port 8080
 WEBUI_SCRIPT
     chmod 700 "$RUNTIME_LOG_DIR/start-openwebui.sh"
     # Separate venv: do NOT change SGLang/PyTorch/NCCL installed packages.
+    cold_mark openwebui_install_start
     echo "--- installing isolated OpenWebUI"
     if ! command -v uv >/dev/null 2>&1; then
       echo "ERROR: uv missing; OpenWebUI disabled (SGLang unaffected)"
@@ -357,9 +451,33 @@ READY
     else
       echo "ERROR: OpenWebUI installation failed; SGLang remains running"
     fi
+    cold_mark openwebui_install_end
   fi
 else
   echo "--- SERVE_WEBUI=0, skipping OpenWebUI, SGLang API only"
 fi
+BENCH_PID=""
+if [[ "$BENCHMARK" == 1 ]]; then
+    if [[ -z "${BENCHMARK_B64:-}" ]]; then
+        echo "WARNING: benchmark requested without bundled worker"
+    elif printf '%s' "$BENCHMARK_B64" | base64 -d > "$RUNTIME_LOG_DIR/benchmark_sglang.py"; then
+        chmod 600 "$RUNTIME_LOG_DIR/benchmark_sglang.py"
+        export MODEL_ID MODEL_PATH SERVED_NAME MAX_LEN SPEC MEM_FRAC MAMBA_RATIO
+        export BENCHMARK_REPORT_PATH="${BENCHMARK_REPORT_PATH:-/dev/shm/qwen38-benchmark.json}"
+        python3 "$RUNTIME_LOG_DIR/benchmark_sglang.py" > "$RUNTIME_LOG_DIR/benchmark.log" 2>&1 &
+        BENCH_PID=$!
+        echo "Benchmark scheduled (independent of SGLang)"
+    else
+        echo "WARNING: invalid BENCHMARK_B64; serving unaffected"
+    fi
+fi
+unset BENCHMARK_B64
 echo "=== bootstrap done; authenticated SGLang starting ==="
-sleep infinity
+if [[ -n "$BENCH_PID" ]]; then
+    trap 'kill "$BENCH_PID" 2>/dev/null || true; kill "$KEEPALIVE_PID" 2>/dev/null || true; exit 0' TERM INT
+    sleep infinity &
+    KEEPALIVE_PID=$!
+    wait "$KEEPALIVE_PID"
+else
+    sleep infinity
+fi
