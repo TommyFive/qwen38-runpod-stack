@@ -134,10 +134,13 @@ if SGLANG_API_KEY='' bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/
     echo "unauthenticated API was accepted" >&2; exit 1
 fi
 grep -Fq 'SGLANG_API_KEY required' "$TMP/no-api"
-if NETWORK_MODE=tailnet bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/no-ts" 2>&1; then
-    echo "tailnet without Tailscale was accepted" >&2; exit 1
+set +e
+NETWORK_MODE=tailnet bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/no-ts" 2>&1
+tailnet_rc=$?
+set -e
+if [[ "$tailnet_rc" != 70 ]]; then
+    echo "tailnet without Tailscale did not fail closed with exit 70" >&2; exit 1
 fi
-grep -Fq 'requires active Tailscale' "$TMP/no-ts"
 if RUNTIME_LOG_DIR="$TMP/overlay" bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/overlay-denied" 2>&1; then
     echo "persistent runtime logs allowed without opt-in" >&2; exit 1
 fi
