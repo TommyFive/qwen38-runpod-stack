@@ -10,7 +10,7 @@ echo "== 1) scripts into ~/.local/bin"
 mkdir -p "$HOME/.local/bin" "$HOME/.runpod"
 cp "$HERE"/bin/* "$HOME/.local/bin/"
 chmod +x "$HOME"/.local/bin/qwen38fast "$HOME"/.local/bin/qwen38pi \
-         "$HOME"/.local/bin/qwen38bench "$HOME"/.local/bin/qwen38-proxy \
+         "$HOME"/.local/bin/qwen38bench "$HOME"/.local/bin/qwen38cold "$HOME"/.local/bin/qwen38-proxy \
          "$HOME"/.local/bin/rp "$HOME"/.local/bin/runpod-reaper
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *)
   echo "   NOTE: ~/.local/bin is not on PATH. Add it to your shell config." ;;
