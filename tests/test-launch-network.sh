@@ -55,6 +55,7 @@ cat > "$TMP/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
 case " $* " in
   *"/models"*) echo '{"data":[{"id":"qwen38-uncensored"}]}' ;;
+  *"/api/config"*) echo '{"features":{"auth":true}}' ;;
   *) echo OK ;;
 esac
 MOCK
@@ -75,6 +76,9 @@ export QWEN38_TEMPLATE=legacy-full
 export QWEN38_TEMPLATE_PI=legacy-pi
 export QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh"
 export QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh"
+export QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
+export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
+export QWEN38_COLDSTART_TRACE=0
 export QWEN38_TAILNET_DOMAIN=tailc8dece.ts.net
 export TS_AUTHKEY=tskey-auth-fixture-not-real
 bash "$ROOT/bin/qwen38fast" --pi --network tailnet > "$TMP/tailnet.out"
