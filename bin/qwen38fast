@@ -107,7 +107,7 @@ if [[ ! -s "$KEY_FILE" ]]; then
 fi
 API_KEY=$(cat "$KEY_FILE")
 [[ -n "$API_KEY" ]] || { echo "ERROR: empty SGLANG_API_KEY" >&2; exit 64; }
-WEBUI_ADMIN_EMAIL="${QWEN38_WEBUI_ADMIN_EMAIL:-admin@qwen38.invalid}"
+WEBUI_ADMIN_EMAIL="${QWEN38_WEBUI_ADMIN_EMAIL:-admin@qwen38.example.com}"
 WEBUI_ADMIN_PASSWORD=""
 if [[ $PI_MODE -eq 0 ]]; then
     if [[ -n "${QWEN38_WEBUI_ADMIN_PASSWORD:-}" ]]; then

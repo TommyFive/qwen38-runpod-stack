@@ -298,8 +298,9 @@ launch_private sglang env -u WEBUI_ADMIN_PASSWORD -u WEBUI_ADMIN_EMAIL bash "$RU
 if [[ "$SERVE_WEBUI" == 1 ]]; then
   # Public OpenWebUI must have a preprovisioned administrator. In particular,
   # allowing first-user signup on an internet-facing port is NOT acceptable.
-  if [[ -z "${WEBUI_ADMIN_EMAIL:-}" || -z "${WEBUI_ADMIN_PASSWORD:-}" ]]; then
-    echo "WARNING: OpenWebUI disabled: WEBUI_ADMIN_EMAIL and WEBUI_ADMIN_PASSWORD required"
+  admin_pwd="${WEBUI_ADMIN_PASSWORD:-}"
+  if [[ -z "${WEBUI_ADMIN_EMAIL:-}" || ${#admin_pwd} -lt 16 ]]; then
+    echo "WARNING: OpenWebUI disabled: WEBUI_ADMIN_EMAIL and strong (>=16 chars) WEBUI_ADMIN_PASSWORD required"
   else
     WEBUI_VENV="${QWEN38_WORKSPACE:-/workspace}/openwebui-venv"
     WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
