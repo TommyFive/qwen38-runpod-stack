@@ -169,7 +169,11 @@ export QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh"
 export QWEN38_DEBUG=1
 mkdir -p "$HOME/.cache/huggingface"
 echo 'SENTINEL_STALE_HF_FILE_5b' > "$HOME/.cache/huggingface/token"
-bash "$ROOT/bin/qwen38fast" > "$TMP/launcher-output" 2>&1
+if ! bash "$ROOT/bin/qwen38fast" > "$TMP/launcher-output" 2>&1; then
+    echo "Launcher mock failed; sanitized diagnostic output:" >&2
+    sed -E 's/SENTINEL_[A-Za-z0-9_]+/[REDACTED]/g; s/sk-qwen38-[A-Za-z0-9_-]+/[REDACTED]/g' "$TMP/launcher-output" >&2
+    exit 1
+fi
 test -f "$TEST_LAUNCH_FLAGS"
 if grep -E "SENTINEL_(API_KEY|HF_TOKEN|WEBUI_PASSWORD)" "$TMP/launcher-output"; then
     echo "launcher leaked a secret" >&2; exit 1

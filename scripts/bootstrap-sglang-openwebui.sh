@@ -157,6 +157,7 @@ PidFile /run/sshd.pid
 LogLevel ERROR
 SSHD_CONFIG
 
+    if [[ "$DEBUG" == 1 ]]; then sed -i 's/^LogLevel ERROR$/LogLevel VERBOSE/' "$RUNTIME_LOG_DIR/runpod-sshd.conf"; fi
     if ! "$sshd_bin" -t -f "$RUNTIME_LOG_DIR/runpod-sshd.conf"; then
         echo "ERROR: SSH daemon configuration is invalid"
         return 1
@@ -218,7 +219,7 @@ import json, os
 from pathlib import Path
 v = {k.lower(): os.environ.get(k, "") for k in
     ("MODEL_ID", "SERVED_NAME", "SPEC", "MAX_LEN", "NETWORK_MODE", "DEBUG", "SERVE_WEBUI")}
-v["runtime_fs"] = "tmpfs" if os.statvfs(os.environ["RUNTIME_LOG_DIR"]) else "unknown"
+v["runtime_fs"] = "tmpfs" if os.path.realpath(os.environ["RUNTIME_LOG_DIR"]).startswith("/dev/shm/") else "explicit-opt-in"
 Path(os.environ["RUNTIME_LOG_DIR"], "snapshot.json").write_text(json.dumps(v, sort_keys=True) + "\n")
 PY
 
@@ -274,7 +275,7 @@ launch_private() {
     disown || true
 }
 echo "--- starting SGLang (authenticated API; DEBUG=$DEBUG)"
-launch_private sglang "$RUNTIME_LOG_DIR/start-sglang.sh"
+launch_private sglang bash "$RUNTIME_LOG_DIR/start-sglang.sh"
 
 if [[ "$SERVE_WEBUI" == 1 ]]; then
   # Public OpenWebUI must have a preprovisioned administrator. In particular,
@@ -322,7 +323,7 @@ set -euo pipefail
 for ((attempt=0; attempt<180; attempt++)); do
   if curl -fsS --max-time 4 -H "Authorization: Bearer $SGLANG_API_KEY" \
     http://127.0.0.1:8000/v1/models 2>/dev/null | grep -q '"id"'; then
-    exec "$RUNTIME_LOG_DIR/start-openwebui.sh"
+    exec bash "$RUNTIME_LOG_DIR/start-openwebui.sh"
   fi
   sleep 10
 done
@@ -330,7 +331,7 @@ echo "ERROR: OpenWebUI readiness deadline expired" >&2
 exit 1
 READY
       chmod 700 "$RUNTIME_LOG_DIR/start-webui-when-ready.sh"
-      launch_private openwebui "$RUNTIME_LOG_DIR/start-webui-when-ready.sh"
+      launch_private openwebui bash "$RUNTIME_LOG_DIR/start-webui-when-ready.sh"
     else
       echo "ERROR: OpenWebUI installation failed; SGLang remains running"
     fi
