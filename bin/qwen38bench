@@ -84,6 +84,8 @@ def one_run(api, model, isl, osl, key="", stream=True):
     done = False
     with post(f"{api}/chat/completions", payload, key) as resp:
         for body in events(resp):
+            if not body:
+                continue
             if body == "[DONE]":
                 done = True
                 break
