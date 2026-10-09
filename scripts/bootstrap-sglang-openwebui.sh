@@ -120,7 +120,7 @@ else
 fi
 
 export HF_HOME=/workspace/hf
-export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_XET_HIGH_PERFORMANCE=1
 mkdir -p "$HF_HOME" /workspace
 [[ -n "${HF_TOKEN:-}" ]] && export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 
@@ -133,8 +133,12 @@ SPEED=$(curl -s -o /dev/null -w '%{speed_download}' --max-time 20 \
     https://huggingface.co/Qwen/Qwen3.8-27B-FP8/resolve/main/config.json 2>/dev/null || echo 0)
 echo "download probe: $(python3 -c "print(f'{float('${SPEED:-0}')/1e6:.1f} MB/s')" 2>/dev/null || echo '?')"
 
-# hf_transfer gives multi-connection downloads, worth ~3x on a 20 GB checkpoint.
-pip install -q hf_transfer huggingface_hub 2>&1 | tail -2
+# Both packages are preinstalled in the SGLang image. Never use pip to change
+# the live SGLang/PyTorch/NCCL environment during bootstrap.
+if ! python3 -c 'import huggingface_hub, hf_xet'; then
+  echo "ERROR: Hugging Face Hub/Xet missing from the SGLang image" >&2
+  exit 1
+fi
 
 echo "--- fetching weights"
 python3 - <<PY
@@ -178,7 +182,7 @@ esac
 cat > /workspace/start-sglang.sh <<EOF
 #!/usr/bin/env bash
 export HF_HOME=/workspace/hf
-export HF_HUB_ENABLE_HF_TRANSFER=1
+export HF_XET_HIGH_PERFORMANCE=1
 ${HF_TOKEN:+export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"}
 exec python3 -m sglang.launch_server \\
   --model-path "$MODEL_PATH" \\
@@ -214,12 +218,25 @@ export OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=${API_KEY:-EMPTY}
 export WEBUI_AUTH=False
 export ENABLE_OLLAMA_API=False
-exec open-webui serve --host 0.0.0.0 --port 8080
+exec "$WEBUI_VENV/bin/open-webui" serve --host 0.0.0.0 --port 8080
 EOF
   chmod +x /workspace/start-openwebui.sh
-  pip install -q open-webui 2>&1 | tail -2
-  setsid /workspace/start-openwebui.sh > /workspace/openwebui.log 2>&1 < /dev/null &
-  disown
+  # Use a separate Python environment: an unpinned pip install into the
+  # running SGLang environment can replace its PyTorch/NCCL shared libraries
+  # while the scheduler imports DeepEP, leading to a '(deleted)' NCCL crash.
+  # uv ships with the SGLang image and does not require ensurepip in the venv.
+  WEBUI_VENV=/workspace/openwebui-venv
+  WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
+  echo "--- installing OpenWebUI ${WEBUI_VERSION} in isolated environment"
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "ERROR: uv missing; OpenWebUI disabled (SGLang unaffected)" >&2
+  elif uv venv --python /usr/bin/python3 "$WEBUI_VENV" &&
+       uv pip install --python "$WEBUI_VENV/bin/python" "open-webui==$WEBUI_VERSION"; then
+    setsid /workspace/start-openwebui.sh > /workspace/openwebui.log 2>&1 < /dev/null &
+    disown
+  else
+    echo "ERROR: OpenWebUI installation failed; SGLang remains running" >&2
+  fi
 else
   echo "--- SERVE_WEBUI=0, skipping OpenWebUI, SGLang API only"
 fi
