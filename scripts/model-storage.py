@@ -259,6 +259,7 @@ def verify_snapshot(path, root, mount):
 def prepare():
     mode, root, mount, _fs = selected_storage()
     model_repos()  # Validate inputs before creating any files.
+    configure_env(root)  # Set ALL HF caches before HfApi imports in RAM preflight.
     if mode == "ram":
         preflight(root, mount)
     make_dirs(root)
