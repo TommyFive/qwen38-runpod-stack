@@ -139,6 +139,20 @@ qwen38fast status                        # what's running, what it costs
 qwen38fast stop
 ```
 
+### Debug SSH (off by default)
+
+SSH is disabled by default, including in newly created templates. This keeps the
+debugging service off unless it is explicitly required. To enable it for one new
+pod, use:
+
+```bash
+QWEN38_ENABLE_SSH=1 qwen38fast
+```
+
+The launcher passes this through as `ENABLE_SSH=1`; the bootstrap then installs
+and starts `sshd` before model downloads. Your RunPod account must have its SSH
+key registered. Leave the variable unset for normal launches.
+
 Measure the real decode rate:
 
 ```bash

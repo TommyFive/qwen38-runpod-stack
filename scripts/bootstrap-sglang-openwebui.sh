@@ -16,6 +16,7 @@
 #   SGLANG_API_KEY  optional, locks the public proxy endpoint down
 #   SERVE_WEBUI     1 (default) also runs OpenWebUI on :8080; 0 = SGLang only,
 #                   the lean path for a coding agent like pi that talks the API
+#   ENABLE_SSH      1 starts sshd for debugging; 0 (default) leaves SSH disabled
 set -uo pipefail
 
 MODEL_ID="${MODEL_ID:?MODEL_ID missing}"
@@ -26,11 +27,97 @@ MEM_FRAC="${MEM_FRAC:-0.85}"
 MAMBA_RATIO="${MAMBA_RATIO:-4.59}"
 API_KEY="${SGLANG_API_KEY:-}"
 SERVE_WEBUI="${SERVE_WEBUI:-1}"
+ENABLE_SSH="${ENABLE_SSH:-0}"
 
+mkdir -p /workspace
 LOG=/workspace/bootstrap.log
 exec > >(tee -a "$LOG") 2>&1
 echo "=== bootstrap $(date -u +%FT%TZ) ==="
 echo "model=$MODEL_ID spec=$SPEC max_len=$MAX_LEN mem_frac=$MEM_FRAC"
+
+# --- Early SSH access -----------------------------------------------------
+# RunPod injects the account's registered SSH keys through PUBLIC_KEY.  The
+# SGLang image does not start sshd itself, so bring it up before downloads and
+# model initialization.  Keep the workload running if SSH setup fails; the
+# reason remains visible in the bootstrap log and RunPod console.
+start_ssh() {
+    local sshd_bin
+
+    if [[ -z "${PUBLIC_KEY:-}" ]]; then
+        echo "WARNING: PUBLIC_KEY is empty; SSH will not be enabled"
+        return 1
+    fi
+
+    sshd_bin=$(command -v sshd 2>/dev/null || true)
+    [[ -z "$sshd_bin" && -x /usr/sbin/sshd ]] && sshd_bin=/usr/sbin/sshd
+    if [[ -z "$sshd_bin" ]]; then
+        echo "Installing openssh-server"
+        if ! command -v apt-get >/dev/null 2>&1; then
+            echo "ERROR: sshd is missing and apt-get is unavailable"
+            return 1
+        fi
+        if ! apt-get update -qq || \
+           ! DEBIAN_FRONTEND=noninteractive apt-get install \
+               -y -qq --no-install-recommends openssh-server; then
+            echo "ERROR: openssh-server installation failed"
+            return 1
+        fi
+        hash -r
+        sshd_bin=$(command -v sshd 2>/dev/null || true)
+        [[ -z "$sshd_bin" && -x /usr/sbin/sshd ]] && sshd_bin=/usr/sbin/sshd
+    fi
+
+    if [[ -z "$sshd_bin" ]]; then
+        echo "ERROR: sshd is still unavailable after installation"
+        return 1
+    fi
+
+    install -d -m 700 /root/.ssh
+    install -d -m 755 /run/sshd
+    printf '%s\n' "$PUBLIC_KEY" | tr -d '\r' > /root/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys
+
+    if [[ ! -s /root/.ssh/authorized_keys ]]; then
+        echo "ERROR: authorized_keys is empty"
+        return 1
+    fi
+
+    ssh-keygen -A
+    cat > /tmp/runpod-sshd.conf <<'SSHD_CONFIG'
+Port 22
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+AuthorizedKeysFile /root/.ssh/authorized_keys
+PermitRootLogin prohibit-password
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+UsePAM no
+PidFile /run/sshd.pid
+LogLevel VERBOSE
+SSHD_CONFIG
+
+    if ! "$sshd_bin" -t -f /tmp/runpod-sshd.conf; then
+        echo "ERROR: SSH daemon configuration is invalid"
+        return 1
+    fi
+    if ! "$sshd_bin" -f /tmp/runpod-sshd.conf -E /workspace/sshd.log; then
+        echo "ERROR: SSH daemon failed to start"
+        return 1
+    fi
+
+    echo "SSH_READY $(date -u +%FT%TZ)"
+    ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+}
+
+if [[ "$ENABLE_SSH" == "1" ]]; then
+    echo "--- early SSH initialization"
+    start_ssh || echo "WARNING: continuing bootstrap without SSH"
+else
+    echo "--- SSH disabled (set ENABLE_SSH=1 to enable)"
+fi
 
 export HF_HOME=/workspace/hf
 export HF_HUB_ENABLE_HF_TRANSFER=1
