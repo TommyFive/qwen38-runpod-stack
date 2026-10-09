@@ -107,8 +107,8 @@ class ColdstartTests(unittest.TestCase):
         self.assertIn("cold_mark health_generate_ready", bootstrap)
         self.assertIn("cold_mark main_download_end", bootstrap)
         self.assertIn("cold_mark first_inference_ok", launcher)
-        self.assertIn('"COLDSTART_TRACE": os.environ.get', launcher)
-        self.assertIn("'COLDSTART_TRACE':'1'", template)
+        self.assertIn('"COLDSTART_TRACE": sys.argv[25]', launcher)
+        self.assertIn('"COLDSTART_TRACE":"1"', template)
         self.assertIn("QWEN38_COLDSTART_TRACE:-1", launcher)
         # No change to serving / speculative decoding flags is needed to measure.
         self.assertIn("--speculative-algorithm DFLASH", bootstrap)
