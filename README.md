@@ -85,7 +85,8 @@ running → the proxy returns a clean 503 telling you to start one.
 |---|---|
 | `bin/qwen38fast` | Full stack: SGLang API **plus** OpenWebUI (port 8080). Starts and waits until usable |
 | `bin/qwen38pi` | Lean: SGLang API only, for a coding agent. No OpenWebUI, ready sooner |
-| `bin/qwen38bench` | Measures decode rate, TTFT and accepted-token length (discards a warmup run) |
+| `bin/qwen38bench` | Manual authenticated RunPod proxy benchmark (uses server-reported tokens) |
+| `scripts/benchmark_sglang.py` | Opt-in bounded in-pod SGLang benchmark (3 fixed workloads and JSON report) |
 | `bin/qwen38-proxy` | Local proxy on `127.0.0.1:8388` that always targets the running pod |
 | `bin/rp` | `runpodctl` wrapper that adds a server timer when supported and preserves the local reaper fallback |
 | `bin/runpod-reaper` | LaunchAgent backstop that kills forgotten pods after 1h |
@@ -155,6 +156,23 @@ qwen38fast status                        # what's running, what it costs
 qwen38fast stop
 ```
 
+### Opt-in benchmark (off by default)
+
+```bash
+BENCHMARK=1 qwen38fast               # 3 workloads × (1 warmup + 3 measured)
+# or: qwen38fast --benchmark
+```
+
+Authenticated loopback benchmarking starts only after SGLang is ready and never
+restarts/retunes SGLang. Default timeout is 900 seconds. Private JSON report at
+`/tmp/qwen38-benchmark.json` with short log summary in `/tmp/qwen38-benchmark.log`.
+Control `BENCHMARK_RUNS`, `BENCHMARK_MAX_TOKENS`, `BENCHMARK_TIMEOUT_SECONDS`
+and `BENCHMARK_REPORT_PATH`. `BENCHMARK=0` creates no benchmark process/files.
+`./setup.sh` installs the runner; `./create-templates.sh` embeds it in newly
+created templates for direct RunPod UI launches. For methodology, cost impact,
+comparison with the **different** `qwen38bench` proxy measurement, and GPU
+smoke instructions, see [docs/BENCHMARK.md](docs/BENCHMARK.md).
+
 ### Debug SSH (off by default)
 
 SSH is disabled by default, including in newly created templates. This keeps the
@@ -172,7 +190,7 @@ key registered. Leave the variable unset for normal launches.
 Measure the real decode rate:
 
 ```bash
-qwen38bench                              # picks the running pod, 5 runs + warmup
+qwen38bench                              # authenticated proxy path; 3 runs + warmup
 ```
 
 ## Cost control
