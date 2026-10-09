@@ -22,6 +22,9 @@ mkdir -p "$BOOTSTRAP_DIR"
 install -m 700 \
   "$HERE/scripts/bootstrap-sglang-openwebui.sh" \
   "$BOOTSTRAP_DIR/bootstrap-sglang-openwebui.sh"
+install -m 700 \
+  "$HERE/scripts/tailscale-runtime.sh" \
+  "$BOOTSTRAP_DIR/tailscale-runtime.sh"
 
 echo "== 2) LaunchAgents (macOS)"
 if [ "$(uname)" = "Darwin" ]; then
@@ -39,6 +42,7 @@ fi
 echo "== 3) create the RunPod templates"
 echo "   ./create-templates.sh   then export the ids:"
 echo "     export QWEN38_TEMPLATE=<id>  QWEN38_TEMPLATE_PI=<id>"
+echo "     export QWEN38_TEMPLATE_TAILNET=<id>  QWEN38_TEMPLATE_TAILNET_PI=<id>"
 
 echo "== 4) wire up pi"
 echo "   copy the block from pi/models.runpod.json into ~/.pi/agent/models.json."
