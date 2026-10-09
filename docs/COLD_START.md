@@ -19,7 +19,7 @@ graph capture ~56s. These are **different pods**, not a combined measurement.
 | Source | Automatic markers | Limitations |
 | --- | --- | --- |
 | Launcher (host, `qwen38fast` / `qwen38pi`) | pod-create request/completion, `/v1/models`, first **successful** `/v1/chat/completions` (or failure), OpenWebUI ready | Wait-loop granularity can overstate readiness by up to ~20s; proxy latency counts toward end-to-end |
-| Pod bootstrap | bootstrap start, optional SSH ready, network probe, main HF download, SGLang process start, loopback `/health_generate` 200, optional OpenWebUI isolated-venv install | Does not witness scheduling/image pull before container starts |
+| Pod bootstrap | bootstrap start, optional SSH ready, network probe, **main + selected speculative draft downloads**, SGLang process start, loopback `/health_generate` 200, optional OpenWebUI isolated-venv install | Does not witness scheduling/image pull before container starts |
 | RunPod UI/API timestamps and SGLang logs | Scheduling, image pull, container start, target/draft weight loading, CUDA graph capture | **Manual timestamps**, recorded only when directly evidenced; absent stages stay unknown |
 
 Event format: `QWEN38_COLDSTART {"schema":1,"event":"...","source":"pod|host","utc":"...Z","mono":12345.6}`.
@@ -49,8 +49,9 @@ Start only when a charged RunPod experiment is intended:
 # New pod creation; capture the launcher markers on the local machine.
 QWEN38_COLDSTART_TRACE=1 qwen38fast 2>&1 | tee "$HOME/qwen38-host-1.log"
 # Separately obtain the same pod's bootstrap.log or container-console output.
-# For the baseline branch this is /workspace/bootstrap.log.
-# Collect SGLang init timeline from /workspace/sglang.log or RunPod Logs.
+# Integrated runtime (DEBUG=0): /dev/shm/qwen38-runtime/bootstrap.log.
+# Enable DEBUG=1 for private diagnostic SGLang logs at
+# /dev/shm/qwen38-runtime/sglang.log; otherwise use RunPod live console.
 ```
 
 When available, manually transcribe *verified* platform/UI and SGLang markers
@@ -146,4 +147,5 @@ uncontrolled timings. The OpenWebUI `uv` install remains in its own venv.
    pull. RunPod's `ssh.runpod.io` path does not prove direct TCP/22 access.
 
 Related: #5 network check, #6 download telemetry, #7 Tailscale, #8 privacy,
-#9 RAM storage, #10 steady-state benchmark. Feature branches remain independent.
+#9 RAM storage, #10 steady-state benchmark. The integration branch combines #7–#11;
+all five original feature PRs remain separate for review.
