@@ -171,7 +171,8 @@ class StorageTests(unittest.TestCase):
         fake = ModuleType("huggingface_hub")
         fake.snapshot_download = lambda *args, **kwargs: next(snapshots)
         with patch.dict(sys.modules, {"huggingface_hub": fake}), \
-             patch.object(ms, "mount_info", side_effect=self.fake_mount):
+             patch.object(ms, "mount_info", side_effect=self.fake_mount), \
+             patch.object(ms, "cgroup_available", return_value=100 * ms.GIB):
             ms.download()
             result = io.StringIO()
             with redirect_stdout(result):
