@@ -8,6 +8,7 @@ is currently serving. Agent configs point here once and never need touching agai
 
 Resolution order for the target pod:
   1. ~/.runpod/current-pod          written by qwen38fast on launch
+  Selected transport: ~/.runpod/current-endpoint.json (if present)
   2. runpodctl pod list             any single running pod, cached for 30s
 
 If nothing is running it answers 503 with a message telling you to start one,
@@ -31,6 +32,7 @@ from pathlib import Path
 PORT = int(os.environ.get("QWEN38_PROXY_PORT", "8388"))
 POD_FILE = Path.home() / ".runpod" / "current-pod"
 KEY_FILE = Path.home() / ".runpod" / "qwen38.key"
+ENDPOINT_FILE = Path.home() / ".runpod" / "current-endpoint.json"
 UPSTREAM_PORT = 8000
 CACHE_SECONDS = 30
 
@@ -83,6 +85,31 @@ def upstream_key() -> str | None:
     return None
 
 
+def upstream_target(pod: str) -> tuple[str, int]:
+    """Choose a validated HTTPS endpoint for this pod, never a user URL.
+
+    The optional endpoint marker selects Tailscale Serve for private pods.
+    Older pods without a marker continue using the RunPod public proxy.
+    """
+    if ENDPOINT_FILE.is_file():
+        try:
+            data = json.loads(ENDPOINT_FILE.read_text())
+            if data.get("pod_id") == pod:
+                parsed = urllib.parse.urlparse(data["api_url"])
+                host = parsed.hostname or ""
+                if parsed.scheme != "https" or parsed.path != "/v1" or parsed.username:
+                    raise ValueError("invalid endpoint URL")
+                if not (host.endswith(".ts.net") or host == f"{pod}-{UPSTREAM_PORT}.proxy.runpod.net"):
+                    raise ValueError("endpoint is not an approved RunPod/Tailscale host")
+                port = parsed.port or 443
+                if port != 443:
+                    raise ValueError("unexpected API port")
+                return host, port
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("invalid endpoint marker; refusing unsafe fallback") from exc
+    return f"{pod}-{UPSTREAM_PORT}.proxy.runpod.net", 443
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "qwen38-proxy"
@@ -108,7 +135,11 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         payload = self.rfile.read(length) if length else None
 
-        host = f"{pod}-{UPSTREAM_PORT}.proxy.runpod.net"
+        try:
+            host, port = upstream_target(pod)
+        except ValueError:
+            self._fail(503, "Invalid pod endpoint configuration")
+            return
         headers = {
             "Content-Type": self.headers.get("Content-Type", "application/json"),
             "Accept": self.headers.get("Accept", "*/*"),
@@ -123,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             conn = http.client.HTTPSConnection(
-                host, timeout=900, context=ssl.create_default_context()
+                host, port=port, timeout=900, context=ssl.create_default_context()
             )
             conn.request(method, self.path, body=payload, headers=headers)
             resp = conn.getresponse()
