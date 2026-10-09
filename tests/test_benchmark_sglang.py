@@ -51,6 +51,9 @@ class FakeResponse:
     def __exit__(self, *_):
         return False
 
+    def read(self, *_args):
+        return self.body
+
     def __iter__(self):
         return iter(self.body.splitlines(keepends=True))
 
