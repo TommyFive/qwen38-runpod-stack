@@ -40,12 +40,20 @@ ts_start() {
     set +x
     umask 077
     local secret_dir="${TS_SECRET_DIR:-/dev/shm/qwen38-secrets}"
+    # Never allow an env override to redirect an auth key onto overlay/SSD.
+    if [[ "$secret_dir" != /dev/shm/* || "$secret_dir" == *"/../"* ||
+          "$secret_dir" == *"/.." ]]; then
+        echo "ERROR: TS_SECRET_DIR must be inside /dev/shm" >&2; return 70
+    fi
     if [[ "$(stat -f -c %T /dev/shm 2>/dev/null)" != tmpfs ]]; then
         echo "ERROR: /dev/shm must be tmpfs for TS_AUTHKEY" >&2; return 70
     fi
     install -d -m 700 "$secret_dir" || return 70
-    local auth_file="$secret_dir/ts-authkey"
-    ( umask 077; printf '%s\n' "$TS_AUTHKEY" > "$auth_file" ) || return 70
+    local auth_file
+    auth_file="$(mktemp "$secret_dir/ts-authkey.XXXXXXXX")" || return 70
+    ( umask 077; printf '%s\n' "$TS_AUTHKEY" > "$auth_file" ) || {
+        rm -f "$auth_file"; return 70
+    }
     chmod 600 "$auth_file"
     unset TS_AUTHKEY
     export -n TS_AUTHKEY 2>/dev/null || true
@@ -103,7 +111,9 @@ ts_start() {
     done
     if [[ ! -S "$TS_SOCKET" ]]; then
         echo "ERROR: tailscaled socket unavailable" >&2
-        rm -f "$auth_file"; return 70
+        rm -f "$auth_file"
+        kill "${TS_DAEMON_PID:-0}" 2>/dev/null || true
+        return 70
     fi
     local args=(--auth-key="file:$auth_file" --hostname="$TS_HOSTNAME"
         --accept-dns=false --accept-routes=false --timeout=45s)
@@ -111,6 +121,7 @@ ts_start() {
     if ! "$cli" --socket="$TS_SOCKET" up "${args[@]}" > "$work/up.log" 2>&1; then
         echo "ERROR: Tailscale login failed (see private daemon log)" >&2
         rm -f "$auth_file"
+        kill "${TS_DAEMON_PID:-0}" 2>/dev/null || true
         return 70
     fi
     rm -f "$auth_file"
@@ -120,7 +131,10 @@ ts_start() {
     # No auth token is present in this status response.
     TS_DNS_NAME="$("$cli" --socket="$TS_SOCKET" status --json | python3 -c 'import json,sys; print((json.load(sys.stdin).get("Self") or {}).get("DNSName","").rstrip("."))' 2>/dev/null)"
     if [[ -z "$TS_DNS_NAME" ]]; then
-        echo "ERROR: Tailscale failed to report a MagicDNS name" >&2; return 70
+        echo "ERROR: Tailscale failed to report a MagicDNS name" >&2
+        kill "${TS_DAEMON_PID:-0}" 2>/dev/null || true
+        TS_ACTIVE=0
+        return 70
     fi
     echo "TAILSCALE: connected hostname=$TS_DNS_NAME native_ssh=$TS_ENABLE_SSH"
 }
@@ -133,7 +147,8 @@ ts_serve() {
     if ! "$TS_CLI" --socket="$TS_SOCKET" serve --yes --bg --https=443 \
         http://127.0.0.1:8000 >/dev/null 2>&1; then
         echo "ERROR: Tailscale Serve API configuration failed" >&2
-        [[ "$mode" != tailnet ]]; return
+        if [[ "$mode" == tailnet ]]; then return 70; fi
+        return 0
     fi
     if [[ "${SERVE_WEBUI:-1}" == 1 ]]; then
         if ! "$TS_CLI" --socket="$TS_SOCKET" serve --yes --bg --https=8443 \
