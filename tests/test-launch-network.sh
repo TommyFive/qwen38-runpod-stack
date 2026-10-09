@@ -88,6 +88,12 @@ assert d["api_url"].startswith("https://qwen38-")
 assert d["api_url"].endswith(".tailc8dece.ts.net/v1")
 PY
 
+echo "=== tailnet full stack with deferred web UI ==="
+export TS_AUTHKEY=tskey-auth-fixture-not-real
+bash "$ROOT/bin/qwen38fast" --network tailnet > "$TMP/tailnet-full.out"
+grep -Fq 'https://' "$TMP/tailnet-full.out"
+grep -Fq '.tailc8dece.ts.net:8443' "$TMP/tailnet-full.out"
+
 echo "=== public CLI without TS_AUTHKEY ==="
 unset TS_AUTHKEY
 bash "$ROOT/bin/qwen38fast" --pi --network runpod > "$TMP/public.out"
@@ -101,11 +107,14 @@ templates=[x for x in events if x["kind"]=="template"]
 pods=[x for x in events if x["kind"]=="pod"]
 assert len(templates)==4, templates
 assert len([x for x in templates if x["mode"]=="tailnet" and not x["has_ports"]])==2
-assert len(pods)==2, pods
-private, public = pods
+assert len(pods)==3, pods
+private, full, public = pods
 assert private["mode"]=="tailnet" and private["disable_runpod_ssh"]
 assert private["has_ts_authkey"] and private["runtime_included"]
 assert private["template"]=="private-pi" and private["serve_webui"]=="0"
+assert full["mode"]=="tailnet" and full["disable_runpod_ssh"]
+assert full["has_ts_authkey"] and full["template"]=="private-full"
+assert full["serve_webui"]=="1"
 assert public["mode"]=="runpod" and not public["disable_runpod_ssh"]
 assert not public["has_ts_authkey"] and public["template"]=="legacy-pi"
 print("test-launch-network: ok")
