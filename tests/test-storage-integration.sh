@@ -35,7 +35,10 @@ chmod +x "$TMP/bin/runpodctl"
 export HOME="$TMP/home" PATH="$ROOT/bin:$TMP/bin:$PATH" \
        RUNPODCTL_BIN="$TMP/bin/runpodctl" \
        QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh" \
-       QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
+       QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py" \
+       QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh" \
+       QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py" \
+       QWEN38_COLDSTART_TRACE=0
 
 bash "$ROOT/create-templates.sh" > "$TMP/templates.out"
 if QWEN38_MODEL_STORAGE=ram qwen38fast --pi > "$TMP/pi.out" 2>&1; then
