@@ -237,7 +237,7 @@ if [[ "$COLDSTART_TRACE" == "1" ]]; then
   (
     for ((attempt=0; attempt<300; attempt++)); do
       if curl -fsS --max-time 3 -o /dev/null \
-        -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8000/health_generate; then
+        -H "Authorization: Bearer $API_KEY" http://127.0.0.1:8000/health_generate 2>/dev/null; then
         cold_mark health_generate_ready
         exit 0
       fi
