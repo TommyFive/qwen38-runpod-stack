@@ -115,8 +115,8 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "qwen38-proxy"
 
     def log_message(self, fmt, *args):  # quiet by default
-        if os.environ.get("QWEN38_PROXY_VERBOSE"):
-            sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+        if os.environ.get("QWEN38_PROXY_VERBOSE") == "1":
+            sys.stderr.write("qwen38-proxy: HTTP exchange (details omitted)\n")
 
     def _fail(self, code: int, message: str) -> None:
         body = json.dumps({"error": {"message": message, "type": "proxy_error"}}).encode()
@@ -158,9 +158,9 @@ class Handler(BaseHTTPRequestHandler):
             )
             conn.request(method, self.path, body=payload, headers=headers)
             resp = conn.getresponse()
-        except Exception as exc:
+        except Exception:
             invalidate()   # pod may have been terminated, re-resolve next time
-            self._fail(502, f"Pod {pod} nicht erreichbar: {exc}")
+            self._fail(502, f"Pod {pod} nicht erreichbar")
             return
 
         self.send_response(resp.status)
