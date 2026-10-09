@@ -11,7 +11,14 @@ export QWEN38_WORKSPACE="$RAM/workspace" RUNTIME_LOG_DIR="$RAM/runtime"
 export WEBUI_DATA_DIR="$RAM/data" TEST_WEBUI_FLAGS="$TMP/webui-flags.json"
 export TEST_LAUNCH_FLAGS="$TMP/launch-flags.json"
 export TEST_TEMPLATE_FLAGS="$TMP/template-flags.jsonl"
-export MODEL_ID="example/test-model" SERVE_WEBUI=1
+export MODEL_ID="example/test-model" SPEC=none SERVE_WEBUI=1
+# Offline privacy tests use tmpfs-backed SSD-mode cache; the RAM admission
+# budget itself is independently tested in test_model_storage.py.
+export MODEL_STORAGE=ssd MODEL_SSD_DIR="$RAM/workspace"
+export QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh"
+export QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
+export QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh"
+export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
 export SGLANG_API_KEY="SENTINEL_API_KEY_91e6f9"
 export HF_TOKEN="SENTINEL_HF_TOKEN_8174bd"
 export WEBUI_ADMIN_EMAIL="admin@example.invalid"
@@ -89,7 +96,7 @@ elif args[:2] == ["template", "create"]:
     assert "SGLANG_API_KEY" not in env
     assert "WEBUI_ADMIN_PASSWORD" not in env
     with open(os.environ["TEST_TEMPLATE_FLAGS"], "a") as out:
-        out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":args[args.index("--ports")+1]})+"\n")
+        out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":args[args.index("--ports")+1] if "--ports" in args else "", "mode":env["NETWORK_MODE"]})+"\n")
     print(json.dumps({"id":"template-ci-"+env["SERVE_WEBUI"]}))
 else:
     raise SystemExit("unexpected mock runpodctl invocation")
@@ -197,13 +204,14 @@ grep -Fq 'QWEN38_TEMPLATE_PI=' "$TMP/templates-out"
 python3 - "$TEST_TEMPLATE_FLAGS" <<'PY'
 import json, sys
 data=[json.loads(line) for line in open(sys.argv[1])]
-assert len(data)==2
+assert len(data)==4
 assert data[0]["ui"]=="1" and "8080/http" in data[0]["ports"]
 assert data[1]["ui"]=="0" and "8080/http" not in data[1]["ports"]
+assert all(not d["ports"] for d in data[2:])
+assert all(d["mode"]=="tailnet" for d in data[2:])
 PY
 
 echo '=== launcher HF_TOKEN precedence and password provision ==='
-export QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh"
 export QWEN38_DEBUG=1
 export TEST_EXPECTED_LAUNCH_HF="$HF_TOKEN"
 mkdir -p "$HOME/.cache/huggingface"
