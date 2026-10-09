@@ -119,6 +119,8 @@ if [[ -n "${TAILSCALE_RUNTIME_B64:-}" ]]; then
     fi
     unset TAILSCALE_RUNTIME_B64
     # shellcheck source=tailscale-runtime.sh
+    # Tailscale's userspace socket, binaries and diagnostic files remain on tmpfs.
+    export TS_RUNTIME_DIR="$RUNTIME_LOG_DIR/tailscale"
     source "$RUNTIME_LOG_DIR/tailscale-runtime.sh"
     if ! ts_start; then
         if [[ "$NETWORK_MODE" == tailnet ]]; then
