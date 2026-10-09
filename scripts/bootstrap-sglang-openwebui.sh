@@ -16,7 +16,12 @@
 #   SGLANG_API_KEY  optional, locks the public proxy endpoint down
 #   SERVE_WEBUI     1 (default) also runs OpenWebUI on :8080; 0 = SGLang only,
 #                   the lean path for a coding agent like pi that talks the API
-#   ENABLE_SSH      1 starts sshd for debugging; 0 (default) leaves SSH disabled
+#   ENABLE_SSH      1 starts legacy OpenSSH; 0 (default) leaves it disabled
+#   TS_AUTHKEY      optional; nonempty key auto-enrolls Tailscale, native SSH
+#   TS_HOSTNAME     optional MagicDNS hostname (default: derived container ID)
+#   TS_ENABLE_SSH   1 (default with key) enables native Tailscale SSH, 0 disables
+#   NETWORK_MODE   runpod (default), or tailnet (private Serve only)
+#   TAILSCALE_RUNTIME_B64 injected by launcher/templates alongside BOOTSTRAP_B64
 set -uo pipefail
 
 MODEL_ID="${MODEL_ID:?MODEL_ID missing}"
@@ -28,12 +33,54 @@ MAMBA_RATIO="${MAMBA_RATIO:-4.59}"
 API_KEY="${SGLANG_API_KEY:-}"
 SERVE_WEBUI="${SERVE_WEBUI:-1}"
 ENABLE_SSH="${ENABLE_SSH:-0}"
+NETWORK_MODE="${NETWORK_MODE:-runpod}"
+API_BIND_HOST=0.0.0.0
+WEBUI_BIND_HOST=0.0.0.0
+if [[ "$NETWORK_MODE" == tailnet ]]; then
+    API_BIND_HOST=127.0.0.1
+    WEBUI_BIND_HOST=127.0.0.1
+fi
 
 mkdir -p /workspace
 LOG=/workspace/bootstrap.log
 exec > >(tee -a "$LOG") 2>&1
 echo "=== bootstrap $(date -u +%FT%TZ) ==="
 echo "model=$MODEL_ID spec=$SPEC max_len=$MAX_LEN mem_frac=$MEM_FRAC"
+
+# --- Optional Tailscale (before model downloads) ---------------------------
+# A separate, versioned helper is supplied in both RunPod launch paths.
+# Missing TS_AUTHKEY must not make the legacy RunPod path depend on Tailscale.
+if [[ -n "${TAILSCALE_RUNTIME_B64:-}" ]]; then
+    install -d -m 700 /tmp/qwen38-tailscale
+    if ! printf '%s' "$TAILSCALE_RUNTIME_B64" | base64 -d > /tmp/qwen38-tailscale/runtime.sh; then
+        echo "ERROR: invalid TAILSCALE_RUNTIME_B64" >&2
+        exit 70
+    fi
+    unset TAILSCALE_RUNTIME_B64
+    # shellcheck source=tailscale-runtime.sh
+    source /tmp/qwen38-tailscale/runtime.sh
+    if ! ts_start; then
+        if [[ "$NETWORK_MODE" == tailnet ]]; then
+            echo "FATAL: tailnet-only startup requires a working Tailscale connection" >&2
+            exit 70
+        fi
+        echo "WARNING: optional Tailscale startup failed; retaining RunPod connectivity" >&2
+    fi
+    if [[ "$NETWORK_MODE" == tailnet && "${TS_ACTIVE:-0}" != 1 ]]; then
+        echo "FATAL: tailnet-only startup refused without authenticated Tailscale" >&2
+        exit 70
+    fi
+    if ! ts_serve; then
+        if [[ "$NETWORK_MODE" == tailnet ]]; then
+            echo "FATAL: tailnet-only startup requires functional Tailscale Serve" >&2
+            exit 70
+        fi
+        echo "WARNING: optional Tailscale Serve failed; RunPod connectivity remains" >&2
+    fi
+elif [[ "$NETWORK_MODE" == tailnet || -n "${TS_AUTHKEY:-}" ]]; then
+    echo "ERROR: TAILSCALE_RUNTIME_B64 missing for requested Tailscale mode" >&2
+    exit 70
+fi
 
 # --- Early SSH access -----------------------------------------------------
 # RunPod injects the account's registered SSH keys through PUBLIC_KEY.  The
@@ -200,7 +247,7 @@ exec python3 -m sglang.launch_server \\
   --mamba-ssm-dtype float32 \\
   ${SPEC_FLAGS[@]+"${SPEC_FLAGS[@]}"} \\
   ${API_KEY:+--api-key "$API_KEY"} \\
-  --host 0.0.0.0 --port 8000
+  --host "$API_BIND_HOST" --port 8000
 EOF
 chmod +x /workspace/start-sglang.sh
 
@@ -209,8 +256,8 @@ setsid /workspace/start-sglang.sh > /workspace/sglang.log 2>&1 < /dev/null &
 disown
 
 if [[ "$SERVE_WEBUI" == "1" ]]; then
-  # OpenWebUI caches its model list at startup, so it has to come up AFTER
-  # the API answers. The launcher restarts it anyway once the model is live.
+  # OpenWebUI caches the model list at startup. Start it only after the API
+  # responds, so no remote SSH restart is needed (including tailnet-only mode).
   WEBUI_VENV=/workspace/openwebui-venv
   WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
   cat > /workspace/start-openwebui.sh <<EOF
@@ -220,7 +267,7 @@ export OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_API_KEY=${API_KEY:-EMPTY}
 export WEBUI_AUTH=False
 export ENABLE_OLLAMA_API=False
-exec "$WEBUI_VENV/bin/open-webui" serve --host 0.0.0.0 --port 8080
+exec "$WEBUI_VENV/bin/open-webui" serve --host "$WEBUI_BIND_HOST" --port 8080
 EOF
   chmod +x /workspace/start-openwebui.sh
   # Use a separate Python environment: an unpinned pip install into the
@@ -232,7 +279,21 @@ EOF
     echo "ERROR: uv missing; OpenWebUI disabled (SGLang unaffected)" >&2
   elif uv venv --python /usr/bin/python3 "$WEBUI_VENV" &&
        uv pip install --python "$WEBUI_VENV/bin/python" "open-webui==$WEBUI_VERSION"; then
-    setsid /workspace/start-openwebui.sh > /workspace/openwebui.log 2>&1 < /dev/null &
+    # Delayed startup uses the in-process API key; no key is embedded in this file.
+    cat > /tmp/qwen38-start-webui-when-ready.sh <<'WEBUI_READY'
+#!/usr/bin/env bash
+for ((attempt=0; attempt<180; attempt++)); do
+    if curl -fsS --max-time 4 -H "Authorization: Bearer ${SGLANG_API_KEY:-}" \
+        http://127.0.0.1:8000/v1/models 2>/dev/null | grep -q '"id"'; then
+        exec /workspace/start-openwebui.sh
+    fi
+    sleep 10
+done
+echo "ERROR: OpenWebUI model readiness deadline expired" >&2
+exit 1
+WEBUI_READY
+    chmod 700 /tmp/qwen38-start-webui-when-ready.sh
+    setsid bash /tmp/qwen38-start-webui-when-ready.sh > /workspace/openwebui.log 2>&1 < /dev/null &
     disown
   else
     echo "ERROR: OpenWebUI installation failed; SGLang remains running" >&2
