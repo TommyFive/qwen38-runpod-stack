@@ -17,6 +17,7 @@ jobs:
           bash -n bin/qwen38fast
           bash -n setup.sh
           bash -n create-templates.sh
+          python3 -m py_compile bin/qwen38cold
       - name: Keep installs out of the serving environment
         shell: bash
         run: |
@@ -27,3 +28,8 @@ jobs:
           fi
           grep -Fq 'uv venv --python /usr/bin/python3 "$WEBUI_VENV"' scripts/bootstrap-sglang-openwebui.sh
           grep -Fq 'uv pip install --python "$WEBUI_VENV/bin/python"' scripts/bootstrap-sglang-openwebui.sh
+      - name: Offline cold-start regression (no RunPod/GPU)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p "test_coldstart.py" -v
