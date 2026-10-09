@@ -163,6 +163,8 @@ def one_run(model, prompt, max_tokens, deadline):
                  timeout=min(30.0, time_left(deadline))) as resp:
         for event in _sse_events(resp):
             time_left(deadline)
+            if not event:
+                continue
             if event == "[DONE]":
                 completed = True
                 break
