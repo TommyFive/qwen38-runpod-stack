@@ -20,12 +20,11 @@ skips the UI. Template IDs embed the bootstrap; **recreate templates**
 after an update. Existing running pods and old templates are NOT fixed by
 a repository commit.
 
-Issue #7 adds separate *portless* RunPod templates with Tailnet-only
+The integrated stack adds separate *portless* RunPod templates with Tailnet-only
 Tailscale Serve and native Tailscale SSH. A Tailnet-only endpoint is not
 equivalent to a public RunPod proxy. Tailnet privacy also depends on
-Tailscale grants/ACLs and HTTPS Serve configuration. This PR was branched
-independently of #7 and must be integrated/tested alongside its changes
-before release. Tailscale native SSH must not be confused with public
+Tailscale grants/ACLs and HTTPS Serve configuration. The combined integration branch preserves the original feature-PR histories;
+real GPU/pod verification remains a release gate. Tailscale native SSH must not be confused with public
 RunPod TCP/22 or an OpenSSH daemon.
 
 ## Ephemeral runtime
