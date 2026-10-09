@@ -224,33 +224,58 @@ fi
 mkdir -p "$(dirname "$POD_FILE")"
 echo "$POD_ID" > "$POD_FILE"
 
-OWUI="https://${POD_ID}-8080.proxy.runpod.net"
-API="https://${POD_ID}-8000.proxy.runpod.net/v1"
+if [[ "$NETWORK_MODE" == tailnet ]]; then
+    API="https://${TS_HOSTNAME}.${TAILNET_DOMAIN}/v1"
+    OWUI="https://${TS_HOSTNAME}.${TAILNET_DOMAIN}:8443"
+else
+    API="https://${POD_ID}-8000.proxy.runpod.net/v1"
+    OWUI="https://${POD_ID}-8080.proxy.runpod.net"
+fi
+
+# Atomic local endpoint marker: the proxy will use the explicitly selected
+# transport for the current pod, instead of guessing a public RunPod URL.
+umask 077
+python3 - "$ENDPOINT_FILE" "$POD_ID" "$API" <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+temporary = path.with_suffix(".tmp")
+temporary.write_text(json.dumps({"pod_id": sys.argv[2], "api_url": sys.argv[3]}) + "\n")
+temporary.chmod(0o600)
+os.replace(temporary, path)
+PY
 echo "Pod:       $POD_ID"
 [[ $PI_MODE -eq 0 ]] && echo "OpenWebUI: $OWUI"
 echo "API:       $API"
 echo
-echo "Waiting for the model. Image pull plus 20GB of weights, expect 8 to 15 minutes."
-
-until curl -s --max-time 10 -H "Authorization: Bearer $API_KEY" "$API/models" 2>/dev/null | grep -q "qwen38-uncensored"; do
-    sleep 20
+echo "Waiting for the model (bounded to 15 minutes)..."
+ready=0
+for ((attempt=0; attempt<90; attempt++)); do
+    if curl -fsS --max-time 10 -H "Authorization: Bearer $API_KEY" "$API/models" 2>/dev/null | grep -q "qwen38-uncensored"; then
+        ready=1
+        break
+    fi
+    sleep 10
 done
+if [[ "$ready" != 1 ]]; then
+    echo "ERROR: model readiness timeout; the pod may still be running. Use qwen38fast stop." >&2
+    exit 1
+fi
 echo "Model is answering."
 
+# On the pod, OpenWebUI is now started only after model readiness. No remote
+# SSH restart is needed, including in private/portless tailnet-only mode.
 if [[ $PI_MODE -eq 0 ]]; then
-    # OpenWebUI cached its model list at boot, when SGLang was not up yet.
-    IP=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['ip'])")
-    PORT=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['port'])")
-    ssh -i ~/.runpod/ssh/runpodctl-ssh-key -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 "root@$IP" -p "$PORT" 'bash -s' <<'REMOTE' >/dev/null 2>&1
-pkill -f open-webui
-sleep 2
-setsid /workspace/start-openwebui.sh > /workspace/openwebui.log 2>&1 < /dev/null &
-disown
-REMOTE
-    until curl -s -o /dev/null --max-time 10 -w "%{http_code}" "$OWUI/" 2>/dev/null | grep -q 200; do
+    ui_ready=0
+    for ((attempt=0; attempt<60; attempt++)); do
+        if curl -fsS --max-time 10 -o /dev/null "$OWUI/"; then
+            ui_ready=1
+            break
+        fi
         sleep 5
     done
+    if [[ "$ui_ready" != 1 ]]; then
+        echo "WARNING: OpenWebUI is not ready; SGLang API is available" >&2
+    fi
 fi
 
 DEADLINE=$(date -v "+${HOURS}H" '+%H:%M')
