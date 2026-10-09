@@ -31,17 +31,18 @@ and QWEN38_BENCHMARK_SCRIPT to the corresponding files in scripts/.
 | BENCHMARK_RUNS | 3 | 1–20 measured runs/workload, in addition to one discarded warmup. |
 | BENCHMARK_MAX_TOKENS | 512 | 1–4096 per response, *cap*, not a guaranteed number generated. |
 | BENCHMARK_TIMEOUT_SECONDS | 900 | 1–7200; wall-clock bound covering readiness and HTTP inference. |
-| BENCHMARK_REPORT_PATH | /tmp/qwen38-benchmark.json | JSON result; can explicitly choose /workspace/... for export. |
+| BENCHMARK_REPORT_PATH | /dev/shm/qwen38-benchmark.json | Ephemeral private JSON; can explicitly choose /workspace/... to persist. |
 
-The benchmark worker and trace are stored in /tmp/qwen38-benchmark and
-/tmp/qwen38-benchmark.log, respectively, only when enabled. They are private
+The decoded benchmark worker and worker log are in
+`/dev/shm/qwen38-runtime/benchmark_sglang.py` and
+`/dev/shm/qwen38-runtime/benchmark.log`, respectively, only when enabled. They are private
 (0700 directory, 0600 report/script). The final report is atomically replaced.
 Benchmark failures, unauthorized API or deadlines mark a failed/partial report;
 they do **not** stop or restart a healthy inference server. Pod shutdown sends
 SIGTERM to the benchmark worker. Read it on the pod:
 
-    cat /tmp/qwen38-benchmark.log
-    cat /tmp/qwen38-benchmark.json
+    cat /dev/shm/qwen38-runtime/benchmark.log
+    cat /dev/shm/qwen38-benchmark.json
 
 An explicitly configured /workspace report persists as long as that volume
 exists. Avoid persistent exports unless needed; the default report is ephemeral.
@@ -120,7 +121,7 @@ the existing CLI tests. CI has no GPU or SGLang model; these are **offline
 tests**, not measured GPU performance.
 
 GPU smoke checklist (explicit on-demand pod required; not run by CI):
-1. BENCHMARK=0: boot the pod and check that /tmp/qwen38-benchmark* is absent.
+1. BENCHMARK=0: boot the pod and check that `/dev/shm/qwen38-benchmark.json` is absent.
 2. BENCHMARK=1 BENCHMARK_RUNS=1 BENCHMARK_MAX_TOKENS=16: boot the
    same engine settings, verify API availability during benchmark, check
    exactly 6 completed requests and three report workloads.
