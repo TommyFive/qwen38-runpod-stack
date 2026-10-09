@@ -98,10 +98,9 @@ running → the proxy returns a clean 503 telling you to start one.
 ## Requirements
 
 - [`runpodctl`](https://github.com/runpod/runpodctl) installed and logged in
-- A Hugging Face token in `~/.cache/huggingface/token` (the default model is not
-  gated, but a token gives faster, rate-limit-free downloads)
-- The RunPod SSH key in `~/.runpod/ssh/runpodctl-ssh-key` (only needed for the
-  OpenWebUI restart in the full stack)
+- An optional Hugging Face token: exported `HF_TOKEN` takes precedence over
+  `~/.cache/huggingface/token`. Neither guarantees download speed.
+- No SSH key is required to restart OpenWebUI; bootstrap starts it after model readiness.
 - Python 3, `base64`, `curl`
 - For the agent path: [pi](https://pi.dev) (or any OpenAI-compatible agent)
 - macOS for the LaunchAgents (the scripts themselves are portable)
@@ -192,6 +191,11 @@ is then local only and cannot fire while the Mac is asleep.
 Full details in [docs/COST_CONTROL.md](docs/COST_CONTROL.md).
 
 ## Security
+
+**Important:** RunPod's 8000/8080 HTTP proxies are public internet endpoints. SGLang
+requires a key and OpenWebUI requires a pre-provisioned administrator. Old pods
+and old RunPod templates retain the previous insecure behavior. Recreate
+RunPod templates before using private data. See [Security and privacy](docs/SECURITY.md).
 
 - **No keys, no tokens, no personal paths in this repo.** `qwen38fast` generates
   the API key locally and hands it to SGLang, so the publicly reachable pod port

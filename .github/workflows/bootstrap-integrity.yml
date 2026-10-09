@@ -17,6 +17,7 @@ jobs:
           bash -n bin/qwen38fast
           bash -n setup.sh
           bash -n create-templates.sh
+          bash -n tests/test-privacy.sh
       - name: Keep installs out of the serving environment
         shell: bash
         run: |
@@ -27,3 +28,6 @@ jobs:
           fi
           grep -Fq 'uv venv --python /usr/bin/python3 "$WEBUI_VENV"' scripts/bootstrap-sglang-openwebui.sh
           grep -Fq 'uv pip install --python "$WEBUI_VENV/bin/python"' scripts/bootstrap-sglang-openwebui.sh
+      - name: Privacy security and credential regression suite
+        shell: bash
+        run: bash tests/test-privacy.sh

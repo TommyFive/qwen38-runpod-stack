@@ -15,7 +15,8 @@ mk() { # name  ports  port_labels  serve_webui
   BS=$(base64 -i "$BOOTSTRAP")
   ENV=$(python3 -c "import json,sys;print(json.dumps({
     'BOOTSTRAP_B64': sys.argv[1], 'MODEL_ID': sys.argv[2], 'SERVED_NAME': 'qwen38-uncensored',
-    'MAX_LEN':'262144','SPEC':'dflash2','MEM_FRAC':'0.85','MAMBA_RATIO':'4.59','SERVE_WEBUI': sys.argv[3],'ENABLE_SSH':'0'}))" "$BS" "$MODEL" "$4")
+    'MAX_LEN':'262144','SPEC':'dflash2','MEM_FRAC':'0.85','MAMBA_RATIO':'4.59','SERVE_WEBUI': sys.argv[3],'ENABLE_SSH':'0','DEBUG':'0',
+    'RUNTIME_LOG_DIR':'/dev/shm/qwen38-runtime'}))" "$BS" "$MODEL" "$4")
   runpodctl template create --name "$1" --image "$IMAGE" \
     --container-disk-in-gb 150 --ports "$2" --port-labels "$3" \
     --docker-start-cmd 'bash,-c,echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh' \
