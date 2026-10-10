@@ -9,6 +9,10 @@ STORAGE_HELPER="$HERE/scripts/model-storage.py"
 BENCH_SCRIPT="$HERE/scripts/benchmark_sglang.py"
 PORTS_HELPER="${QWEN38_PORTS_HELPER:-$HERE/scripts/private-template-ports.py}"
 MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
+HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME:-}"
+if [[ -n "$HF_SECRET_NAME" && ! "$HF_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
+  echo "QWEN38_HF_SECRET_NAME must be a valid RunPod secret name" >&2; exit 64
+fi
 MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
 MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
 case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
@@ -32,8 +36,11 @@ mk() { # name ports labels serve_webui network_mode
     "MODEL_STORAGE":sys.argv[8], "MODEL_RAM_DIR":sys.argv[9],
     "MODEL_SSD_DIR":sys.argv[10], "BENCHMARK":"0",
     "DEBUG":"0", "COLDSTART_TRACE":"1",
-    "RUNTIME_LOG_DIR":"/dev/shm/qwen38-runtime"
-  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR")
+    "RUNTIME_LOG_DIR":"/dev/shm/qwen38-runtime",
+    "SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLAMA_API_KEY }}",
+    **({"TS_AUTHKEY":"{{ RUNPOD_SECRET_TS_AUTHKEY }}"} if sys.argv[5]=="tailnet" else {}),
+    **({"HF_TOKEN":"{{ RUNPOD_SECRET_"+sys.argv[11]+" }}"} if sys.argv[11] else {})
+  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME")
 
   local args=(template create --name "$1" --image "$IMAGE" --container-disk-in-gb 150)
   # Tailnet-only: never publish container ports through the RunPod proxy.
@@ -77,7 +84,8 @@ id=$(mk qwen38-uncensored-tailnet-pi \
   '' '' 0 tailnet)
 echo "  QWEN38_TEMPLATE_TAILNET_PI=$id"
 echo "For tailnet-only templates, verify 'runpodctl template get <id>' has NO public ports."
-echo "Configure TS_AUTHKEY for private launches (never commit credentials)."
+echo "Private templates reference existing RunPod Secret TS_AUTHKEY; all templates reference LLAMA_API_KEY."
+echo "To use your Hugging Face RunPod Secret, set QWEN38_HF_SECRET_NAME to its exact secret name."
 echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenWebUI,"
 echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
