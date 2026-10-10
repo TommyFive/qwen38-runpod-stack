@@ -18,11 +18,15 @@
 #
 # Full reasoning: docs/PERFORMANCE.md
 set -uo pipefail
+set +x
+umask 077
 
 # Account-specific RunPod template IDs. Override via env, or recreate them with
 # create-templates.sh and export QWEN38_TEMPLATE / QWEN38_TEMPLATE_PI.
 TEMPLATE_ID="${QWEN38_TEMPLATE:-bxwo0swnm9}"        # full stack: SGLang + OpenWebUI (8080)
 TEMPLATE_ID_PI="${QWEN38_TEMPLATE_PI:-f7gudhalzm}"  # lean: SGLang API only, for pi
+TEMPLATE_ID_TAILNET="${QWEN38_TEMPLATE_TAILNET:-}"
+TEMPLATE_ID_TAILNET_PI="${QWEN38_TEMPLATE_TAILNET_PI:-}"
 POD_NAME="qwen38fast"
 DISK_GB=150
 HOURS=4
@@ -32,14 +36,49 @@ MODEL_ID="sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4"
 MAX_LEN="262144"
 MEM_FRAC="0.85"
 PI_MODE=0                         # --pi: no OpenWebUI, ready as soon as the API answers
+MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
+MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
+RAM_PEAK_FACTOR="${QWEN38_RAM_PEAK_FACTOR:-}"  # explicit measured test override; default 2.5
+RAM_RELEASE="${QWEN38_MODEL_RAM_RELEASE_AFTER_LOAD:-0}" # default: retain weights in tmpfs
+MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
+BENCHMARK="${BENCHMARK:-0}"
+BENCHMARK_RUNS="${BENCHMARK_RUNS:-3}"
+BENCHMARK_MAX_TOKENS="${BENCHMARK_MAX_TOKENS:-512}"
+BENCHMARK_TIMEOUT_SECONDS="${BENCHMARK_TIMEOUT_SECONDS:-900}"
+BENCHMARK_REPORT_PATH="${BENCHMARK_REPORT_PATH:-/dev/shm/qwen38-benchmark.json}"
+COLDSTART_TRACE="${QWEN38_COLDSTART_TRACE:-1}"
+DEBUG="${QWEN38_DEBUG:-0}"
 # Set QWEN38_ENABLE_SSH=1 only when an SSH debugging session is needed.
 ENABLE_SSH="${QWEN38_ENABLE_SSH:-0}"
+NETWORK_MODE="${QWEN38_NETWORK_MODE:-runpod}"
+TS_ENABLE_SSH="${TS_ENABLE_SSH:-1}"
+TS_HOSTNAME="${TS_HOSTNAME:-}"
+TS_AUTHKEY="${TS_AUTHKEY:-}"
+CREDENTIAL_MODE="${QWEN38_CREDENTIAL_MODE:-runpod_secrets}"
+HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME-HF_TOKEN}"
+TAILNET_DOMAIN="${QWEN38_TAILNET_DOMAIN:-}"
 
 TOKEN_FILE="$HOME/.cache/huggingface/token"
 KEY_FILE="$HOME/.runpod/qwen38.key"
 POD_FILE="$HOME/.runpod/current-pod"
+ENDPOINT_FILE="$HOME/.runpod/current-endpoint.json"
 # Installed by setup.sh; override to test a working-tree bootstrap before deploying.
 BOOTSTRAP="${QWEN38_BOOTSTRAP:-$HOME/.local/share/qwen38-runpod-stack/bootstrap-sglang-openwebui.sh}"
+TS_RUNTIME="${QWEN38_TAILSCALE_RUNTIME:-$HOME/.local/share/qwen38-runpod-stack/tailscale-runtime.sh}"
+STORAGE_HELPER="${QWEN38_STORAGE_HELPER:-$HOME/.local/share/qwen38-runpod-stack/model-storage.py}"
+BENCHMARK_SCRIPT="${QWEN38_BENCHMARK_SCRIPT:-$HOME/.local/share/qwen38-runpod-stack/benchmark_sglang.py}"
+WEBUI_PASSWORD_FILE="$HOME/.runpod/qwen38-webui-password"
+WEBUI_ADMIN_EMAIL="${QWEN38_WEBUI_ADMIN_EMAIL:-admin@qwen38.example.com}"
+
+cold_mark() {
+  [[ "$COLDSTART_TRACE" == 1 ]] || return 0
+  python3 - "$1" <<'PY_COLD'
+import datetime, json, sys, time
+print("QWEN38_COLDSTART " + json.dumps({"schema": 1, "event": sys.argv[1], "source": "host",
+      "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00","Z"),
+      "mono": round(time.monotonic(),6)}, separators=(",",":")), flush=True)
+PY_COLD
+}
 
 case "${1:-}" in
     status)
@@ -56,7 +95,7 @@ import sys, json
 print(' '.join(p['id'] for p in json.load(sys.stdin)))")
         [[ -z "$ids" ]] && { echo "nothing running"; exit 0; }
         for id in $ids; do runpodctl pod delete "$id" >/dev/null && echo "terminated: $id"; done
-        rm -f "$POD_FILE"
+        rm -f "$POD_FILE" "$ENDPOINT_FILE"
         exit 0
         ;;
 esac
@@ -68,11 +107,102 @@ while [[ $# -gt 0 ]]; do
         --spec)    SPEC="$2"; shift 2 ;;
         --model)   MODEL_ID="$2"; shift 2 ;;
         --max-len) MAX_LEN="$2"; shift 2 ;;
-        --pi)      PI_MODE=1; TEMPLATE_ID="$TEMPLATE_ID_PI"; POD_NAME="qwen38pi"; shift ;;
+        --storage) MODEL_STORAGE="$2"; shift 2 ;;
+        --ram-dir) MODEL_RAM_DIR="$2"; shift 2 ;;
+        --ssd-dir) MODEL_SSD_DIR="$2"; shift 2 ;;
+        --benchmark) BENCHMARK=1; shift ;;
+        --network) NETWORK_MODE="$2"; shift 2 ;;
+        --ts-hostname) TS_HOSTNAME="$2"; shift 2 ;;
+        --pi)      PI_MODE=1; POD_NAME="qwen38pi"; shift ;;
         *)         echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
+for v in COLDSTART_TRACE DEBUG BENCHMARK RAM_RELEASE; do
+    [[ "${!v}" == 0 || "${!v}" == 1 ]] || { echo "$v must be 0 or 1" >&2; exit 64; }
+done
+case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
+if [[ "$RAM_RELEASE" == 1 && "$MODEL_STORAGE" != ram ]]; then echo "RAM weight release requires --storage ram" >&2; exit 64; fi
+if [[ -n "$RAM_PEAK_FACTOR" ]]; then
+    if ! python3 - "$RAM_PEAK_FACTOR" <<'PY_FACTOR'
+import math,sys
+try:
+    factor=float(sys.argv[1])
+    assert math.isfinite(factor) and 1.5 <= factor <= 5.0
+except (AssertionError,ValueError):
+    sys.exit(1)
+PY_FACTOR
+    then
+        echo "QWEN38_RAM_PEAK_FACTOR must be a finite value from 1.5 to 5.0" >&2
+        exit 64
+    fi
+fi
+if [[ "$BENCHMARK" == 1 ]]; then
+    for item in "BENCHMARK_RUNS:$BENCHMARK_RUNS:20" "BENCHMARK_MAX_TOKENS:$BENCHMARK_MAX_TOKENS:4096" "BENCHMARK_TIMEOUT_SECONDS:$BENCHMARK_TIMEOUT_SECONDS:7200"; do
+        IFS=: read -r label value max <<< "$item"
+        [[ "$value" =~ ^[0-9]+$ ]] || { echo "$label must be numeric" >&2; exit 64; }
+        (( 10#$value >= 1 && 10#$value <= max )) || { echo "$label out of range" >&2; exit 64; }
+    done
+fi
+export QWEN38_COLDSTART_TRACE="$COLDSTART_TRACE"
+if [[ "$NETWORK_MODE" != runpod && "$NETWORK_MODE" != tailnet ]]; then
+    echo "QWEN38_NETWORK_MODE must be runpod or tailnet" >&2; exit 1
+fi
+if [[ "$TS_ENABLE_SSH" != 0 && "$TS_ENABLE_SSH" != 1 ]]; then
+    echo "TS_ENABLE_SSH must be 0 or 1" >&2; exit 1
+fi
+if [[ -n "$TS_HOSTNAME" && ! "$TS_HOSTNAME" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+    echo "TS_HOSTNAME must be a lowercase DNS label" >&2; exit 1
+fi
+case "$CREDENTIAL_MODE" in
+    runpod_secrets|local) ;;
+    *) echo "QWEN38_CREDENTIAL_MODE must be runpod_secrets or local" >&2; exit 64 ;;
+esac
+# Use secret references only after checking secret names against an allowlist.
+if [[ "$CREDENTIAL_MODE" == runpod_secrets && -n "$HF_SECRET_NAME" &&
+      ! "$HF_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
+    echo "QWEN38_HF_SECRET_NAME must be a RunPod secret identifier" >&2; exit 64
+fi
+if [[ "$NETWORK_MODE" == tailnet ]]; then
+    if [[ "$CREDENTIAL_MODE" == local && -z "$TS_AUTHKEY" ]]; then
+        echo "NETWORK_MODE=tailnet requires TS_AUTHKEY in local credential mode" >&2; exit 1
+    fi
+    if [[ -z "$TS_HOSTNAME" ]]; then
+        TS_HOSTNAME="qwen38-$(python3 -c 'import secrets; print(secrets.token_hex(5))')"
+    fi
+    if [[ -z "$TAILNET_DOMAIN" ]] && command -v tailscale >/dev/null 2>&1; then
+        TAILNET_DOMAIN="$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; d=(json.load(sys.stdin).get("Self") or {}).get("DNSName","").rstrip("."); print(d.partition(".")[2])' 2>/dev/null || true)"
+    fi
+    TAILNET_DOMAIN="${TAILNET_DOMAIN#.}"
+    TAILNET_DOMAIN="${TAILNET_DOMAIN%.}"
+    if [[ ! "$TAILNET_DOMAIN" =~ ^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$ ]]; then
+        echo "Set QWEN38_TAILNET_DOMAIN, e.g. tailc8dece.ts.net" >&2; exit 1
+    fi
+    if [[ -z "$TEMPLATE_ID_TAILNET" || -z "$TEMPLATE_ID_TAILNET_PI" ]]; then
+        echo "Tailnet template IDs missing; run ./create-templates.sh" >&2; exit 1
+    fi
+    TEMPLATE_ID="$TEMPLATE_ID_TAILNET"
+    [[ $PI_MODE -eq 1 ]] && TEMPLATE_ID="$TEMPLATE_ID_TAILNET_PI"
+    # Independently audit live template metadata before any paid pod launch.
+    # A template name or NETWORK_MODE env never proves absence of public ports.
+    if ! runpodctl template get "$TEMPLATE_ID" -o json | python3 -c '
+import json,sys
+try:
+    d=json.load(sys.stdin)
+    assert d.get("id")==sys.argv[1]
+    assert d.get("env",{}).get("NETWORK_MODE")=="tailnet"
+    # runpodctl omits empty slices in JSON (omitempty).
+    assert d.get("ports", [])==[]
+    assert not d.get("portsConfig")
+except (AssertionError,AttributeError,ValueError,TypeError):
+    sys.exit(1)
+' "$TEMPLATE_ID"; then
+        echo "SECURITY ERROR: private template is not verified portless; refusing pod creation" >&2
+        exit 1
+    fi
+else
+    [[ $PI_MODE -eq 1 ]] && TEMPLATE_ID="$TEMPLATE_ID_PI"
+fi
 if [[ "$ENABLE_SSH" != "0" && "$ENABLE_SSH" != "1" ]]; then
     echo "QWEN38_ENABLE_SSH must be 0 or 1" >&2
     exit 1
@@ -92,40 +222,119 @@ case "$GPU_KEY" in
 esac
 
 [[ -r "$BOOTSTRAP" ]] || { echo "bootstrap missing: $BOOTSTRAP" >&2; exit 1; }
-
-if [[ ! -s "$KEY_FILE" ]]; then
-    mkdir -p "$(dirname "$KEY_FILE")"
-    python3 -c "import secrets; print('sk-qwen38-' + secrets.token_urlsafe(24))" > "$KEY_FILE"
-    chmod 600 "$KEY_FILE"
-    echo "generated a new API key: $KEY_FILE"
+[[ -r "$TS_RUNTIME" ]] || { echo "Tailscale helper missing: $TS_RUNTIME (rerun ./setup.sh)" >&2; exit 1; }
+[[ -r "$STORAGE_HELPER" ]] || { echo "storage helper missing: $STORAGE_HELPER (rerun ./setup.sh)" >&2; exit 1; }
+if [[ "$BENCHMARK" == 1 ]]; then
+    [[ -r "$BENCHMARK_SCRIPT" ]] || { echo "benchmark helper missing: $BENCHMARK_SCRIPT" >&2; exit 64; }
 fi
-API_KEY=$(cat "$KEY_FILE")
+
+if [[ "$CREDENTIAL_MODE" == local ]]; then
+    if [[ ! -s "$KEY_FILE" ]]; then
+        mkdir -p "$(dirname "$KEY_FILE")"
+        python3 -c "import secrets; print('sk-qwen38-' + secrets.token_urlsafe(24))" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+        echo "generated a new API key: $KEY_FILE"
+    fi
+    API_KEY=$(cat "$KEY_FILE")
+    [[ -n "$API_KEY" ]] || { echo "empty SGLANG_API_KEY" >&2; exit 64; }
+else
+    # The RunPod Secret is resolved inside the pod, not on this Mac.
+    # A local key may be supplied explicitly for authenticated health checks.
+    # Never assume the old auto-generated qwen38.key matches LLAMA_API_KEY.
+    API_KEY=""
+    if [[ -n "${QWEN38_SGLANG_CLIENT_KEY_FILE:-}" ]]; then
+        [[ -s "$QWEN38_SGLANG_CLIENT_KEY_FILE" ]] || {
+            echo "Configured QWEN38_SGLANG_CLIENT_KEY_FILE missing/empty; no pod created" >&2
+            exit 64
+        }
+        API_KEY=$(cat "$QWEN38_SGLANG_CLIENT_KEY_FILE")
+    fi
+    echo "RunPod Secrets: Tailscale (private) and SGLang use RunPod references."
+    if [[ -z "$API_KEY" ]]; then
+        echo "No local matching SGLang client key: authenticated readiness/TTFI probes will be skipped."
+    fi
+    echo "Local proxy needs the SAME LLAMA_API_KEY in ~/.runpod/qwen38.key."
+fi
+WEBUI_ADMIN_PASSWORD=""
+if [[ $PI_MODE -eq 0 ]]; then
+    if [[ -n "${QWEN38_WEBUI_ADMIN_PASSWORD:-}" ]]; then
+        WEBUI_ADMIN_PASSWORD="$QWEN38_WEBUI_ADMIN_PASSWORD"
+    else
+        if [[ ! -s "$WEBUI_PASSWORD_FILE" ]]; then
+            mkdir -p "$(dirname "$WEBUI_PASSWORD_FILE")"
+            (umask 077; python3 -c 'import secrets; print(secrets.token_urlsafe(36))' > "$WEBUI_PASSWORD_FILE")
+            chmod 600 "$WEBUI_PASSWORD_FILE"
+            echo "Generated OpenWebUI admin password at: $WEBUI_PASSWORD_FILE"
+        fi
+        WEBUI_ADMIN_PASSWORD=$(cat "$WEBUI_PASSWORD_FILE")
+    fi
+    [[ ${#WEBUI_ADMIN_PASSWORD} -ge 16 ]] || { echo "WEBUI password must be >=16 chars" >&2; exit 64; }
+fi
 
 running=$(runpodctl pod list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
 if [[ "$running" != "0" ]]; then
-    echo "A pod is already running. 'qwen38fast status' shows which, 'qwen38fast stop' ends it."
+    echo "A pod is already running. Check 'qwen38fast status' and terminate only the intended Pod ID using 'runpodctl pod delete <exact-pod-id>'."
     exit 1
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" <<'PY'
-import base64, json, pathlib, sys
+ENV_JSON=$(QWEN38_MODEL_RAM_RELEASE_AFTER_LOAD="$RAM_RELEASE" QWEN38_RAM_PEAK_FACTOR="$RAM_PEAK_FACTOR" QWEN38_CREDENTIAL_MODE="$CREDENTIAL_MODE" QWEN38_HF_SECRET_NAME="$HF_SECRET_NAME" WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
+import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
     "BOOTSTRAP_B64": b64,
+    "TAILSCALE_RUNTIME_B64": base64.b64encode(pathlib.Path(sys.argv[10]).read_bytes()).decode(),
+    "NETWORK_MODE": sys.argv[11],
+    "TS_HOSTNAME": sys.argv[12],
+    "TS_ENABLE_SSH": sys.argv[13],
+    "STORAGE_HELPER_B64": base64.b64encode(pathlib.Path(sys.argv[14]).read_bytes()).decode(),
+    "MODEL_STORAGE": sys.argv[15],
+    "MODEL_RAM_RELEASE_AFTER_LOAD": os.environ["QWEN38_MODEL_RAM_RELEASE_AFTER_LOAD"],
+    "MODEL_RAM_DIR": sys.argv[16],
+    "MODEL_SSD_DIR": sys.argv[17],
+    "BENCHMARK": sys.argv[19],
+    "DEBUG": sys.argv[24],
+    "COLDSTART_TRACE": sys.argv[25],
+    "RUNTIME_LOG_DIR": "/dev/shm/qwen38-runtime",
     "MODEL_ID":      sys.argv[3],
     "SERVED_NAME":   "qwen38-uncensored",
     "SPEC":          sys.argv[4],
     "MAX_LEN":       sys.argv[5],
     "MEM_FRAC":      sys.argv[6],
     "MAMBA_RATIO":   "4.59",
-    "SGLANG_API_KEY": pathlib.Path(sys.argv[7]).read_text().strip(),
+    "SGLANG_API_KEY": ("{{ RUNPOD_SECRET_LLAMA_API_KEY }}" if os.environ["QWEN38_CREDENTIAL_MODE"] == "runpod_secrets"
+                        else pathlib.Path(sys.argv[7]).read_text().strip()),
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
 }
-tokfile = pathlib.Path(sys.argv[2])
-if tokfile.is_file():
-    env["HF_TOKEN"] = tokfile.read_text().strip()
+if os.environ.get("QWEN38_RAM_PEAK_FACTOR") and env["MODEL_STORAGE"] == "ram":
+    env["MODEL_RAM_PEAK_FACTOR"] = os.environ["QWEN38_RAM_PEAK_FACTOR"]
+if sys.argv[8] != "1":
+    env["WEBUI_ADMIN_PASSWORD"] = os.environ["WEBUI_ADMIN_PASSWORD"]
+    env["WEBUI_ADMIN_EMAIL"] = os.environ["WEBUI_ADMIN_EMAIL"]
+if sys.argv[19] == "1":
+    env.update({
+        "BENCHMARK_B64": base64.b64encode(pathlib.Path(sys.argv[18]).read_bytes()).decode(),
+        "BENCHMARK_RUNS": sys.argv[20],
+        "BENCHMARK_MAX_TOKENS": sys.argv[21],
+        "BENCHMARK_TIMEOUT_SECONDS": sys.argv[22],
+        "BENCHMARK_REPORT_PATH": sys.argv[23]
+    })
+if os.environ["QWEN38_CREDENTIAL_MODE"] == "runpod_secrets":
+    if sys.argv[11] == "tailnet":
+        env["TS_AUTHKEY"] = "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
+    hf_name = os.environ["QWEN38_HF_SECRET_NAME"]
+    if hf_name:
+        env["HF_TOKEN"] = "{{ RUNPOD_SECRET_" + hf_name + " }}"
+else:
+    if os.environ.get("TS_AUTHKEY"):
+        env["TS_AUTHKEY"] = os.environ["TS_AUTHKEY"]
+    token = os.environ.get("HF_TOKEN","")
+    tokfile = pathlib.Path(sys.argv[2])
+    if not token and tokfile.is_file():
+        token = tokfile.read_text().strip()
+    if token:
+        env["HF_TOKEN"] = token
 print(json.dumps(env))
 PY
 )
@@ -134,68 +343,134 @@ echo "Starting $POD_NAME"
 echo "  GPU:     $GPU_KEY (from \$$RATE/h, ${HOURS}h window)"
 echo "  Model:   $MODEL_ID"
 echo "  Spec:    $SPEC | context: $MAX_LEN"
+echo "  Network: $NETWORK_MODE"
+echo "  Storage: $MODEL_STORAGE (release weights after load: $RAM_RELEASE)"
+[[ "$BENCHMARK" == 1 ]] && echo "  Benchmark: $BENCHMARK_RUNS runs, timeout $BENCHMARK_TIMEOUT_SECONDS sec"
+[[ "$NETWORK_MODE" == tailnet ]] && echo "  Tailnet: $TS_HOSTNAME.$TAILNET_DOMAIN"
 echo
 
 create_pod() {
+    # macOS ships Bash 3.2, where an empty array under set -u is unbound.
+    # runpodctl defaults --ssh=true for public pods; make both modes explicit.
+    local options=(--ssh=true)
+    [[ "$NETWORK_MODE" == tailnet ]] && options=(--ssh=false)
     rp "${HOURS}h" pod create \
         --template-id "$TEMPLATE_ID" \
         --gpu-id "$GPU_ID" \
         --cloud-type "$1" \
         --name "$POD_NAME" \
         --container-disk-in-gb "$DISK_GB" \
+        "${options[@]}" \
         --env "$ENV_JSON" 2>&1 | python3 -c "
 import sys, json
 raw = sys.stdin.read()
 for line in raw.splitlines():
     if line.startswith('rp:'):
-        print(line, file=sys.stderr)
+        print('rp: wrapper notice suppressed to protect secrets', file=sys.stderr)
 try:
     d = json.loads(raw[raw.index('{'):])
 except Exception:
-    print('ERROR creating pod:', raw[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR creating pod (RunPod response redacted to protect env secrets)', file=sys.stderr); sys.exit(1)
 if 'error' in d:
-    print('ERROR:', str(d['error'])[:300], file=sys.stderr); sys.exit(1)
+    print('ERROR: RunPod rejected pod creation (details redacted)', file=sys.stderr); sys.exit(1)
 print(d['id'])"
 }
 
+cold_mark pod_create_request
 POD_ID=$(create_pod "$CLOUD")
 if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
     echo "Community cloud has no free card, trying secure cloud." >&2
     POD_ID=$(create_pod SECURE)
 fi
 
+unset ENV_JSON WEBUI_ADMIN_PASSWORD
 [[ -z "$POD_ID" ]] && { echo "Could not create the pod." >&2; exit 1; }
+cold_mark pod_created
 
 mkdir -p "$(dirname "$POD_FILE")"
 echo "$POD_ID" > "$POD_FILE"
 
-OWUI="https://${POD_ID}-8080.proxy.runpod.net"
-API="https://${POD_ID}-8000.proxy.runpod.net/v1"
+if [[ "$NETWORK_MODE" == tailnet ]]; then
+    API="https://${TS_HOSTNAME}.${TAILNET_DOMAIN}/v1"
+    OWUI="https://${TS_HOSTNAME}.${TAILNET_DOMAIN}:8443"
+else
+    API="https://${POD_ID}-8000.proxy.runpod.net/v1"
+    OWUI="https://${POD_ID}-8080.proxy.runpod.net"
+fi
+
+# Atomic local endpoint marker: the proxy will use the explicitly selected
+# transport for the current pod, instead of guessing a public RunPod URL.
+umask 077
+python3 - "$ENDPOINT_FILE" "$POD_ID" "$API" <<'PY'
+import json, os, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+temporary = path.with_suffix(".tmp")
+temporary.write_text(json.dumps({"pod_id": sys.argv[2], "api_url": sys.argv[3]}) + "\n")
+temporary.chmod(0o600)
+os.replace(temporary, path)
+PY
 echo "Pod:       $POD_ID"
 [[ $PI_MODE -eq 0 ]] && echo "OpenWebUI: $OWUI"
 echo "API:       $API"
 echo
-echo "Waiting for the model. Image pull plus 20GB of weights, expect 8 to 15 minutes."
-
-until curl -s --max-time 10 -H "Authorization: Bearer $API_KEY" "$API/models" 2>/dev/null | grep -q "qwen38-uncensored"; do
-    sleep 20
+if [[ -z "$API_KEY" ]]; then
+    # No matching local secret: auth probes cannot validate model readiness.
+    # Do not spend 15 minutes on guaranteed 401s or report a false success.
+    echo "Model readiness and first inference NOT VERIFIED (no local LLAMA_API_KEY)."
+else
+echo "Waiting for the model (bounded to 15 minutes)..."
+ready=0
+for ((attempt=0; attempt<90; attempt++)); do
+    if curl -fsS --max-time 10 -H "Authorization: Bearer $API_KEY" "$API/models" 2>/dev/null | grep -q "qwen38-uncensored"; then
+        ready=1
+        break
+    fi
+    sleep 10
 done
+if [[ "$ready" != 1 ]]; then
+    echo "ERROR: model readiness timeout; the pod may still be billed. Terminate the exact Pod ID explicitly." >&2
+    exit 1
+fi
+cold_mark api_models_ready
 echo "Model is answering."
+if [[ "$COLDSTART_TRACE" == 1 ]]; then
+    if curl -fsS --max-time 120 -H "Authorization: Bearer $API_KEY" \
+        -H "Content-Type: application/json" \
+        -d '{"model":"qwen38-uncensored","messages":[{"role":"user","content":"Reply OK"}],"max_tokens":8,"temperature":0}' \
+        "$API/chat/completions" 2>/dev/null | python3 -c '
+import json,sys
+try:
+    r=json.load(sys.stdin)
+    assert r.get("choices") and r["choices"][0].get("message") is not None
+except (ValueError,AssertionError,KeyError,TypeError):
+    sys.exit(1)
+' >/dev/null; then
+        cold_mark first_inference_ok
+    else
+        cold_mark first_inference_failed
+        echo "WARNING: TTFI inference probe failed" >&2
+    fi
+fi
 
+fi  # authenticated readiness and inference require locally provisioned matching key
+
+# On the pod, OpenWebUI is now started only after model readiness. No remote
+# SSH restart is needed, including in private/portless tailnet-only mode.
 if [[ $PI_MODE -eq 0 ]]; then
-    # OpenWebUI cached its model list at boot, when SGLang was not up yet.
-    IP=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['ip'])")
-    PORT=$(runpodctl ssh info "$POD_ID" -o json | python3 -c "import sys,json; print(json.load(sys.stdin)['port'])")
-    ssh -i ~/.runpod/ssh/runpodctl-ssh-key -o StrictHostKeyChecking=no \
-        -o UserKnownHostsFile=/dev/null -o ConnectTimeout=20 "root@$IP" -p "$PORT" 'bash -s' <<'REMOTE' >/dev/null 2>&1
-pkill -f open-webui
-sleep 2
-setsid /workspace/start-openwebui.sh > /workspace/openwebui.log 2>&1 < /dev/null &
-disown
-REMOTE
-    until curl -s -o /dev/null --max-time 10 -w "%{http_code}" "$OWUI/" 2>/dev/null | grep -q 200; do
+    ui_ready=0
+    for ((attempt=0; attempt<60; attempt++)); do
+        if curl -fsS --max-time 10 "$OWUI/api/config" 2>/dev/null |
+            python3 -c 'import json,sys; c=json.load(sys.stdin); sys.exit(0 if c.get("features", {}).get("auth") is True else 1)' 2>/dev/null; then
+            ui_ready=1
+            break
+        fi
         sleep 5
     done
+    if [[ "$ui_ready" != 1 ]]; then
+        echo "ERROR: OpenWebUI authentication not verified; do not open UI" >&2
+        exit 70
+    fi
+    cold_mark webui_ready
 fi
 
 DEADLINE=$(date -v "+${HOURS}H" '+%H:%M')
@@ -204,12 +479,12 @@ if [[ $PI_MODE -eq 1 ]]; then
 cat <<EOF
 
 ════════════════════════════════════════════════════════════
-  Running, SGLang only, no OpenWebUI. Timer until $DEADLINE.
+  Running, SGLang only. Requested ${HOURS}h window; no guaranteed auto-stop.
 
   In pi:     pi --model runpod/qwen38-uncensored
 
   Measure:   qwen38bench $POD_ID
-  Stop:      qwen38pi stop
+  Stop:      runpodctl pod delete $POD_ID
 ════════════════════════════════════════════════════════════
 
 EOF
@@ -217,15 +492,17 @@ else
 cat <<EOF
 
 ════════════════════════════════════════════════════════════
-  Running. Timer until $DEADLINE, then RunPod terminates it itself.
+  Running. Requested ${HOURS}h window; no guaranteed auto-stop.
 
   In the terminal:   pi --model runpod/qwen38-uncensored
   In the browser:    $OWUI
 
   Measure:           qwen38bench $POD_ID
-  Stop:              qwen38fast stop
+  Stop:              runpodctl pod delete $POD_ID
 ════════════════════════════════════════════════════════════
 
 EOF
-command -v open >/dev/null && open "$OWUI"
+if command -v open >/dev/null 2>&1; then
+    open "$OWUI" || true
+fi
 fi
