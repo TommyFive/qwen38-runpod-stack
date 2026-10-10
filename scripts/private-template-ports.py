@@ -2,6 +2,9 @@
 """RunPod private-template port hardening. Never log keys or response bodies."""
 import argparse
 import json
+from pathlib import Path
+import stat
+import tomllib
 import os
 import re
 import sys
@@ -16,10 +19,31 @@ class PortSafetyError(Exception):
     pass
 
 
-def request(method, template_id, payload=None):
+def runpod_api_key(config_path=None):
+    """Prefer explicit env; fall back to native runpodctl config without leaking key."""
     key = os.environ.get("RUNPOD_API_KEY", "")
-    if not key:
-        raise PortSafetyError("RUNPOD_API_KEY unavailable; load Keychain credentials")
+    if key:
+        return key
+    path = Path(config_path) if config_path is not None else Path.home() / ".runpod/config.toml"
+    try:
+        if path.is_symlink():
+            raise PortSafetyError("RunPod config must not be a symlink")
+        meta = path.stat()
+        if (meta.st_uid != os.getuid() or
+                stat.S_IMODE(meta.st_mode) & 0o077 or not stat.S_ISREG(meta.st_mode)):
+            raise PortSafetyError("RunPod config ownership/permissions unsafe")
+        with path.open("rb") as handle:
+            content = tomllib.load(handle)
+        value = content.get("apiKey", "")
+        if isinstance(value, str) and value:
+            return value
+    except (OSError, tomllib.TOMLDecodeError):
+        pass
+    raise PortSafetyError("RunPod API credential unavailable in environment/native config")
+
+
+def request(method, template_id, payload=None):
+    key = runpod_api_key()
     if not re.fullmatch(r"[A-Za-z0-9_-]{5,64}", template_id):
         raise PortSafetyError("invalid template ID")
     data = json.dumps(payload).encode() if payload is not None else None
