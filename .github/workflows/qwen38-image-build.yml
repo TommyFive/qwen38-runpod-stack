@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  issues: write # Periodic resource snapshots in PR #21 comment; no raw build logs
   packages: write
 
 concurrency:
@@ -68,23 +69,66 @@ jobs:
             echo "::error::Insufficient disk for conservative SGLang CUDA build; aborting before image pull/compile"
             exit 1
           fi
-      - name: Build pinned AMD64 candidate (publish optional)
+      - name: Build pinned AMD64 candidate with durable telemetry
         shell: bash
         env:
           IMAGE_TAG: ghcr.io/tommyfive/qwen38-sglang:candidate-${{ github.event.pull_request.head.sha || github.sha }}
           PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          set -euo pipefail
+          set -Eeuo pipefail
+          log_dir="$RUNNER_TEMP/qwen38-image"
+          mkdir -p "$log_dir"
+          log="$log_dir/buildkit.log"
+          : > "$log"
+          echo "BuildKit plain text output is retained as an artifact on normal job exit."
+          echo "A sanitized PR resource checkpoint is published every 120 seconds."
           if [[ "$PUBLISH_IMAGE" == true ]]; then
             printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-            QWEN38_IMAGE_PUBLISH=YES bash images/sglang-qwen38/build-image.sh --tag "$IMAGE_TAG" --push
+          fi
+          export BUILDKIT_PROGRESS=plain
+          if [[ "$PUBLISH_IMAGE" == true ]]; then
+            setsid env -u GH_TOKEN -u GITHUB_TOKEN \
+              QWEN38_IMAGE_PUBLISH=YES \
+              bash images/sglang-qwen38/build-image.sh --tag "$IMAGE_TAG" --push \
+              >"$log" 2>&1 &
           else
-            bash images/sglang-qwen38/build-image.sh --tag "$IMAGE_TAG"
+            setsid env -u GH_TOKEN -u GITHUB_TOKEN \
+              bash images/sglang-qwen38/build-image.sh --tag "$IMAGE_TAG" \
+              >"$log" 2>&1 &
           fi
-          echo "Built candidate tag: $IMAGE_TAG; published=$PUBLISH_IMAGE"
-          if [[ "$PUBLISH_IMAGE" != true ]]; then
-            docker image inspect "$IMAGE_TAG" --format 'ImageId={{.Id}} UncompressedBytes={{.Size}}'
-            docker history --human=false "$IMAGE_TAG" | head -n 20 || true
+          build_pid=$!
+          echo "Build started as isolated process group, pid=$build_pid"
+          python3 images/sglang-qwen38/watch-build.py \
+            --pid "$build_pid" --log "$log" --run-id "$RUN_ID" &
+          monitor_pid=$!
+          trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
+          set +e
+          wait "$build_pid"
+          build_status=$?
+          set -e
+          echo "Build exit code: $build_status"
+          echo "=== Last 80 build log lines ==="
+          tail -n 80 "$log" || true
+          if (( build_status == 0 )); then
+            echo "Built candidate: $IMAGE_TAG; published=$PUBLISH_IMAGE"
+            if [[ "$PUBLISH_IMAGE" != true ]]; then
+              docker image inspect "$IMAGE_TAG" \
+                --format 'ImageId={{.Id}} UncompressedBytes={{.Size}}'
+            fi
           fi
-          df -h / /var/lib/docker
+          echo "=== POST-BUILD RESOURCES ==="
+          df -h / /var/lib/docker || true
+          free -h || true
+          exit "$build_status"
+
+      - name: Preserve full Docker BuildKit log (normal and failed exits)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qwen38-image-buildkit-${{ github.run_id }}
+          path: ${{ runner.temp }}/qwen38-image/buildkit.log
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 6
