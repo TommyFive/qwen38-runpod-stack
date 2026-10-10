@@ -63,6 +63,19 @@ class PortsTests(unittest.TestCase):
         with self.assertRaisesRegex(ports.PortSafetyError, "embedded secret"):
             ports.validate(t, "abc123")
 
+    def test_requests_use_browser_compatible_user_agent(self):
+        observed = []
+        def mock_urlopen(req, timeout):
+            observed.append((req.get_method(), req.get_header("User-agent")))
+            return FakeResponse(template([]))
+        with patch.dict(os.environ, {"RUNPOD_API_KEY": "test-key"}), patch.object(
+                ports.urllib.request, "urlopen", side_effect=mock_urlopen):
+            ports.request("GET", "abc123")
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0][0], "GET")
+        self.assertTrue(observed[0][1].startswith("Mozilla/5.0"))
+        self.assertNotIn("Python-urllib", observed[0][1])
+
     def test_missing_key_denies_without_network(self):
         with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}):
             with self.assertRaises(ports.PortSafetyError):
