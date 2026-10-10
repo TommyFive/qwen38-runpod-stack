@@ -51,6 +51,7 @@ def make_env(existing, mode, hf_secret, helpers=None):
     if "WEBUI_ADMIN_PASSWORD" in existing:
         raise ports.PortSafetyError("pre-existing WEBUI_ADMIN_PASSWORD; refuses to copy it")
     new = dict(existing)
+    new.setdefault("MODEL_RAM_RELEASE_AFTER_LOAD", "0")
     if helpers is not None:
         if set(helpers) != set(BUNDLED_HELPERS) or not all(helpers.values()):
             raise ports.PortSafetyError("incomplete helper bundle")
