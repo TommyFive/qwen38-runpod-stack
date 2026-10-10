@@ -63,6 +63,11 @@ if QWEN38_MODEL_STORAGE=INVALID qwen38fast --pi > "$TMP/invalid.out" 2>&1; then
 fi
 
 grep -q 'MODEL_STORAGE must be ram or ssd' "$TMP/invalid.out"
+# Safe diagnostics for mock-only failures (no runtime credentials).
+if ! grep -q 'Starting qwen38pi' "$TMP/pi.out"; then
+  echo "mock launcher was blocked before create:" >&2
+  sed -n '1,14p' "$TMP/pi.out" >&2
+fi
 python3 - "$MOCK_OUTPUT_FILE" "$ROOT" <<'PY'
 import base64, json, pathlib, sys
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
