@@ -38,6 +38,7 @@ MEM_FRAC="0.85"
 PI_MODE=0                         # --pi: no OpenWebUI, ready as soon as the API answers
 MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
 MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
+RAM_PEAK_FACTOR="${QWEN38_RAM_PEAK_FACTOR:-}"  # explicit measured test override; default 2.5
 MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
 BENCHMARK="${BENCHMARK:-0}"
 BENCHMARK_RUNS="${BENCHMARK_RUNS:-3}"
@@ -120,6 +121,20 @@ for v in COLDSTART_TRACE DEBUG BENCHMARK; do
     [[ "${!v}" == 0 || "${!v}" == 1 ]] || { echo "$v must be 0 or 1" >&2; exit 64; }
 done
 case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
+if [[ -n "$RAM_PEAK_FACTOR" ]]; then
+    if ! python3 - "$RAM_PEAK_FACTOR" <<'PY_FACTOR'
+import math,sys
+try:
+    factor=float(sys.argv[1])
+    assert math.isfinite(factor) and 1.5 <= factor <= 5.0
+except (AssertionError,ValueError):
+    sys.exit(1)
+PY_FACTOR
+    then
+        echo "QWEN38_RAM_PEAK_FACTOR must be a finite value from 1.5 to 5.0" >&2
+        exit 64
+    fi
+fi
 if [[ "$BENCHMARK" == 1 ]]; then
     for item in "BENCHMARK_RUNS:$BENCHMARK_RUNS:20" "BENCHMARK_MAX_TOKENS:$BENCHMARK_MAX_TOKENS:4096" "BENCHMARK_TIMEOUT_SECONDS:$BENCHMARK_TIMEOUT_SECONDS:7200"; do
         IFS=: read -r label value max <<< "$item"
@@ -261,7 +276,7 @@ if [[ "$running" != "0" ]]; then
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(QWEN38_CREDENTIAL_MODE="$CREDENTIAL_MODE" QWEN38_HF_SECRET_NAME="$HF_SECRET_NAME" WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
+ENV_JSON=$(QWEN38_RAM_PEAK_FACTOR="$RAM_PEAK_FACTOR" QWEN38_CREDENTIAL_MODE="$CREDENTIAL_MODE" QWEN38_HF_SECRET_NAME="$HF_SECRET_NAME" WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
 import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
@@ -289,6 +304,8 @@ env = {
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
 }
+if os.environ.get("QWEN38_RAM_PEAK_FACTOR") and env["MODEL_STORAGE"] == "ram":
+    env["MODEL_RAM_PEAK_FACTOR"] = os.environ["QWEN38_RAM_PEAK_FACTOR"]
 if sys.argv[8] != "1":
     env["WEBUI_ADMIN_PASSWORD"] = os.environ["WEBUI_ADMIN_PASSWORD"]
     env["WEBUI_ADMIN_EMAIL"] = os.environ["WEBUI_ADMIN_EMAIL"]
