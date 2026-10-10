@@ -107,23 +107,101 @@ def model_repos():
     return [main] + ([draft] if draft else [])
 
 
-def cgroup_available(root="/sys/fs/cgroup"):
-    """Do not treat host MemAvailable as container memory available."""
+def _cgroup_mounts(mountinfo="/proc/self/mountinfo"):
+    """Yield cgroup mount (root, mountpoint, version) from the current namespace."""
     try:
-        maximum = Path(root, "memory.max").read_text().strip()
-        current = int(Path(root, "memory.current").read_text().strip())
-        require(maximum.isdigit(), "cgroup v2 memory.max has no finite limit (or is unavailable)")
-        limit = int(maximum)
-        require(limit > 0 and 0 <= current <= limit, "invalid cgroup memory limit/usage")
-        events_path = Path(root, "memory.events")
+        with open(mountinfo, encoding="utf-8") as handle:
+            for line in handle:
+                lhs, rhs = line.rstrip("\n").split(" - ", 1)
+                fields, fs = lhs.split(), rhs.split()
+                if len(fields) < 5 or len(fs) < 3:
+                    continue
+                if fs[0] == "cgroup2":
+                    yield fields[3], fields[4], "v2"
+                elif fs[0] == "cgroup" and "memory" in fs[2].split(","):
+                    yield fields[3], fields[4], "v1"
+    except (OSError, ValueError, IndexError) as exc:
+        raise StorageError(f"cannot inspect cgroup mountinfo: {exc}") from exc
+
+
+def _cgroup_paths(proc_cgroup="/proc/self/cgroup"):
+    """Cgroup namespace paths; choose only the memory hierarchy or unified v2."""
+    try:
+        with open(proc_cgroup, encoding="utf-8") as handle:
+            for line in handle:
+                hierarchy, controllers, path = line.strip().split(":", 2)
+                if hierarchy == "0" and not controllers:
+                    yield "v2", path
+                elif "memory" in controllers.split(","):
+                    yield "v1", path
+    except (OSError, ValueError) as exc:
+        raise StorageError(f"cannot inspect /proc/self/cgroup: {exc}") from exc
+
+
+def _resolve_cgroup_mount(mount_root, mountpoint, member):
+    """Mountinfo root may already be a delegated container sub-tree."""
+    root = os.path.normpath(mount_root)
+    group = os.path.normpath(member)
+    target = os.path.normpath(mountpoint)
+    require(os.path.isabs(root) and os.path.isabs(group) and os.path.isabs(target),
+            "invalid cgroup mount namespace path")
+    if group == root:
+        relative = "."
+    elif os.path.commonpath((root, group)) == root:
+        relative = os.path.relpath(group, root)
+    else:
+        raise StorageError("cgroup membership outside visible memory controller mount")
+    resolved = os.path.normpath(os.path.join(target, relative))
+    require(os.path.commonpath((target, resolved)) == target, "cgroup path escapes mount")
+    return Path(resolved)
+
+
+def _finite_cgroup_budget(directory, version):
+    """Never interpret absent or unlimited cgroup controller as enough RAM."""
+    try:
+        if version == "v2":
+            raw = (directory / "memory.max").read_text().strip()
+            used_raw = (directory / "memory.current").read_text().strip()
+        else:
+            raw = (directory / "memory.limit_in_bytes").read_text().strip()
+            used_raw = (directory / "memory.usage_in_bytes").read_text().strip()
+        require(raw.isdecimal() and used_raw.isdecimal(),
+                f"{version} memory controller missing a finite numeric budget")
+        limit, current = int(raw), int(used_raw)
+        # Linux v1 'unlimited' sentinel is typically ~2**63; do not trust it.
+        require(0 < limit < 1 << 60 and 0 <= current <= limit,
+                f"{version} memory controller is unlimited, invalid or already over limit")
+        return limit - current
+    except OSError as exc:
+        raise StorageError(f"cannot read {version} memory controller at {directory}: {exc}") from exc
+
+
+def cgroup_available(root="/sys/fs/cgroup", mountinfo="/proc/self/mountinfo",
+                     proc_cgroup="/proc/self/cgroup"):
+    """Prove a *finite* RAM budget from active v2 or v1 controller, else fail."""
+    root = Path(root)
+    # Retain deterministic tests and explicit standalone cgroup-v2 root probes.
+    if (root / "memory.max").is_file():
+        available = _finite_cgroup_budget(root, "v2")
+        events_path = root / "memory.events"
         if events_path.is_file():
             events = dict(line.split() for line in events_path.read_text().splitlines())
-            # Historical OOM counts are not conclusive, so report but don't fail.
             if int(events.get("oom", "0")):
-                print(f"NOTE: cgroup reports {events['oom']} previous OOM event(s)", file=sys.stderr)
-        return limit - current
-    except (OSError, ValueError) as exc:
-        raise StorageError(f"cannot reliably read finite cgroup v2 memory budget: {exc}") from exc
+                print(f"NOTE: cgroup reports {events['oom']} previous OOM event(s)",
+                      file=sys.stderr)
+        return available
+
+    groups = list(_cgroup_paths(proc_cgroup))
+    mounts = list(_cgroup_mounts(mountinfo))
+    # Only accept a mounted, explicitly joined memory controller.
+    for version, group in groups:
+        for mount_root, mountpoint, mount_version in mounts:
+            if version != mount_version:
+                continue
+            directory = _resolve_cgroup_mount(mount_root, mountpoint, group)
+            return _finite_cgroup_budget(directory, version)
+    raise StorageError("cannot establish finite cgroup v1/v2 memory budget; "
+                       "inspect /proc/self/cgroup and mountinfo before RAM download")
 
 
 def host_available():
@@ -188,6 +266,16 @@ def preflight(root, mount):
     existing = existing_ancestor(root)
     stat = os.statvfs(existing)
     shm_free = stat.f_bavail * stat.f_frsize
+    # Log the real tmpfs free space and required model+draft estimate even if
+    # the cgroup controller is not visible. No SSD fallback or download here.
+    print(f"RAM admission diagnostic: checkpoint+draft={size / GIB:.2f} GiB "
+          f"shm_required={required_shm / GIB:.2f} GiB "
+          f"shm_available={shm_free / GIB:.2f} GiB "
+          f"cgroup_required={required_cgroup / GIB:.2f} GiB "
+          f"mount={mount}", file=sys.stderr)
+    require(shm_free >= required_shm,
+            f"RAM preflight FAILED: tmpfs needs {required_shm / GIB:.2f} GiB "
+            f"but has {shm_free / GIB:.2f} GiB free. Resize /dev/shm or select MODEL_STORAGE=ssd")
     cg_free = cgroup_available()
     host_free = host_available()  # Additional guard, never a substitute for cgroup accounting.
     print(f"RAM preflight: checkpoint+draft={size / GIB:.2f} GiB "
