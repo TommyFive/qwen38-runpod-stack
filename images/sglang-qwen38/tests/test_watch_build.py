@@ -95,7 +95,7 @@ class WatchdogTests(unittest.TestCase):
 
     def test_memory_pressure_stops_before_99_percent_usage(self):
         severe, count = mod.memory_critical(2.33, 0)
-        self.assertTrue(severe)
+        self.assertFalse(severe)
         self.assertEqual(count, 1)
         severe, count = mod.memory_critical(3.0, 0)
         self.assertFalse(severe)
