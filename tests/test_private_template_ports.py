@@ -52,15 +52,33 @@ class PortsTests(unittest.TestCase):
 
     def test_private_validation_rejects_unknown_and_public(self):
         for t in (template(["8888/http"]), template(mode="runpod"),
-                  {"id": "abc123", "env": template()["env"]},
                   template([]) | {"ports": None}):
             with self.subTest(t=t), self.assertRaises(ports.PortSafetyError):
                 ports.validate(t, "abc123")
 
+    def test_missing_ports_represents_empty_in_runpod_rest_json(self):
+        t = template([])
+        del t["ports"]
+        ports.validate(t, "abc123")
+        with patch.object(ports, "request", side_effect=[t, {}, t]) as req:
+            with patch("sys.stdout", new=io.StringIO()):
+                ports.repair("abc123")
+        self.assertEqual(req.call_count, 3)
+
+    def test_secret_reference_allowed_but_plaintext_rejected(self):
+        t = template([])
+        t["env"]["SGLANG_API_KEY"] = "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+        t["env"]["TS_AUTHKEY"] = "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
+        t["env"]["HF_TOKEN"] = "{{ RUNPOD_SECRET_CUSTOM_HF }}"
+        ports.validate(t, "abc123")
+        t["env"]["TS_AUTHKEY"] = "tskey-plaintext-not-real"
+        with self.assertRaisesRegex(ports.PortSafetyError, "plaintext"):
+            ports.validate(t, "abc123")
+
     def test_unknown_secret_rejected(self):
         t = template([])
         t["env"]["TS_AUTHKEY"] = "test-do-not-log"
-        with self.assertRaisesRegex(ports.PortSafetyError, "embedded secret"):
+        with self.assertRaisesRegex(ports.PortSafetyError, "plaintext"):
             ports.validate(t, "abc123")
 
     def test_requests_use_browser_compatible_user_agent(self):
