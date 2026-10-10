@@ -94,7 +94,7 @@ running → the proxy returns a clean 503 telling you to start one.
 | `scripts/bootstrap-sglang-openwebui.sh` | Runs inside the pod: downloads weights, starts SGLang (optionally OpenWebUI) |
 | `launchagents/*.template` | macOS LaunchAgents for proxy and reaper; `__HOME__` is filled in at setup |
 | `pi/models.runpod.json` | The provider block for `~/.pi/agent/models.json` |
-| `create-templates.sh` | Creates the two RunPod templates and prints their ids |
+| `create-templates.sh` | Creates four RunPod templates (public/private × Full/Lean); existing IDs can be refreshed in place |
 | `setup.sh` | Installs everything for the current user |
 
 ## Requirements
