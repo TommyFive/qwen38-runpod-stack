@@ -1,5 +1,7 @@
 # Integrated RunPod GPU smoke — issues #7, #8, #9, #10, #11
 
+> **FINAL PR #17 SECURITY GATE PASS (2026-10-11):** Paid Private Full Pod `cg3pbcn7ua3oim` confirmed independent externally authenticated Tailnet API `/v1/models` **HTTP 200** (valid Bearer from MacBook Air, 17:12:06Z) and OpenWebUI admin login **HTTP 200** (17:11:18Z) followed by authorized chat-list **HTTP 200**. Earlier anonymous/wrong-token 401, TLS 443/8443 and Tailscale SSH are preserved. [Timestamped record](runs/20261010T170415Z_cg3pbcn7ua3oim.md). Earlier incomplete-check statements below are historical; do not mark Public Lean GPU or all optional combinations as independently tested. **OWNER WILL STOP THIS STILL-RUNNING POD manually; do not stop it for release merging.**
+
 > **LATEST VERDICT 2026-10-11:** The Tailscale TCP/443+8443 ACL denial and `no TailscaleVarRoot` TLS failure described in earlier test sections are **fixed and verified** on [live Pod `s5titot9ae0zzv`](runs/20261010T163129Z_s5titot9ae0zzv.md). Valid HTTPS, native SSH, SGLang 401 without/wrong Bearer, OpenWebUI auth=true/signup=false and anonymous chats 401 pass. The two remaining release checks are an independent **external valid-Bearer 200** and a **positive admin login**; see [final release GO/NO-GO](RELEASE_REVIEW_PR17_20261011.md). Historical failure narratives below remain as first-run diagnostics, not current operational state.
 
 > **Release-gate reclassification (owner decision, 2026-10-10):**
