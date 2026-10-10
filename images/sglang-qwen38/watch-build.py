@@ -135,6 +135,9 @@ def stop_build(pid, reason):
     # The build is launched with setsid: signal ONLY that build process group.
     print(f"::error::Proactively stopping build: {reason}", flush=True)
     try:
+        if os.getpgid(pid) != pid:
+            print("::error::Refusing to signal a non-isolated process group", flush=True)
+            return
         os.killpg(pid, signal.SIGINT)
     except (ProcessLookupError, PermissionError):
         pass
