@@ -60,6 +60,31 @@ class StorageTests(unittest.TestCase):
             os.environ["MODEL_SSD_DIR"] = str(self.base / "ssd")
             self.assertEqual(ms.selected_storage()[0], "ssd")
 
+    def test_debug_monitor_records_peak_without_modifying_cache(self):
+        from contextlib import redirect_stdout
+        import io
+        outputs = io.StringIO()
+        samples = iter([100, 90, 80, 95])
+        fake = lambda path: SimpleNamespace(f_bavail=next(samples), f_frsize=ms.GIB, f_blocks=128)
+        calls = []
+        def done(seconds):
+            calls.append(seconds)
+            if len(calls) == 3:
+                raise KeyboardInterrupt
+        with patch.object(ms, "selected_storage", return_value=("ram", self.ram, str(self.ram.parent), "tmpfs")), \
+             patch.object(ms, "existing_ancestor", return_value=self.ram.parent), \
+             patch("os.statvfs", side_effect=fake), \
+             patch("subprocess.run", return_value=SimpleNamespace(returncode=0, stdout="1234\\n")), \
+             patch("time.sleep", side_effect=done), \
+             redirect_stdout(outputs):
+            with self.assertRaises(KeyboardInterrupt):
+                ms.monitor()
+        lines = [line for line in outputs.getvalue().splitlines()
+                 if line.startswith("QWEN38_STORAGE_METRIC ")]
+        self.assertEqual(len(lines), 1)
+        self.assertIn('"gpu_used_mib":[1234]', lines[0])
+        self.assertIn('"peak_tmpfs_delta_gib":10.0', lines[0])
+
     def test_cgroup_limited_and_unlimited(self):
         cg = self.base / "cg"
         cg.mkdir()
