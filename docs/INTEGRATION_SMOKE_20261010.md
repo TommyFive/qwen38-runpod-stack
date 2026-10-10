@@ -1,5 +1,7 @@
 # Integrated RunPod GPU smoke — issues #7, #8, #9, #10, #11
 
+> **LATEST VERDICT 2026-10-11:** The Tailscale TCP/443+8443 ACL denial and `no TailscaleVarRoot` TLS failure described in earlier test sections are **fixed and verified** on [live Pod `s5titot9ae0zzv`](runs/20261010T163129Z_s5titot9ae0zzv.md). Valid HTTPS, native SSH, SGLang 401 without/wrong Bearer, OpenWebUI auth=true/signup=false and anonymous chats 401 pass. The two remaining release checks are an independent **external valid-Bearer 200** and a **positive admin login**; see [final release GO/NO-GO](RELEASE_REVIEW_PR17_20261011.md). Historical failure narratives below remain as first-run diagnostics, not current operational state.
+
 > **Release-gate reclassification (owner decision, 2026-10-10):**
 > Tailscale HTTPS Serve #20 is still a mandatory blocker. Safe project-scoped
 > Reaper/TTL #18 is **accepted/deferred** because the RunPod account is only
@@ -117,19 +119,20 @@ gezielt beendet; 0 aktive Pods nach dem letzten Test.
 | Optionale automatische RAM-Freigabe | PR #19 in Integration gemergt, Schalter MODEL_RAM_RELEASE_AFTER_LOAD=1, Default 0; privater Full-GPU-Test gab 22.731 GiB frei und inferierte danach erfolgreich | PASS für opt-in RAM-Livetest; weitere Betriebsmodi getrennt zu prüfen |
 | Cold Start | Mehrere Image-Pulls beobachtet (ein Pull ~7m22s); Haupt- plus Draft-Download und GPU-Ladung separat gemessen | TEILWEISE; keine 5 unabhängigen Starts pro Kohorte |
 
-### Offene Release-Gates (nicht als erledigt kennzeichnen)
+### Aktueller Release-Gate-Stand nach GPU HTTPS-Fix (2026-10-11)
 
-- [x] Private SGLang ohne/falschen Bearer 401; RunPod öffentliche 8000/8080-Proxy-Adressen 404, auch nach App-Start. **Tailnet HTTPS 443/8443 weiterhin unerreichbar; fehlende eingehende ACL/Grants bestätigt**, Issue #20.
-- [x] Private Full OpenWebUI erfolgreich gestartet, Admin angelegt, Signup 403 / anonymous Chat API 401 und auth=true. **Offen bleiben positives Login und erreichbares Tailnet-HTTPS 8443** (Issue #20).
-- [x] Öffentliche Full-Variante (SSD) auf echter GPU geprüft: API ohne/falschen Bearer 401; OpenWebUI Auth=true, Signup=false, anonyme Chat-API 401. **Public Lean separat noch nicht GPU-live geprüft; positives Admin-Login weiterhin offen.**
-- [ ] Deaktivierte Schalter DEBUG=0 und COLDSTART_TRACE=0 live testen; **BENCHMARK=0 im Private-Full-Run mit Auto-RAM-Freigabe erfolgreich bestätigt**.
-- [x] SSD-Opt-in auf Public Full live geprüft: Haupt-/Draft-Snapshots in /workspace/hf, Overlay statt tmpfs, kein stillschweigender RAM-Fallback; Cache-Persistenz über Pod-Laufzeiten nicht geprüft.
-- [x] PR #19 automatische RAM-Freigabe auf echter RTX PRO 6000 mit BENCHMARK=0 und authentifizierter Inferenz vor/nach Cleanup bestanden. Default OFF und SSD-negative Fall sind CI-verifiziert, noch nicht beide live geprüft. PR #19 in den Integrationsbranch gemergt; Release nach main weiter offen.
-- [ ] Nach absichtlich freigegebenen Gewichten Audit/Diagnose für nicht mehr vorhandene Gewichtsdateien bewerten; Neustart/Reload erfordert erneuten Download.
-- [ ] **POST-MERGE #23, not an integration release gate:** Independent starts across matched cloud/region/cache cohorts before interpreting median/p95.
-- [ ] **POST-MERGE #23, not an integration release gate:** Fix misleading 0.0 MB/s probe (#5) and byte-weighted model download progress (#6).
-- [ ] **ACCEPTED/POST-MERGE #18/#22, not an integration release gate:** project-only reaper/TTL/stop. **Only QWEN38 pods may exist in this account.** Legacy global reaper remains disabled for supervised integration tests; do not run `setup.sh` without considering its reaper LaunchAgent side effect.
-- [x] PR #19 in den Integrationsbranch gemergt und PRs #12–#16 als durch #17 abgelöst geschlossen. **Offen:** Finale Sicherheits- und Release-Review von PR #17 vor dem Merge nach main.
+- [x] Private Tailnet HTTPS 443/8443 verified on a real GPU Pod with correct cert and native SSH, zero published RunPod ports; owner-approved ACL. #20's network/TLS defect is repaired.
+- [x] Negative SGLang HTTP 401 with missing/wrong Bearer; internal protected SGLang model API HTTP 200 logged during WebUI worker startup.
+- [x] OpenWebUI HTTPS 200 with auth=true, signup=false, anonymous chats 401, verified tmpfs session/certificate configuration.
+- [ ] **External positive SGLang API request with valid Bearer 200 not independently checked**, since protected credentials were blocked by the remote connector's security controls.
+- [ ] **Positive OpenWebUI administrator login and authenticated protected read not independently checked**; no successful login claim.
+- [x] Public Full opt-in SSD and private RAM/default + release-after-inference tested on RTX PRO 6000 as documented above, avoiding silent RAM/SSD substitution.
+- [ ] Public Lean dedicated live GPU + comprehensive DEBUG=0/COLDSTART_TRACE=0/BENCHMARK=0 combinatorial test matrix not exhaustive. **Owner acceptance of the limited initial-release scope or further tests is required**, not an automatic blocker when explicitly accepted.
+- [x] **Accepted/deferred #18/#22:** project-scoped reaper/TTL implementation; QWEN38-only RunPod account assumption and no legacy global LaunchAgent.
+- [x] **Accepted/deferred #23/#5/#6/#11:** extended performance measurement, bandwidth/progress reporting, Docker optimization and statistically matched Community vs Secure cohorts. Mandatory per-Pod evidence standard now retained.
+- [ ] PR #17 still needs positive-auth security sign-off and final explicit `main` merge approval; two CI workflows last passed at integration `ad481c4e` before these doc edits, must be checked again at final head.
+
+Full release review: [RELEASE_REVIEW_PR17_20261011.md](RELEASE_REVIEW_PR17_20261011.md).
 
 ### Operative Eckpunkte
 
