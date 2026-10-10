@@ -9,6 +9,45 @@
 > validated GPU inference and benchmark remain in scope. See
 > [integration strategy](INTEGRATION_STRATEGY_PR17_20261010.md).
 
+## Test 3 — Public Full, explicit SSD mode (2026-10-10)
+
+A second **Secure-rate** RTX PRO 6000 ($2.49/h) was launched using
+existing Public Full template `9zmcmzwu4b`, with explicit
+`MODEL_STORAGE=ssd`, `DEBUG=0`, `COLDSTART_TRACE=0`,
+`BENCHMARK=0`, `MODEL_RAM_RELEASE_AFTER_LOAD=0`, and
+`ENABLE_SSH=1` only for controlled storage audit. Pod
+`l659ydnqbh66gn` was **deleted by exact ID**. RunPod reported no
+remaining running Pods; the exact-ID fallback guard was canceled.
+
+**Storage: PASS.** Bootstrap reported `Storage mode: ssd,
+root=/workspace/hf`. Independent SSH verification showed approximately
+**31 GiB under `/workspace/hf`** on overlay storage; the RAM model-cache
+root `/dev/shm/qwen38-hf` was absent. Running
+`model-storage.py audit` with explicit
+`MODEL_STORAGE=ssd`, `MODEL_SSD_DIR=/workspace/hf` and the correct
+`QWEN38_STATE_DIR` validated both the **main and draft snapshot** paths
+beneath that storage root. No RAM fallback was used; persistence across
+separate Pod lifetimes was **not** tested or claimed.
+
+**Public API & UI negative security paths: PASS.** Public RunPod SGLang
+HTTPS `/v1/models` denied missing and deliberately wrong Bearer with
+**401**. Public OpenWebUI HTTPS root and `/api/config` returned
+**200**, with `features.auth=true` and `enable_signup=false`;
+anonymous public `/api/v1/chats/list` returned **401**. An
+intentionally empty signup payload returned **422** (request validation),
+**not** a conclusive negative signup enforcement test. A positive admin
+credential-bearing login was blocked by the execution safety checker; do
+not mark the positive login gate complete.
+
+**Limits:** No benchmark rerun, no system tuning, and no production VPS
+changes. Public HTTP/HTTPS exposure is expected for these two public
+templates; this test does not relax the **zero public ports** requirement
+for private templates. COLDSTART/DEBUG opt-outs were supplied and the
+pod initialized, but the absence of every possible worker/log artifact
+was not separately exhaustively audited.
+
+---
+
 ## Test 2 — Private Full Secure, live ACL root-cause confirmation (2026-10-10)
 
 **New live findings:** RunPod Secure RTX PRO 6000, actual $2.49/h, pod
@@ -82,9 +121,9 @@ gezielt beendet; 0 aktive Pods nach dem letzten Test.
 
 - [x] Private SGLang ohne/falschen Bearer 401; RunPod öffentliche 8000/8080-Proxy-Adressen 404, auch nach App-Start. **Tailnet HTTPS 443/8443 weiterhin unerreichbar; fehlende eingehende ACL/Grants bestätigt**, Issue #20.
 - [x] Private Full OpenWebUI erfolgreich gestartet, Admin angelegt, Signup 403 / anonymous Chat API 401 und auth=true. **Offen bleiben positives Login und erreichbares Tailnet-HTTPS 8443** (Issue #20).
-- [ ] Öffentliche Full/Lean-Varianten gesondert überprüfen; positive Private-Lean-Ergebnisse beweisen deren Sicherheit nicht.
+- [x] Öffentliche Full-Variante (SSD) auf echter GPU geprüft: API ohne/falschen Bearer 401; OpenWebUI Auth=true, Signup=false, anonyme Chat-API 401. **Public Lean separat noch nicht GPU-live geprüft; positives Admin-Login weiterhin offen.**
 - [ ] Deaktivierte Schalter DEBUG=0 und COLDSTART_TRACE=0 live testen; **BENCHMARK=0 im Private-Full-Run mit Auto-RAM-Freigabe erfolgreich bestätigt**.
-- [ ] SSD-Modus bewusst aktivieren und vergleichen; **niemals** stillschweigend RAM→SSD ausweichen.
+- [x] SSD-Opt-in auf Public Full live geprüft: Haupt-/Draft-Snapshots in /workspace/hf, Overlay statt tmpfs, kein stillschweigender RAM-Fallback; Cache-Persistenz über Pod-Laufzeiten nicht geprüft.
 - [x] PR #19 automatische RAM-Freigabe auf echter RTX PRO 6000 mit BENCHMARK=0 und authentifizierter Inferenz vor/nach Cleanup bestanden. Default OFF und SSD-negative Fall sind CI-verifiziert, noch nicht beide live geprüft. PR #19 in den Integrationsbranch gemergt; Release nach main weiter offen.
 - [ ] Nach absichtlich freigegebenen Gewichten Audit/Diagnose für nicht mehr vorhandene Gewichtsdateien bewerten; Neustart/Reload erfordert erneuten Download.
 - [ ] **POST-MERGE #23, not an integration release gate:** Independent starts across matched cloud/region/cache cohorts before interpreting median/p95.
