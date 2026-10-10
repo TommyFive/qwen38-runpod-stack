@@ -172,6 +172,30 @@ class StorageTests(unittest.TestCase):
                 ms.release_after_ready()
         self.assertTrue(all(p.exists() for p in blobs))
 
+    def test_release_after_ready_verified_success_path(self):
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        os.environ["BENCHMARK"] = "1"
+        os.environ["BENCHMARK_REPORT_PATH"] = "/dev/shm/qwen38-ci-fixture.json"
+        with patch.object(ms, "_infer_ready", side_effect=[True, True, True]) as inference, \
+             patch.object(ms, "release_weight_blobs", return_value=(2, 4*1024*1024)) as cleanup, \
+             patch.object(ms, "_write_release_receipt") as receipt, \
+             patch.object(Path, "read_text", return_value='{"status":"completed"}'):
+            ms.release_after_ready()
+        self.assertEqual(inference.call_count, 3)
+        cleanup.assert_called_once_with()
+        receipt.assert_called_once_with({"status": "verified_after_inference", "files": 2})
+
+    def test_release_after_ready_skips_on_failed_benchmark(self):
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        os.environ["BENCHMARK"] = "1"
+        os.environ["BENCHMARK_REPORT_PATH"] = "/dev/shm/qwen38-ci-fixture.json"
+        with patch.object(ms, "_infer_ready", return_value=True), \
+             patch.object(ms, "release_weight_blobs") as cleanup, \
+             patch.object(Path, "read_text", return_value='{"status":"failed"}'):
+            with self.assertRaisesRegex(ms.StorageError, "benchmark failed"):
+                ms.release_after_ready()
+        cleanup.assert_not_called()
+
     def test_cgroup_limited_and_unlimited(self):
         cg = self.base / "cg"
         cg.mkdir()
