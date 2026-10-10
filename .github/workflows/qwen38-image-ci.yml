@@ -97,8 +97,23 @@ jobs:
                   assert response.status == 201, f"Unexpected HTTP {response.status}"
                   print("PASS: created PR canary comment (HTTP 201)")
           except urllib.error.HTTPError as error:
-              # Do not print bearer, authorization headers, or response body.
-              print(f"FAIL: PR-comment write API returned HTTP {error.code}")
+              # Emit only allowlisted GitHub error metadata, never tokens,
+              # request URLs or raw error payload.
+              try:
+                  payload = json.loads(error.read(4096).decode("utf-8", errors="replace"))
+                  reason = payload.get("message", "unknown")
+                  permitted = ("Resource not accessible by integration",
+                               "API rate limit exceeded", "Validation Failed",
+                               "You have triggered an abuse detection mechanism",
+                               "Forbidden", "Must have admin rights to Repository.")
+                  reason = reason if any(reason.startswith(p) for p in permitted) else "other"
+              except (ValueError, TypeError, UnicodeError):
+                  reason = "unparseable"
+              accepted = error.headers.get("x-accepted-github-permissions", "unknown")
+              if len(accepted) > 120:
+                  accepted = "too long"
+              print(f"FAIL: PR-comment HTTP {error.code}; reason={reason}; "
+                    f"accepted-permissions={accepted}")
               raise SystemExit(1)
           except urllib.error.URLError as error:
               print(f"FAIL: PR-comment write API transport ({type(error).__name__})")
