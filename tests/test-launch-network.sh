@@ -35,6 +35,7 @@ elif args[:2] == ["template", "create"]:
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
     assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+    assert env["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
     assert ("TS_AUTHKEY" in env) == (env["NETWORK_MODE"] == "tailnet")
     if env["NETWORK_MODE"] == "tailnet":
         assert not public, "private template must not publish ports"
@@ -98,7 +99,8 @@ export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
 export QWEN38_COLDSTART_TRACE=0
 export QWEN38_TAILNET_DOMAIN=tailc8dece.ts.net
 unset TS_AUTHKEY || true
-export QWEN38_HF_SECRET_NAME=HF_TOKEN
+unset QWEN38_HF_SECRET_NAME || true
+# Verify the default HF_TOKEN secret reference, not a test-only override.
 bash "$ROOT/bin/qwen38fast" --pi --network tailnet > "$TMP/tailnet.out"
 grep -Fq 'https://' "$TMP/tailnet.out"
 grep -Fq '.tailc8dece.ts.net/v1' "$TMP/tailnet.out"
