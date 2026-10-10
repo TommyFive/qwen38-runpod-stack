@@ -2,7 +2,7 @@
 
 ## Test 1 completed — Private Full / Community Cloud, 2026-10-10
 
-**Recorded reproducible evidence:** [Full timeline and validation matrix](https://github.com/TommyFive/qwen38-runpod-stack/blob/feature/19-optional-postload-ram-release/docs/INTEGRATION_FULL_COMMUNITY_20261010.md) (added on Draft PR #19's feature branch). The active test was performed from an isolated worktree pinned to exact commit `bffa632`, not the main integration checkout.
+**Recorded reproducible evidence:** [Full timeline and validation matrix](https://github.com/TommyFive/qwen38-runpod-stack/blob/feature/19-optional-postload-ram-release/docs/INTEGRATION_FULL_COMMUNITY_20261010.md) (initially added on PR #19's feature branch, now merged into integration). The active test was performed from an isolated worktree pinned to exact commit `bffa632`, not the main integration checkout.
 
 - **Cloud:** COMMUNITY explicitly requested; billed **$1.69/h**, matching RunPod GPU catalog Community price ($1.69/h) instead of Secure ($2.49/h). The CLI does not expose `cloudType`; mark this **rate-inferred, not direct-metadata verified**. Datacenter/region: **unknown**.
 - **Measured stages:** Pod creation to downloaded Docker image **4m38s** (includes scheduler/platform delay); main+DFlash2 HF download **3m27.7s**; SGLang process to first authenticated completion **~104s**; end-to-end first inference **~9m59s**. OpenWebUI install **43.17s**; admin created and first observed `/api/config` 200 after **~10m44s**.
@@ -12,7 +12,7 @@
 - **Unexpected RAM overhead:** after weights released, Full OpenWebUI `uv` package cache still consumed ~**7 GiB tmpfs** (`/dev/shm/qwen38-hf/xdg/uv/archive-v0`), in addition to ~0.9 GiB model cache metadata. Treat separately from model download footprint.
 - **Clean termination:** exact Pod ID targeted-delete successful; RunPod 0 active, 0 USD/h; local 45-minute kill guard canceled. Detailed nonsecret RunPod and pod markers saved under `~/.runpod/qwen38-pr19-test1-*` as 0600 files.
 
-**Consequences for release status:** RAM cleanup is now **live validated** but PR #19 has not been merged. Private Full is **only partially accepted** because tailnet HTTPS and positive authenticated UI login remain open. No matched Secure Cloud run or 5-start cohort exists; the user's Community-vs-Secure speed hypothesis is **not yet confirmed**.
+**Consequences for release status:** RAM cleanup is **live validated** and PR #19 has been **merged into this integration branch** (commit `719681f`), with release switch default OFF. Private Full is **only partially accepted** because tailnet HTTPS and positive authenticated UI login remain open. No matched Secure Cloud run or 5-start cohort exists; the user's Community-vs-Secure speed hypothesis is **not yet confirmed**.
 
 ---
 
@@ -30,13 +30,13 @@ gezielt beendet; 0 aktive Pods nach dem letzten Test.
 | Native RunPod CLI | API aus geschützter nativer Konfiguration über SSH-MCP funktionsfähig | PASS |
 | Alle vier Templates | In-place auf RunPod Secrets und aktuelle Helper migriert; beide privaten Port-Konfigurationen mehrfach unabhängig leer geprüft | PASS |
 | Tailscale | Native SSH im Pod und Serve HTTPS API auf 443 nach Reparatur des noexec-/dev/shm-Problems | PASS Private Lean |
-| Datenschutz | Pflicht-Bearer konfiguriert, positive authentifizierte Inferenz HTTP 200, DEBUG=1 inklusive Log-Redaktion und RAM-Laufzeit | TEILWEISE; negative Zugangstests und Full-UI offen |
+| Datenschutz | Pflicht-Bearer aktiv, authentifizierte Inferenz HTTP 200; fehlender/falscher Bearer HTTP 401; OpenWebUI Signup 403 und anonyme Chat-API 401 | TEILWEISE; positives WebUI-Login und HTTPS Serve #20 offen |
 | RAM-only und cgroups | cgroup v1 live erkannt, 57.74 GiB freies tmpfs; Standard 2.5× benötigt 64.90 GiB und bricht korrekt ab, beaufsichtigte 1.75× benötigt 47.83 GiB und läuft | PASS als beaufsichtigter Test; Standard 2.5× absichtlich unverändert |
 | Gewichtedownload | Hauptmodell 19.18 GiB + DFlash2 3.58 GiB in etwa 3m26s; tatsächlich gemessener tmpfs-Höchststand 22.777 GiB | PASS |
 | VRAM und Inferenz | Hauptmodell 18.81 GB, Draft 3.73 GB im VRAM, KV/Mamba-Caches und CUDA Graphs initialisiert, erfolgreich authentifiziert inferiert | PASS |
 | In-Pod Benchmark | 3 Messungen pro Workload nach Warm-up: Technical 135.8, Code 187.1, Code Edit 190.6 tok/s; TTFT circa 62–64 ms | PASS; nur Loopback/Einzelkohorte |
 | Manuelle Gewichtsfreigabe | 0 offene mmap/FDs; 3 verifizierte Safetensors-Blobs (~22.73 GiB) entfernt; tmpfs von ~23 GiB auf ~31 MiB; VRAM unverändert; danach eine authentifizierte HTTP-200-Inferenz | PASS als manueller Proof-of-Concept |
-| Optionale automatische RAM-Freigabe | Separater Draft PR #19 mit Schalter MODEL_RAM_RELEASE_AFTER_LOAD=1, Standard 0; CI grün | LIVE-REGRESSION OFFEN |
+| Optionale automatische RAM-Freigabe | PR #19 in Integration gemergt, Schalter MODEL_RAM_RELEASE_AFTER_LOAD=1, Default 0; privater Full-GPU-Test gab 22.731 GiB frei und inferierte danach erfolgreich | PASS für opt-in RAM-Livetest; weitere Betriebsmodi getrennt zu prüfen |
 | Cold Start | Mehrere Image-Pulls beobachtet (ein Pull ~7m22s); Haupt- plus Draft-Download und GPU-Ladung separat gemessen | TEILWEISE; keine 5 unabhängigen Starts pro Kohorte |
 
 ### Offene Release-Gates (nicht als erledigt kennzeichnen)
@@ -44,23 +44,23 @@ gezielt beendet; 0 aktive Pods nach dem letzten Test.
 - [x] Private SGLang ohne/falschen Bearer 401; RunPod öffentliche 8000/8080-Proxy-Adressen 404, auch nach App-Start. **Tailnet HTTPS 443/8443 weiterhin unerreichbar**, Issue #20.
 - [x] Private Full OpenWebUI erfolgreich gestartet, Admin angelegt, Signup 403 / anonymous Chat API 401 und auth=true. **Offen bleiben positives Login und erreichbares Tailnet-HTTPS 8443** (Issue #20).
 - [ ] Öffentliche Full/Lean-Varianten gesondert überprüfen; positive Private-Lean-Ergebnisse beweisen deren Sicherheit nicht.
-- [ ] Deaktivierte Schalter DEBUG=0, BENCHMARK=0 und COLDSTART_TRACE=0 live testen.
+- [ ] Deaktivierte Schalter DEBUG=0 und COLDSTART_TRACE=0 live testen; **BENCHMARK=0 im Private-Full-Run mit Auto-RAM-Freigabe erfolgreich bestätigt**.
 - [ ] SSD-Modus bewusst aktivieren und vergleichen; **niemals** stillschweigend RAM→SSD ausweichen.
-- [x] PR #19 automatische RAM-Freigabe auf echter RTX PRO 6000 mit BENCHMARK=0 und authentifizierter Inferenz vor/nach Cleanup bestanden. Default OFF und SSD-negative Fall sind CI-verifiziert, noch nicht beide live geprüft. Integration/Merge weiter offen.
+- [x] PR #19 automatische RAM-Freigabe auf echter RTX PRO 6000 mit BENCHMARK=0 und authentifizierter Inferenz vor/nach Cleanup bestanden. Default OFF und SSD-negative Fall sind CI-verifiziert, noch nicht beide live geprüft. PR #19 in den Integrationsbranch gemergt; Release nach main weiter offen.
 - [ ] Nach absichtlich freigegebenen Gewichten Audit/Diagnose für nicht mehr vorhandene Gewichtsdateien bewerten; Neustart/Reload erfordert erneuten Download.
 - [ ] Fünf unabhängige Starts pro zu vergleichender Kohorte, Region/Cache/Host klassifizieren; Median/p95 erst danach interpretieren.
 - [ ] Fehlleitende Netzwerkprobe mit 0.0 MB/s und Download-Fortschrittsanzeige in GiB/ETA beheben (separat erfasst).
 - [ ] Sicherer, ausschließlich QWEN38-Pods erfassender Reaper und TTL (Issue #18); globalen Reaper **nicht** aktivieren.
-- [ ] Finale Review aller ursprünglichen PRs und des integrierten Draft PR #17, dann erst Merge nach Freigabe.
+- [x] PR #19 in den Integrationsbranch gemergt und PRs #12–#16 als durch #17 abgelöst geschlossen. **Offen:** Finale Sicherheits- und Release-Review von PR #17 vor dem Merge nach main.
 
 ### Operative Eckpunkte
 
 Der Benchmark-Bericht liegt auf dem Mac mini unter
 ~/.runpod/qwen38-live04-benchmark.json (0600). Alle vier existierenden
 Template-IDs wurden aktualisiert, nicht neu angelegt. Die ursprünglichen
-Feature-Branches #12–#16 sind als eigenständige Drafts **nicht**
-identisch mit dem getesteten Integrationsstand; deren PR-Diskussionen
-müssen die Integrationserkenntnisse ausdrücklich referenzieren.
+PRs #12–#16 wurden als **superseded by PR #17** geschlossen, da alle
+Feature-Commits im Integrationsbranch enthalten sind. Ihre Branches und
+Kommentare bleiben erhalten; sie dürfen nicht separat nach main gemergt werden.
 
 Beim Cleanup nur **runpodctl pod delete <EXAKTE_POD_ID>** verwenden.
 qwen38fast stop / qwen38pi stop löschen in der aktuellen Version
@@ -73,7 +73,7 @@ keine garantierte automatische TTL, solange Issue #18 offen ist.
 > **Integration branch:** `integration/issues-7-11-20261010`.
 > This is a **partially GPU-verified** pre-release candidate. See the live
 > status matrix above: important release gates remain open. Original PRs #12–#16 and `main`
-> remain independent; see the PR audit. All integration CI is mock/offline.
+> are preserved as branches, while the older feature PRs are closed as consolidated. All integration CI is mock/offline.
 
 ## What is combined
 
@@ -236,9 +236,9 @@ Use a targeted `runpodctl pod delete <exact-pod-id>` when other pods must
 survive. Remove per-test ephemeral Tailscale nodes/keys via tailnet management
 as appropriate.
 
-Keep this PR in **Draft**, and original feature PRs open, until the paid
-GPU security + RAM/SSD correctness + benchmark + cold-start end-to-end
-smoke has been verified. CI passing is necessary but not sufficient.
+Keep **PR #17 in Draft** until HTTPS Serve issue #20, safe TTL reaper
+issue #18, and remaining security/storage and cold-start release gates pass.
+Original feature PRs #12–#16 are already consolidated and closed. CI passing is necessary but not sufficient.
 
 ## Private-template port safety correction
 
@@ -251,7 +251,7 @@ and refuses templates with any published ports, missing ports metadata, or
 a mode other than `tailnet`.
 
 To repair the **existing** private template IDs without recreating the four
-templates, run locally with Keychain credentials sourced:
+templates, use the native protected RunPod CLI credentials (no Keychain unlock required):
 
 ```bash
 python3 scripts/private-template-ports.py repair "$QWEN38_TEMPLATE_TAILNET"
