@@ -334,3 +334,6 @@ secret name to enable `HF_TOKEN`. For previous local-secret behavior,
 set `QWEN38_CREDENTIAL_MODE=local`. The local Qwen38 proxy requires the
 **same** SGLang API key as the RunPod `LLAMA_API_KEY` Secret;
 see [security and setup notes](docs/SECURITY.md).
+
+Existing template IDs can be updated in place using
+`scripts/sync-runpod-secrets.py` (see [security guide](docs/SECURITY.md)).
