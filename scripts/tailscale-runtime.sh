@@ -72,30 +72,46 @@ ts_start() {
             echo "ERROR: unsupported TS_VERSION (update pin and tests first)" >&2
             rm -f "$auth_file"; return 64
         }
-        echo "TAILSCALE: installing verified static binary ${version}"
+        # /dev/shm is often mounted noexec on RunPod. Keep ALL credentials,
+        # sockets and daemon state in tmpfs, but unpack public, checksum-verified
+        # executable files into the container's ephemeral /tmp overlay.
+        # Never place auth keys or other private data in this directory.
+        local exec_dir="${TS_BIN_DIR:-/tmp/qwen38-tailscale-bin}"
+        if [[ "$exec_dir" != /tmp/* || "$exec_dir" == *"/../"* ||
+              "$exec_dir" == *"/.." || -L "$exec_dir" ]]; then
+            echo "ERROR: Tailscale executable directory must be a real /tmp directory" >&2
+            rm -f "$auth_file"; return 70
+        fi
+        if ! install -d -m 700 "$exec_dir"; then
+            echo "ERROR: cannot create executable staging directory" >&2
+            rm -f "$auth_file"; return 70
+        fi
+        echo "TAILSCALE: installing verified static binary ${version} (exec staging)"
         local url="https://pkgs.tailscale.com/stable/tailscale_${version}_amd64.tgz"
-        if ! curl -fsSL --retry 2 --max-time 120 "$url" -o "$work/tailscale.tar.gz" ||
-           ! curl -fsSL --retry 2 --max-time 30 "${url}.sha256" -o "$work/tailscale.sha256"; then
+        if ! curl -fsSL --retry 2 --max-time 120 "$url" -o "$exec_dir/tailscale.tar.gz" ||
+           ! curl -fsSL --retry 2 --max-time 30 "${url}.sha256" -o "$exec_dir/tailscale.sha256"; then
             echo "ERROR: Tailscale download failed" >&2
             rm -f "$auth_file"; return 70
         fi
         local expected actual
-        expected="$(tr -cd 'a-fA-F0-9' < "$work/tailscale.sha256")"
-        actual="$(sha256sum "$work/tailscale.tar.gz" | cut -d' ' -f1)"
+        expected="$(tr -cd 'a-fA-F0-9' < "$exec_dir/tailscale.sha256")"
+        actual="$(sha256sum "$exec_dir/tailscale.tar.gz" | cut -d' ' -f1)"
         if [[ ! "$expected" =~ ^[0-9a-fA-F]{64}$ || "${expected,,}" != "${actual,,}" ]]; then
             echo "ERROR: Tailscale archive SHA-256 verification failed" >&2
             rm -f "$auth_file"; return 70
         fi
-        if ! tar -xzf "$work/tailscale.tar.gz" -C "$work"; then
+        if ! tar -xzf "$exec_dir/tailscale.tar.gz" -C "$exec_dir"; then
             echo "ERROR: invalid Tailscale archive" >&2
             rm -f "$auth_file"; return 70
         fi
-        cli="$work/tailscale_${version}_amd64/tailscale"
-        daemon="$work/tailscale_${version}_amd64/tailscaled"
-        [[ -x "$cli" && -x "$daemon" ]] || {
-            echo "ERROR: Tailscale binaries missing" >&2
+        cli="$exec_dir/tailscale_${version}_amd64/tailscale"
+        daemon="$exec_dir/tailscale_${version}_amd64/tailscaled"
+        [[ -f "$cli" && -f "$daemon" && -x "$cli" && -x "$daemon" ]] || {
+            echo "ERROR: Tailscale binaries unavailable or cannot execute (check /tmp noexec)" >&2
             rm -f "$auth_file"; return 70
         }
+        # Archives contain only public Tailscale executables; discard after use.
+        rm -f "$exec_dir/tailscale.tar.gz" "$exec_dir/tailscale.sha256"
     fi
 
     TS_SOCKET="$work/tailscaled.sock"
