@@ -58,6 +58,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - name: Verify same-repo Actions token can create a PR status comment
         shell: bash
