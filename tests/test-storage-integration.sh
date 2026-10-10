@@ -55,6 +55,9 @@ bash "$ROOT/create-templates.sh" > "$TMP/templates.out"
 if QWEN38_MODEL_STORAGE=ram QWEN38_RAM_PEAK_FACTOR=1.75 qwen38fast --pi > "$TMP/pi.out" 2>&1; then
   echo 'ERROR: mock pod should never be deployed (pi)' >&2; exit 1
 fi
+if QWEN38_MODEL_STORAGE=ram QWEN38_MODEL_RAM_RELEASE_AFTER_LOAD=1 qwen38fast --pi > "$TMP/release.out" 2>&1; then
+  echo 'ERROR: mock pod should never be deployed (release)' >&2; exit 1
+fi
 if QWEN38_MODEL_STORAGE=ssd qwen38fast --storage ssd > "$TMP/full.out" 2>&1; then
   echo 'ERROR: mock pod should never be deployed (full)' >&2; exit 1
 fi
@@ -92,5 +95,9 @@ assert {e['SERVE_WEBUI'] for e in envs} == {'0', '1'}
 assert {e['MODEL_STORAGE'] for e in envs} == {'ram', 'ssd'}, [(e['MODEL_STORAGE'],e.get('MODEL_RAM_PEAK_FACTOR')) for e in envs]
 assert any(e.get('MODEL_RAM_PEAK_FACTOR') == '1.75' for e in envs if e['MODEL_STORAGE'] == 'ram')
 assert all('MODEL_RAM_PEAK_FACTOR' not in e for e in envs if e['MODEL_STORAGE'] == 'ssd')
+assert all(e.get('MODEL_RAM_RELEASE_AFTER_LOAD', '0') in ('0','1') for e in envs)
+assert any(e.get('MODEL_RAM_RELEASE_AFTER_LOAD') == '1' for e in envs)
+assert all(e.get('MODEL_RAM_RELEASE_AFTER_LOAD', '0') == '0'
+           for e in envs if e['MODEL_STORAGE'] == 'ssd')
 print(f'model-storage launcher/template env: {len(envs)} checked, both modes and paths')
 PY
