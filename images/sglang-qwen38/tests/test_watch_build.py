@@ -93,6 +93,26 @@ class WatchdogTests(unittest.TestCase):
                 self.assertIsNone(mod.github_comment("no secrets here"))
                 request.assert_not_called()
 
+    def test_memory_pressure_stops_before_99_percent_usage(self):
+        severe, count = mod.memory_critical(2.33, 0)
+        self.assertTrue(severe)
+        self.assertEqual(count, 1)
+        severe, count = mod.memory_critical(3.0, 0)
+        self.assertFalse(severe)
+        self.assertEqual(count, 0)
+        severe, count = mod.memory_critical(1.12, 0)
+        self.assertTrue(severe)
+        self.assertEqual(count, 1)
+        severe, count = mod.memory_critical(2.0, 0)
+        self.assertFalse(severe)
+        self.assertEqual(count, 1)
+        severe, count = mod.memory_critical(2.0, count)
+        self.assertTrue(severe)
+        self.assertEqual(count, 2)
+        severe, count = mod.memory_critical(None, 1)
+        self.assertFalse(severe)
+        self.assertEqual(count, 0)
+
     def test_never_kill_an_unisolated_process_group(self):
         with mock.patch.object(mod.os, "getpgid", return_value=4711):
             with mock.patch.object(mod.os, "killpg") as kill:
