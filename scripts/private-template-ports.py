@@ -53,13 +53,20 @@ def validate(template, template_id, require_empty=True):
     env = template.get("env")
     if not isinstance(env, dict) or env.get("NETWORK_MODE") != "tailnet":
         raise PortSafetyError("template is not in tailnet mode")
-    if SECRETS.intersection(env):
-        raise PortSafetyError("embedded secret keys in template")
+    # Secret *references* are safe to persist in templates, plaintext is not.
+    for secret_name in SECRETS.intersection(env):
+        value = env[secret_name]
+        if not isinstance(value, str) or not re.fullmatch(
+                r"\{\{ RUNPOD_SECRET_[A-Za-z][A-Za-z0-9_]* \}\}", value):
+            raise PortSafetyError("embedded plaintext secret in template")
     if not env.get("BOOTSTRAP_B64") or not env.get("TAILSCALE_RUNTIME_B64"):
         raise PortSafetyError("missing bootstrap or Tailscale runtime")
-    ports = template.get("ports")
+    # RunPod omits ports on REST GET when there are no mappings.
+    # Explicit null/unknown shapes still fail closed. During repair, PATCH [] is
+    # always issued, even if the preflight GET omits the key.
+    ports = template.get("ports", [])
     if not isinstance(ports, list):
-        raise PortSafetyError("missing/unrecognized ports field")
+        raise PortSafetyError("unrecognized ports field")
     if require_empty and (ports or template.get("portsConfig")):
         raise PortSafetyError("private template has public RunPod ports")
 
