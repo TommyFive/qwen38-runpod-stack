@@ -165,3 +165,36 @@ bundled script payloads: bootstrap, Tailscale, model storage and benchmark.
 The operation preserves template IDs and all unrelated environment values,
 revalidates Secret references, PATCHes `ports: []` on private templates and
 verifies live persisted state. Do not start a GUI template until refreshed.
+
+### Measured RAM peak and post-load cleanup experiment (2026-10-10)
+
+The RAM-only preflight defaults to **2.5×** the main+draft inventory plus
+8 GiB tmpfs headroom and 8 GiB additional process headroom. It remains
+conservative by default. For an explicitly supervised experiment,
+`QWEN38_RAM_PEAK_FACTOR=1.75` on `qwen38fast` sets the pod's
+`MODEL_RAM_PEAK_FACTOR` (allowed range 1.5–5.0); it does **not** affect SSD
+mode. With `QWEN38_DEBUG=1` on RAM mode a **read-only** sampler records
+tmpfs free space and peak consumed bytes every second, and prints a sanitized
+summary every 15 seconds as `QWEN38_STORAGE_METRIC`; it never handles secrets.
+
+One disposable private RTX PRO 6000 pod passed RAM admission with
+22.76 GiB main+DFlash2 inventory, 57.74 GiB available tmpfs and
+116.27 GiB available finite cgroup-v1 memory. Peak observed actual tmpfs
+usage was **22.777 GiB**, significantly below the modeled factor of 1.75.
+The full in-pod benchmark completed with decode rates of 135.8 / 187.1 /
+190.6 tokens/s (technical / code / code edit, three measured each).
+
+Once SGLang initialized, no process showed an open fd or mmap of the
+Hugging Face model cache. In that disposable GPU pod **only three reproducible
+safetensors blob files** were manually unlinked (24,408,102,128 bytes,
+approximately 22.73 GiB); tokenizer/config remained in place. tmpfs used
+fell from ~23 GiB to ~31 MiB, GPU VRAM usage stayed ~85.4 GiB, and one
+further authenticated completion succeeded (HTTP 200, 48 completion tokens).
+
+**Caution:** This is a single test, not a universal SGLang contract. No
+automatic model weight deletion has been implemented. Runtime file access
+may differ with mmap, offloading, LoRA, alternate loaders or model reloads.
+After deletion the server cannot reliably restart/reload weights without
+redownloading them. Any future automated cleanup must explicitly opt in,
+verify full readiness and first inference, check open FDs/mmap, remove only
+validated weight blobs, verify freed tmpfs space, and retest inference.
