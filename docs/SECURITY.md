@@ -142,3 +142,26 @@ The operation reads and updates only the four named templates. It uses REST
 re-reads persisted state. It does **not** create or start a GPU pod. If any
 verification fails, stop and inspect the resulting template before use.
 The existing IDs stay unchanged.
+
+### Finite-memory RAM admission on cgroup v1 and v2
+
+The RAM-only preflight accepts a **proven finite** memory limit from cgroup v2
+(`memory.max` / `memory.current`) or a mounted cgroup-v1 memory controller
+(`memory.limit_in_bytes` / `memory.usage_in_bytes`). Cgroup membership is
+resolved against the controller mount root using `/proc/self/cgroup` and
+`/proc/self/mountinfo` (including delegated cgroup namespace roots).
+Huge cgroup-v1 unlimited sentinels, missing controllers, malformed values,
+unresolvable paths and non-finite limits all **fail closed**, not silently
+using host RAM as a substitute. Before attempting cgroup discovery, DEBUG
+reports the required checkpoint+draft capacity and actual free tmpfs space,
+so insufficient `/dev/shm` can be diagnosed without downloading weights.
+
+### Refresh existing RunPod templates in place
+
+Run `python3 scripts/sync-runpod-secrets.py --refresh-helpers` with all four
+`--public-full`, `--public-lean`, `--private-full`, `--private-lean`
+arguments (see existing setup instructions) to replace exactly the four
+bundled script payloads: bootstrap, Tailscale, model storage and benchmark.
+The operation preserves template IDs and all unrelated environment values,
+revalidates Secret references, PATCHes `ports: []` on private templates and
+verifies live persisted state. Do not start a GUI template until refreshed.
