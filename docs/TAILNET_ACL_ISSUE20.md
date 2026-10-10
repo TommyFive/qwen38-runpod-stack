@@ -1,5 +1,7 @@
 # Tailnet HTTPS Serve — Issue #20: verified ACL root cause (2026-10-10)
 
+> **LIVE FIX VERIFIED 2026-10-10** — Owner's Tailnet-wide `src:* → tag:runpod-llm → tcp:8080,443,8443` grant and memory-only `tailscaled --state=mem: --statedir=/dev/shm/.../state` are deployed. [Pod `s5titot9ae0zzv`](runs/20261010T163129Z_s5titot9ae0zzv.md) proved trusted HTTPS on both ports (valid TLS certificate), native SSH, no published RunPod ports, and negative API/UI auth (401), including in-Pod authorized model metadata 200. **The original ACL/TLS defect is fixed.** Remaining blocker: independently validate *external* 200 with valid Bearer plus positive WebUI admin login. Refer to [final review](RELEASE_REVIEW_PR17_20261011.md). Historical design and rejection text below is superseded; do **not** create a new tag or restrict the owner-approved wildcard grant on the basis of that text.
+
 ## Live reproduction and conclusion
 
 Issue [#20](https://github.com/TommyFive/qwen38-runpod-stack/issues/20)
@@ -31,7 +33,7 @@ The current live Pod ACL rules explain the reproducible Private Full failure.
 
 The owner requires these HTTPS ports to be reachable by **all Tailnet members**, not just OpenClaw clients. The RunPod authentication key already has `tag:runpod-llm` and `tag:ssh-target`. Keep both tags and add TCP 443/8443 to the existing wildcard-source grant (which already allows TCP 8080) targeting `tag:runpod-llm`. This is tailnet-only access, not public RunPod port exposure. The test for `tag:openclaw` was updated accordingly. Live application/TLS validation remains outstanding; renewing the expiring auth key must preserve its existing tags. **This owner decision supersedes the dedicated-tag/narrow-source proposal in the historical section below.**
 
-## Correct least-privilege design (tailnet-admin action required)
+## Historical proposed design (SUPERSEDED; not an action item)
 
 **Do not** add `tag:tagged-devices:443/8443` broadly. That tag also covers
 other production VPN/VPS/router devices.
@@ -94,17 +96,17 @@ Official documentation:
 - [Auth-key tag behavior](https://tailscale.com/docs/features/access-control/auth-keys)
 - [Serve and ACLs](https://tailscale.com/docs/features/tailscale-serve)
 
-## Release acceptance (still open)
+## Latest release acceptance (2026-10-11)
 
-- [ ] Dedicated Pod tag and restrictive Tailnet grant deployed and read back.
-- [ ] Client DNS/HTTPS name resolves; additionally test via `curl --resolve`
-      to isolate DNS vs TCP/TLS.
-- [ ] TCP 443 and 8443 establish, with proper TLS hostname verification.
-- [ ] Tailnet HTTPS 443: API 401 without Bearer, 200 with Bearer.
-- [ ] Tailnet HTTPS 8443: UI auth on, signup off, anonymous requests denied,
-      positive login using safe credential handling.
-- [ ] Native Tailscale SSH still works, `NETWORK_MODE=tailnet` uses
-      zero published RunPod ports, and public RunPod proxies return 404.
-- [ ] Exact-ID cleanup, no running charged Pods, final offline CI green.
+- [x] Owner-approved `src: ["*"]` source grant applies to `dst: ["tag:runpod-llm"]` TCP 8080/443/8443 **for all Tailnet identities**; not public internet. Existing Pod tags `tag:runpod-llm` and `tag:ssh-target` retained.
+- [x] Live Pod connected over Tailscale native SSH; Private Full no RunPod public ports.
+- [x] HTTPS TCP 443 and 8443 TLS handshake success with host certificate verification (`ssl_verify_result=0`).
+- [x] SGLang HTTPS `/v1/models` missing/wrong bearer returns 401; authenticated internal 200 recorded by guarded WebUI startup.
+- [x] WebUI HTTPS `/api/config` returns 200, `auth=true`, `enable_signup=false`; anonymous chats 401.
+- [x] Certificate and ACME state files present under `/dev/shm` tmpfs (fix #29).
+- [x] Exact-ID Pod cleanup confirmed, no running charged Pods; both current integration workflows green at last audited source head.
+- [ ] **Independent external** Tailnet HTTPS API query with **valid Bearer** returns 200 (credential check blocked by SSH-MCP safety).
+- [ ] **Positive** trusted HTTPS OpenWebUI admin login produces an authorized protected request/session (credential operation not yet validated).
+- [ ] Final owner security sign-off / explicit main merge approval after all tests.
 
-Issue #20 remains a **PR #17 P0 merge blocker** until these checks pass.
+**Conclusion:** Network/TLS incident fixed. Issue #20 remains open solely as a **positive-authentication release gate** until the above checks pass. Historical "dedicated Pod tag" proposal has been superseded by the owner's actual ACL decision.
