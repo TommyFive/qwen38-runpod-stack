@@ -9,7 +9,7 @@
 
 ## 1. Baseline, provenance and scope
 
-- Repository: `TommyFive/qwen38-runpod-stack`; PR [#17](../pull/17) targets `main`.
+- Repository: `TommyFive/qwen38-runpod-stack`; PR [#17](https://github.com/TommyFive/qwen38-runpod-stack/pull/17) targets `main`.
 - Head at the audit: `84672f280cdb7f23746b00199809c2059438e7b0`.
 - Source PRs #12–#16 were consolidated/superseded; #19 (optional RAM release,
   default `0`) merged into integration. The main branch remains untouched.
