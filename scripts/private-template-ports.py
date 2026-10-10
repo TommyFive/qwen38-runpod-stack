@@ -4,7 +4,10 @@ import argparse
 import json
 from pathlib import Path
 import stat
-import tomllib
+try:
+    import tomllib
+except ImportError:  # macOS system Python 3.9; avoid external dependencies
+    tomllib = None
 import os
 import re
 import sys
@@ -32,12 +35,30 @@ def runpod_api_key(config_path=None):
         if (meta.st_uid != os.getuid() or
                 stat.S_IMODE(meta.st_mode) & 0o077 or not stat.S_ISREG(meta.st_mode)):
             raise PortSafetyError("RunPod config ownership/permissions unsafe")
-        with path.open("rb") as handle:
-            content = tomllib.load(handle)
-        value = content.get("apiKey", "")
+        if tomllib is not None:
+            with path.open("rb") as handle:
+                value = tomllib.load(handle).get("apiKey", "")
+        else:
+            # Minimal, strict parser of the native runpodctl root-level TOML
+            # string key; no third-party parser or shell eval on Python 3.9.
+            value = ""
+            for line in path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith("["):  # root-level keys only
+                    break
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, _, literal = line.partition("=")
+                if name.strip() == "apiKey":
+                    literal = literal.strip()
+                    if literal.startswith('"'):
+                        value = json.loads(literal)
+                    elif literal.startswith("'") and literal.endswith("'"):
+                        value = literal[1:-1]
+                    break
         if isinstance(value, str) and value:
             return value
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, ValueError, UnicodeDecodeError):
         pass
     raise PortSafetyError("RunPod API credential unavailable in environment/native config")
 
