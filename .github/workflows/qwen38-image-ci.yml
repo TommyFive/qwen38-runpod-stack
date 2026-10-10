@@ -44,6 +44,7 @@ jobs:
           bash -n images/sglang-qwen38/cloudzy/monitor-from-mac.sh
           bash -n images/sglang-qwen38/cloudzy/run-build.sh
           python3 -m py_compile images/sglang-qwen38/manifest-size.py
+          python3 -m py_compile images/sglang-qwen38/inspect-ghcr-size.py
           python3 -m py_compile images/sglang-qwen38/cloudzy/observer.py
           python3 -m py_compile images/sglang-qwen38/prepare-source.py
           python3 -m py_compile images/sglang-qwen38/tests/test_prepare_source.py
