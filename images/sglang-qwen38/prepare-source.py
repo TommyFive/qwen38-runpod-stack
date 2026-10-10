@@ -47,7 +47,7 @@ def inject_empty_extra(source: str) -> str:
 def git(source: Path, *args: str) -> str:
     return subprocess.check_output(
         ["git", "-C", str(source), *args], text=True, stderr=subprocess.PIPE
-    ).strip()
+    ).rstrip("\n")
 
 
 def prepare(source: Path, lock_path: Path) -> None:
