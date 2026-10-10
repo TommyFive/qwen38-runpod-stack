@@ -43,6 +43,56 @@ jobs:
           set -euo pipefail
           bash -n images/sglang-qwen38/build-image.sh
           python3 -m unittest discover -v -s images/sglang-qwen38/tests -p 'test_*.py'
+      - name: Verify PR status-write authorization before costly Docker work
+        if: github.event_name == 'pull_request'
+        id: status-preflight
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, urllib.error, urllib.request
+          repo = os.environ["REPOSITORY"]
+          number = int(os.environ["PR_NUMBER"])
+          if repo != "TommyFive/qwen38-runpod-stack" or number != 21:
+              raise SystemExit("Refusing status probe outside approved repo/PR")
+          url = f"https://api.github.com/repos/{repo}/issues/{number}/comments"
+          body = (
+              "<!-- qwen38-image-resource-watch -->\n"
+              f"Qwen38 image run {os.environ['RUN_ID']}: status authentication verified. "
+              "Build has not started. Resource heartbeat every 120 seconds, "
+              "then every 30 seconds after minute 30."
+          )
+          request = urllib.request.Request(
+              url, data=json.dumps({"body": body}).encode(), method="POST",
+              headers={
+                  "Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                  "Accept": "application/vnd.github+json",
+                  "X-GitHub-Api-Version": "2022-11-28",
+                  "Content-Type": "application/json",
+              },
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=15) as response:
+                  if response.status != 201:
+                      raise SystemExit(f"PR comment probe unexpected HTTP {response.status}")
+                  comment_id = int(json.load(response)["id"])
+                  with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+                      out.write(f"comment_id={comment_id}\n")
+                  print(f"PASS: PR status-write preflight HTTP 201, comment #{comment_id}")
+          except urllib.error.HTTPError as exc:
+              print(f"::error::PR status comment unavailable (HTTP {exc.code}); "
+                    "aborting before the expensive image build.")
+              raise SystemExit(1)
+          except (urllib.error.URLError, KeyError, ValueError, TimeoutError) as exc:
+              print(f"::error::PR status comment preflight error "
+                    f"({type(exc).__name__}); aborting before image build.")
+              raise SystemExit(1)
+          PY
       - name: Free unneeded preinstalled SDKs on ephemeral GitHub-hosted runner
         shell: bash
         run: |
@@ -75,8 +125,9 @@ jobs:
         env:
           IMAGE_TAG: ghcr.io/tommyfive/qwen38-sglang:candidate-${{ github.event.pull_request.head.sha || github.sha }}
           PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.run_id }}
+          QWEN38_STATUS_COMMENT_ID: ${{ steps.status-preflight.outputs.comment_id }}
         run: |
           set -Eeuo pipefail
           log_dir="$RUNNER_TEMP/qwen38-image"
