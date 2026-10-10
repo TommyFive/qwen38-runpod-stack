@@ -92,7 +92,7 @@ Alternatively make a dedicated local tracking branch. The launcher needs
 `runpodctl`, the local `rp` wrapper and RunPod credentials. Do **not**
 paste bearer keys, HF tokens, Tailscale auth keys or web passwords into issues.
 
-## 1. Install user tools and create *new* templates
+## 1. Installed tools and existing templates (historical setup notes)
 
 ```bash
 ./setup.sh
@@ -100,7 +100,8 @@ paste bearer keys, HF tokens, Tailscale auth keys or web passwords into issues.
 ```
 
 `setup.sh` updates the current user's local commands and, on macOS,
-replaces/reloads its qwen38 proxy/reaper LaunchAgents. It is **not** a remote
+may replace/reload qwen38 proxy/reaper LaunchAgents. **Do not enable the old
+account-global reaper while Issue #18 is unresolved.** It is **not** a remote
 VPS action. `create-templates.sh` calls RunPod to create **four** new
 templates: public full/lean and portless tailnet full/lean. Retain the printed
 IDs and set **all four** `QWEN38_TEMPLATE`, `QWEN38_TEMPLATE_PI`,
@@ -109,9 +110,10 @@ shell config/environment as required. **Verify the two private templates have
 no `ports` or `port-labels` via actual RunPod template metadata/UI**
 before renting a GPU; an offline mock alone cannot prove this.
 
-For direct RunPod-UI pod creation, the new templates deliberately contain
-**no credentials**. Inject a nonempty `SGLANG_API_KEY`, `HF_TOKEN` when
-required, `TS_AUTHKEY` for private mode, and for OpenWebUI both
+For direct RunPod-UI pod creation, the current templates have **RunPod Secret
+references** for `SGLANG_API_KEY`/`LLAMA_API_KEY`, `HF_TOKEN` and private
+`TS_AUTHKEY`; these must resolve to existing RunPod Secrets at pod launch.
+For OpenWebUI supply both
 `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (16+ characters).
 Without a server API key startup **refuses** to expose an anonymous server;
 without OpenWebUI admin provisioning the UI **stays off**. The four existing template IDs are retained and were updated in place with
@@ -120,16 +122,16 @@ without OpenWebUI admin provisioning the UI **stays off**. The four existing tem
 ## 2. Select a safe first cohort (paid launch is a separate decision)
 
 Prefer **tailnet-only + lean API** first. The local machine must already
-reach the tailnet; use a non-reusable/ephemeral tagged Tailscale key with the
-appropriate ACLs and MagicDNS HTTPS Serve capabilities. Supply
+reach the tailnet; use a non-reusable/ephemeral tagged Tailscale key via RunPod Secret
+`TS_AUTHKEY` with appropriate ACLs and MagicDNS HTTPS Serve capabilities. Supply
 `QWEN38_TAILNET_DOMAIN` as the full `*.ts.net` tailnet DNS suffix. For
 instance, after exporting the four new template IDs (not shown here),
 set `QWEN38_NETWORK_MODE=tailnet` and run:
 
 ```bash
-# Local shell; input hidden. DO NOT echo the key or put it in command history.
-read -r -s -p 'Tailscale auth key: ' TS_AUTHKEY; printf '\n'
-export TS_AUTHKEY
+# RunPod Secret TS_AUTHKEY is already referenced by the private template.
+# Do not paste a plaintext key into environment, command history or GitHub.
+source ~/.config/qwen38/templates.env
 export QWEN38_TAILNET_DOMAIN='YOUR-TAILNET.ts.net'
 
 # Deliberately creates a paid RunPod pod. Un-comment only when ready.
@@ -147,8 +149,9 @@ sufficient `/dev/shm` free capacity. Many RunPod containers have **much less
 shared memory than GPU VRAM**: the RAM preflight can refuse the launch before
 HF download. It **never silently falls back** to persistent storage. On a
 deliberate second cohort, use `--storage ssd` instead and record the storage
-difference in cold-start measurements. Do **not** lower safety margins or
-change tmpfs mounts solely to bypass a failure.
+difference in cold-start measurements. Do **not** silently lower safety margins or change tmpfs mounts solely to
+bypass a failure; the completed GPU run deliberately opted into a measured
+1.75× factor, while the 2.5× production default remains unchanged.
 
 **WebUI second cohort:** Repeat a separate controlled full-stack run without
 `--pi`. The launcher creates/reuses a strong local password at
