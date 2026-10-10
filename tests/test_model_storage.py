@@ -74,7 +74,7 @@ class StorageTests(unittest.TestCase):
         with patch.object(ms, "selected_storage", return_value=("ram", self.ram, str(self.ram.parent), "tmpfs")), \
              patch.object(ms, "existing_ancestor", return_value=self.ram.parent), \
              patch("os.statvfs", side_effect=fake), \
-             patch("subprocess.run", return_value=SimpleNamespace(returncode=0, stdout="1234\\n")), \
+             patch("subprocess.run", return_value=SimpleNamespace(returncode=0, stdout="1234")), \
              patch("time.sleep", side_effect=done), \
              redirect_stdout(outputs):
             with self.assertRaises(KeyboardInterrupt):
