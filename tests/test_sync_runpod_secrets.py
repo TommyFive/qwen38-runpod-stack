@@ -42,6 +42,33 @@ class SyncTests(unittest.TestCase):
         with self.assertRaises(sync.ports.PortSafetyError):
             sync.make_env(e, "tailnet", "")
 
+    def test_migration_uses_hf_token_secret_by_default(self):
+        import io
+        import os
+        import sys
+        with patch.dict(os.environ, {}, clear=True), \
+             patch.object(sys, "argv", ["sync", "--public-full", "pubfull",
+                  "--public-lean", "publean", "--private-full", "privfull",
+                  "--private-lean", "privlean"]), \
+             patch.object(sync, "sync") as update, \
+             patch("sys.stdout", new=io.StringIO()):
+            self.assertEqual(sync.main(), 0)
+        self.assertEqual(update.call_count, 4)
+        self.assertTrue(all(call.args[2] == "HF_TOKEN" for call in update.call_args_list))
+
+    def test_explicit_empty_hf_name_skips_optional_secret(self):
+        import io
+        import os
+        import sys
+        with patch.dict(os.environ, {"QWEN38_HF_SECRET_NAME": ""}, clear=True), \
+             patch.object(sys, "argv", ["sync", "--public-full", "pubfull",
+                  "--public-lean", "publean", "--private-full", "privfull",
+                  "--private-lean", "privlean"]), \
+             patch.object(sync, "sync") as update, \
+             patch("sys.stdout", new=io.StringIO()):
+            self.assertEqual(sync.main(), 0)
+        self.assertTrue(all(call.args[2] == "" for call in update.call_args_list))
+
     def test_repair_private_in_place_no_pod_create(self):
         state = stub()
         calls = []
