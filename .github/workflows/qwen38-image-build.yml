@@ -1,12 +1,17 @@
-name: Qwen38 image build (manual / dedicated host)
+name: Qwen38 image build (GitHub-hosted candidate)
 
-# Deliberately NOT triggered by push or pull_request. Heavy CUDA builds only on
-# an explicitly provisioned, dedicated Linux x86_64 image-build runner.
+# Trial build on PR #21, subsequently switch back to manual-only.
+# NEVER deploys to RunPod or publishes without workflow_dispatch publish=true.
 on:
+  pull_request:
+    types: [synchronize]
+    paths:
+      - 'images/sglang-qwen38/**'
+      - '.github/workflows/qwen38-image-build.yml'
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish candidate to GHCR (default false; never changes RunPod templates)'
+        description: 'Explicitly publish candidate to GHCR (false = build only)'
         required: true
         default: false
         type: boolean
@@ -15,33 +20,59 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: qwen38-image-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    # Provision this dedicated build-host label explicitly; production VPS are forbidden.
-    runs-on: [self-hosted, linux, x64, qwen38-build]
-    timeout-minutes: 360
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.number == 21 &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 (Node 24)
-      - name: Offline source checks
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Offline source and safety checks
         shell: bash
         run: |
           set -euo pipefail
           bash -n images/sglang-qwen38/build-image.sh
           python3 -m unittest discover -v -s images/sglang-qwen38/tests -p 'test_*.py'
-      - name: Record build-host properties (without secrets)
+      - name: Free unneeded preinstalled SDKs on ephemeral GitHub-hosted runner
         shell: bash
         run: |
           set -euo pipefail
+          echo "=== BEFORE ==="
+          df -h / /var/lib/docker
+          sudo rm -rf -- /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/powershell
+          echo "=== AFTER ==="
+          df -h / /var/lib/docker
+      - name: Verify Docker storage and build prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== HOSTED RUNNER ==="
           uname -a
           docker version
           docker buildx version
-          df -h .
-          docker info --format 'DockerRootDir={{.DockerRootDir}}'
+          df -hT / /var/lib/docker
+          free -h
+          root="$(docker info --format '{{.DockerRootDir}}')"
+          available="$(df -B1 --output=avail "$root" | tail -1 | tr -d ' ')"
+          threshold="$((100 * 1024 * 1024 * 1024))"
+          echo "DockerRoot=$root AvailableBytes=$available RequiredBytes=$threshold"
+          if (( available < threshold )); then
+            echo "::error::Insufficient disk for conservative SGLang CUDA build; aborting before image pull/compile"
+            exit 1
+          fi
       - name: Build pinned AMD64 candidate (publish optional)
         shell: bash
         env:
-          IMAGE_TAG: ghcr.io/tommyfive/qwen38-sglang:candidate-${{ github.sha }}
-          PUBLISH_IMAGE: ${{ inputs.publish }}
+          IMAGE_TAG: ghcr.io/tommyfive/qwen38-sglang:candidate-${{ github.event.pull_request.head.sha || github.sha }}
+          PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
@@ -51,5 +82,9 @@ jobs:
           else
             bash images/sglang-qwen38/build-image.sh --tag "$IMAGE_TAG"
           fi
-          echo "Candidate tag: $IMAGE_TAG"
-          echo "Published: $PUBLISH_IMAGE"
+          echo "Built candidate tag: $IMAGE_TAG; published=$PUBLISH_IMAGE"
+          if [[ "$PUBLISH_IMAGE" != true ]]; then
+            docker image inspect "$IMAGE_TAG" --format 'ImageId={{.Id}} UncompressedBytes={{.Size}}'
+            docker history --human=false "$IMAGE_TAG" | head -n 20 || true
+          fi
+          df -h / /var/lib/docker
