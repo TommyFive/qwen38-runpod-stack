@@ -65,6 +65,20 @@ a memory root cause. Do not rerun blindly.
 
 ### Durable diagnostics before a second expensive attempt
 
+The next build has added two independent diagnostic paths. After an
+Actions API probe returned HTTP 403 despite declared `issues: write`,
+an additional `pull-requests: write` scope was requested and the
+**same PR-comment API operation succeeded (HTTP 201)** in isolated
+[permission-check Actions run #38050861785](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38050861785).
+A one-time successful test comment is visible on PR #21. The cause of
+GitHub's unusual permission behavior is not otherwise proven.
+
+Before a **future** heavy PR-triggered build, the workflow now creates a
+status comment as a mandatory preflight; if this fails it stops **before**
+clearing SDKs or compiling anything. The watchdog receives that comment ID
+and updates it instead of creating another one. This preflight was added
+*after* build #2 started and therefore does **not** repair its live monitor.
+
 The next build has added two independent diagnostic paths:
 
 - The BuildKit console output is saved to a local file with
