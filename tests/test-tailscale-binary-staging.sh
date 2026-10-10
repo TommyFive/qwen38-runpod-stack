@@ -62,7 +62,8 @@ command() {
 source "$ROOT/scripts/tailscale-runtime.sh"
 
 export NETWORK_MODE=tailnet TS_HOSTNAME=qwen38-test TS_ENABLE_SSH=1
-export TEST_EXPECTED_AUTH=tskey-auth-ci-fixture
+# Offline fixture only: intentionally not shaped like a real Tailscale credential.
+export TEST_EXPECTED_AUTH=qwen38-ci-fixture-not-a-real-token
 export TS_AUTHKEY="$TEST_EXPECTED_AUTH"
 ts_start
 daemon_pid="$TS_DAEMON_PID"
@@ -77,7 +78,7 @@ daemon_pid="$TS_DAEMON_PID"
 if [[ -d "$TS_SECRET_DIR" ]] && find "$TS_SECRET_DIR" -type f | grep -q .; then
   echo "FAIL: Tailscale auth key persisted" >&2; exit 1
 fi
-if grep -R -Fq 'tskey-auth-ci-fixture' "$TS_BIN_DIR"; then
+if grep -R -Fq "$TEST_EXPECTED_AUTH" "$TS_BIN_DIR"; then
   echo "FAIL: plaintext secret in executable stage" >&2; exit 1
 fi
 kill "$daemon_pid" 2>/dev/null || :
