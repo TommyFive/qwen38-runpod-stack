@@ -104,7 +104,11 @@ elif args[:2] == ["template", "create"]:
     assert env["RUNTIME_LOG_DIR"] == "/dev/shm/qwen38-runtime"
     assert env["ENABLE_SSH"] == "0"
     assert env["BOOTSTRAP_B64"] and env["MODEL_ID"]
-    assert "SGLANG_API_KEY" not in env
+    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+    if env["NETWORK_MODE"] == "tailnet":
+        assert env["TS_AUTHKEY"] == "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
+    else:
+        assert "TS_AUTHKEY" not in env
     assert "WEBUI_ADMIN_PASSWORD" not in env
     with open(os.environ["TEST_TEMPLATE_FLAGS"], "a") as out:
         out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":args[args.index("--ports")+1] if "--ports" in args else "", "mode":env["NETWORK_MODE"]})+"\n")
@@ -222,7 +226,8 @@ assert all(not d["ports"] for d in data[2:])
 assert all(d["mode"]=="tailnet" for d in data[2:])
 PY
 
-echo '=== launcher HF_TOKEN precedence and password provision ==='
+echo '=== launcher local credential fallback and password provision ==='
+export QWEN38_CREDENTIAL_MODE=local
 export QWEN38_DEBUG=1
 export TEST_EXPECTED_LAUNCH_HF="$HF_TOKEN"
 mkdir -p "$HOME/.cache/huggingface"
