@@ -69,6 +69,34 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(sync.main(), 0)
         self.assertTrue(all(call.args[2] == "" for call in update.call_args_list))
 
+    def test_bundled_helpers_refresh_only_declared_keys(self):
+        from unittest.mock import patch
+        import base64
+        current = stub()["env"]
+        current.update({
+            "BENCHMARK_B64": "old",
+            "STORAGE_HELPER_B64": "old",
+            "TAILSCALE_RUNTIME_B64": "old",
+            "BOOTSTRAP_B64": "old",
+        })
+        helpers = sync.read_bundled_helpers()
+        updated = sync.make_env(current, "tailnet", "HF_TOKEN", helpers)
+        self.assertEqual({k: updated[k] for k in helpers}, helpers)
+        self.assertEqual(updated["MODEL_ID"], "example/main")
+        self.assertEqual(updated["TS_AUTHKEY"], "{{ RUNPOD_SECRET_TS_AUTHKEY }}")
+        self.assertEqual(updated["HF_TOKEN"], "{{ RUNPOD_SECRET_HF_TOKEN }}")
+        for key, relative in sync.BUNDLED_HELPERS.items():
+            self.assertEqual(base64.b64decode(updated[key]),
+                             (sync.Path(__file__).resolve().parents[1] / relative).read_bytes())
+        with self.assertRaises(sync.ports.PortSafetyError):
+            sync.make_env(current, "tailnet", "", {"BOOTSTRAP_B64": "partial"})
+
+    def test_refresh_rejects_template_missing_helper(self):
+        data = stub()["env"]
+        helpers = sync.read_bundled_helpers()
+        with self.assertRaisesRegex(sync.ports.PortSafetyError, "missing an embedded"):
+            sync.make_env(data, "tailnet", "HF_TOKEN", helpers)
+
     def test_repair_private_in_place_no_pod_create(self):
         state = stub()
         calls = []
