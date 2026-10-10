@@ -68,6 +68,12 @@ if ! grep -q 'Starting qwen38pi' "$TMP/pi.out"; then
   echo "mock launcher was blocked before create:" >&2
   sed -n '1,14p' "$TMP/pi.out" >&2
 fi
+# Mock outputs below contain only nonsecret test data and launcher warnings.
+if [[ $(wc -l < "$MOCK_OUTPUT_FILE") -eq 4 ]]; then
+  echo "launcher output for diagnosis:" >&2
+  tail -n 16 "$TMP/pi.out" >&2
+  tail -n 8 "$TMP/full.out" >&2
+fi
 python3 - "$MOCK_OUTPUT_FILE" "$ROOT" <<'PY'
 import base64, json, pathlib, sys
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
