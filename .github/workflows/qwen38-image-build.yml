@@ -83,7 +83,7 @@ jobs:
           log="$log_dir/buildkit.log"
           : > "$log"
           echo "BuildKit plain text output is retained as an artifact on normal job exit."
-          echo "A sanitized PR resource checkpoint is published every 120 seconds."
+          echo "PR heartbeat: 120s initially, 30s after minute 30; SSD/RAM sample in Actions every 30s."
           if [[ "$PUBLISH_IMAGE" == true ]]; then
             printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           fi
@@ -101,7 +101,9 @@ jobs:
           build_pid=$!
           echo "Build started as isolated process group, pid=$build_pid"
           python3 images/sglang-qwen38/watch-build.py \
-            --pid "$build_pid" --log "$log" --run-id "$RUN_ID" &
+            --pid "$build_pid" --log "$log" --run-id "$RUN_ID" \
+            --interval 30 --heartbeat 120 --heartbeat-after-30m 30 \
+            --fast-start-seconds 1800 &
           monitor_pid=$!
           trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
           set +e
