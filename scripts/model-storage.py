@@ -435,7 +435,7 @@ def _release_file_candidates(root, mount):
         for entry in entries:
             require(entry.is_symlink(), "non-symlink weight file; refusing cleanup")
             blob = entry.resolve(strict=True)
-            require(blob.is_file() and blob.parent == blobdir and not blob.is_symlink()
+            require(blob.is_file() and blob.parent == blobdir.resolve(strict=True) and not blob.is_symlink()
                     and blob.stat().st_nlink == 1,
                     "weight blob is outside expected cache or hard-linked")
             require(mount_info(str(blob))[0] == mount, "weight blob crosses tmpfs mount")
