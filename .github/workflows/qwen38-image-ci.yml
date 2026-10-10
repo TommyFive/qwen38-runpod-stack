@@ -39,6 +39,10 @@ jobs:
         run: |
           set -euo pipefail
           bash -n images/sglang-qwen38/build-image.sh
+          bash -n images/sglang-qwen38/cloudzy/bootstrap-and-start.sh
+          bash -n images/sglang-qwen38/cloudzy/start-from-mac.sh
+          bash -n images/sglang-qwen38/cloudzy/run-build.sh
+          python3 -m py_compile images/sglang-qwen38/cloudzy/observer.py
           python3 -m py_compile images/sglang-qwen38/prepare-source.py
           python3 -m py_compile images/sglang-qwen38/tests/test_prepare_source.py
       - name: Verify pinned build overlay (offline, no Docker/GPU)
