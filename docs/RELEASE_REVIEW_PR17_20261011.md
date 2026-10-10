@@ -1,5 +1,11 @@
 # PR #17 — Final release review / GO–NO-GO (2026-10-11)
 
+> **2026-10-11 FINAL LIVE AUTH ADDENDUM — GO for scoped initial integration, subject to final CI on updated head.**
+> [Pod `cg3pbcn7ua3oim` evidence](runs/20261010T170415Z_cg3pbcn7ua3oim.md) now validates the two previously missing security paths: **positive OpenWebUI signin HTTP 200** at 17:11:18 UTC from the user's MacBook Air Tailnet client, followed by **authenticated protected chats API HTTP 200**; separate **external SGLang `GET /v1/models` with valid Bearer HTTP 200** at 17:12:06 UTC. Old NO-GO analysis below documents the state *prior* to these tests and is superseded for G1/G3. TLS 443/8443, native Tailscale SSH, portless private template and negative 401 paths were already live verified. The owner asked to proceed with the integration merge after successful auth checks, with prior accepted deferred account-only reaper and performance work intact. Public Lean GPU/full switch matrix has **not** been tested; accepted as explicitly declared scope limitation rather than called PASS.
+>
+> **Do not stop Pod `cg3pbcn7ua3oim`:** its owner explicitly retains manual stop responsibility; it is RUNNING and billed at $2.49/h at observation time. The launcher 4h window is **not guaranteed TTL**. Final CI and merge should not alter the Pod.
+
+
 **Decision: NO-GO for merge to `main` today.** The actual network/TLS blocker is fixed and live verified. Remaining **positive authentication acceptance gates** have not been demonstrated; neither green offline CI nor a passing negative-auth test substitutes for a positive login. This review does not approve merging and does not create a paid Pod.
 
 **Code basis at review start:** `ad481c4eabed78378464c3802c75cf0e73f061a7` on `integration/issues-7-11-20261010`, PR [#17](https://github.com/TommyFive/qwen38-runpod-stack/pull/17), `main` at `6e25ce80a17d19d3dd46dc146ad9a2173bf39885`. GitHub reports mergeable (no conflicts), Draft; 38 changed paths, both CI workflows `Bootstrap integrity` and `Benchmark regression` successful at that SHA; no submitted PR reviews or unresolved review threads. The main branch was reported unprotected by GitHub's branch API; GitHub mergeability is NOT security approval.
