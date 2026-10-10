@@ -1,5 +1,6 @@
 # Tailnet HTTPS Serve — Issue #20: verified ACL root cause (2026-10-10)
 
+> **FINAL POSITIVE AUTH VERIFIED 2026-10-11:** External MacBook Air source `100.89.203.30` successfully made a **valid-Bearer SGLang HTTPS GET /v1/models HTTP 200** at 17:12:06Z; **OpenWebUI admin signin HTTP 200** at 17:11:18Z followed by a protected chats API HTTP 200 at 17:11:18.880Z. Both were on trusted Tailnet HTTPS served by live GPU Pod `cg3pbcn7ua3oim`; see [complete run record](runs/20261010T170415Z_cg3pbcn7ua3oim.md). This **closes the authentication acceptance gap** remaining from the first two TLS test Pods. Keep historical checklists for provenance only; do not redeploy old dedicated Pod tag proposals. The current Pod remains **RUNNING**, charged $2.49/h; owner will stop it manually.\n
 > **LIVE FIX VERIFIED 2026-10-10** — Owner's Tailnet-wide `src:* → tag:runpod-llm → tcp:8080,443,8443` grant and memory-only `tailscaled --state=mem: --statedir=/dev/shm/.../state` are deployed. [Pod `s5titot9ae0zzv`](runs/20261010T163129Z_s5titot9ae0zzv.md) proved trusted HTTPS on both ports (valid TLS certificate), native SSH, no published RunPod ports, and negative API/UI auth (401), including in-Pod authorized model metadata 200. **The original ACL/TLS defect is fixed.** Remaining blocker: independently validate *external* 200 with valid Bearer plus positive WebUI admin login. Refer to [final review](RELEASE_REVIEW_PR17_20261011.md). Historical design and rejection text below is superseded; do **not** create a new tag or restrict the owner-approved wildcard grant on the basis of that text.
 
 ## Live reproduction and conclusion
@@ -105,8 +106,8 @@ Official documentation:
 - [x] WebUI HTTPS `/api/config` returns 200, `auth=true`, `enable_signup=false`; anonymous chats 401.
 - [x] Certificate and ACME state files present under `/dev/shm` tmpfs (fix #29).
 - [x] Exact-ID Pod cleanup confirmed, no running charged Pods; both current integration workflows green at last audited source head.
-- [ ] **Independent external** Tailnet HTTPS API query with **valid Bearer** returns 200 (credential check blocked by SSH-MCP safety).
-- [ ] **Positive** trusted HTTPS OpenWebUI admin login produces an authorized protected request/session (credential operation not yet validated).
-- [ ] Final owner security sign-off / explicit main merge approval after all tests.
+- [x] **Independent external** MacBook Tailnet HTTPS API query with **valid Bearer** returned HTTP 200 at 17:12:06Z (live GPU Pod `cg3pbcn7ua3oim`).
+- [x] **Positive** trusted HTTPS OpenWebUI admin signin returned HTTP 200 at 17:11:18Z, followed by protected chats GET 200 from the same authenticated client.
+- [x] Owner asked to proceed with the integration merge after both positive tests; verify final CI and PR metadata immediately before main merge.
 
-**Conclusion:** Network/TLS incident fixed. Issue #20 remains open solely as a **positive-authentication release gate** until the above checks pass. Historical "dedicated Pod tag" proposal has been superseded by the owner's actual ACL decision.
+**Conclusion (2026-10-11):** The networking/TLS and the **positive-authentication gates are now verified**. Issue #20 can be closed when PR #17 is merged; retain details as historical evidence. Historical "dedicated Pod tag" proposal has been superseded by the owner's actual ACL decision.
