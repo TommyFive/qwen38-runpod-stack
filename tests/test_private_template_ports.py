@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import tempfile
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -94,8 +95,24 @@ class PortsTests(unittest.TestCase):
         self.assertTrue(observed[0][1].startswith("Mozilla/5.0"))
         self.assertNotIn("Python-urllib", observed[0][1])
 
+    def test_native_config_fallback_and_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = Path(directory) / "config.toml"
+            cfg.write_text('apiKey = "runpod-ci-test-only"\\n')
+            cfg.chmod(0o600)
+            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}):
+                self.assertEqual(ports.runpod_api_key(cfg), "runpod-ci-test-only")
+                cfg.chmod(0o644)
+                with self.assertRaisesRegex(ports.PortSafetyError, "permissions unsafe"):
+                    ports.runpod_api_key(cfg)
+
+    def test_environment_key_takes_precedence(self):
+        with patch.dict(os.environ, {"RUNPOD_API_KEY": "runpod-env-ci"}):
+            self.assertEqual(ports.runpod_api_key(Path("/nonexistent")), "runpod-env-ci")
+
     def test_missing_key_denies_without_network(self):
-        with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}):
+        with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+             patch.object(ports, "runpod_api_key", side_effect=ports.PortSafetyError("absent")):
             with self.assertRaises(ports.PortSafetyError):
                 ports.request("GET", "abc123")
 
