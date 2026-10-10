@@ -17,6 +17,7 @@ on:
 permissions:
   contents: read
   issues: write # Periodic resource snapshots in PR #21 comment; no raw build logs
+  pull-requests: write
   packages: write
 
 concurrency:
