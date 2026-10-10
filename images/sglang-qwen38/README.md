@@ -117,6 +117,40 @@ Publishing is default-off. Only a workflow dispatch with `publish=true`
 or an explicitly guarded `--push` invocation may publish a candidate.
 GHCR visibility is managed independently. No action changes RunPod templates.
 
+## Second hosted build: confirmed resource-pressure failure (2026-10-10)
+
+[Actions #38049903745](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38049903745)
+finished with `failure`. The runner's job log **became available after
+completion**, although BuildKit's separate upload artifact was skipped.
+The independent watchdog **did run**: its stdout includes 30-second samples.
+PR-comment updates were denied `HTTP 403 Resource not accessible by
+integration` under `issues:write` alone. A separate isolated CI check
+later confirmed `HTTP 201` after requesting **both** `issues:write`
+and `pull-requests:write` (current workflow includes both), and a
+mandatory comment preflight was added for any future heavy PR build.
+
+Last meaningful watchdog readings:
+
+| Time UTC | RAM used / total | SSD free |
+|---|---|---|
+| 12:07:07 | 13.28 / 15.61 GiB | 60.08 GiB |
+| 12:07:37 | 14.49 / 15.61 GiB | 60.07 GiB |
+| 12:08:09 | **15.51 / 15.61 GiB (99.4%)** | **60.06 GiB** |
+
+Then the runner reported exit code `143` and a shutdown signal around
+12:08:55 UTC. RAM saturation was the most likely immediate trigger;
+`cgroup_oom_kill` was unavailable and a kernel OOM kill is not proved.
+**Disk space was not the bottleneck** when the runner shut down.
+
+The previous watchdog required 3 consecutive RAM samples below 1.5 GiB,
+too slow for the observed pressure increase. The new guard stops an isolated
+build group immediately below 1.25 GiB available, or after 2 consecutive
+30-second samples below 2.5 GiB. This can prevent some abrupt host shutdowns
+and preserve logs, but does **not** fix the underlying high-memory build.
+No third image build is authorized or running. Before retrying, reduce
+BuildKit stage parallelism and/or select a host with substantially more RAM;
+validate the actual peak footprint rather than assuming 16 GiB is sufficient.
+
 ## Required validation before rollout
 
 1. Build on the dedicated AMD64 runner. Record actual image digest, size,
