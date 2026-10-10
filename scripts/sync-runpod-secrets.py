@@ -73,7 +73,7 @@ def main():
     parser.add_argument("--private-full", required=True)
     parser.add_argument("--private-lean", required=True)
     args = parser.parse_args()
-    hf_secret = os.environ.get("QWEN38_HF_SECRET_NAME", "")
+    hf_secret = os.environ.get("QWEN38_HF_SECRET_NAME", "HF_TOKEN")
     if hf_secret and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", hf_secret):
         print("FAIL: invalid QWEN38_HF_SECRET_NAME", file=sys.stderr)
         return 64
