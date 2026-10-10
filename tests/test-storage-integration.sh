@@ -31,6 +31,14 @@ fi
 echo "unexpected runpodctl operation: $*" >&2
 exit 1
 MOCK
+cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-}" == repair && -n "${2:-}" && "${3:-}" == --delete-on-failure ]]
+echo "PASS: mocked zero-port verification" >&2
+MOCK_PORTS
+chmod +x "$TMP/bin/ports-helper"
+export QWEN38_PORTS_HELPER="$TMP/bin/ports-helper"
 chmod +x "$TMP/bin/runpodctl"
 export HOME="$TMP/home" PATH="$ROOT/bin:$TMP/bin:$PATH" \
        RUNPODCTL_BIN="$TMP/bin/runpodctl" \
