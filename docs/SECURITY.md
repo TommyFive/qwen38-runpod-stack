@@ -115,3 +115,27 @@ RunPod REST omits `ports` in the JSON response for an empty port set.
 The port hardener interprets **absent** as empty, but rejects explicit null,
 malformed or nonempty lists, always PATCHes `{"ports":[]}` during repair,
 and re-reads to verify. Do not launch private pods until live checks pass.
+
+### Update the four existing RunPod templates without recreating them
+
+After loading CLI credentials (needed only for the RunPod management API) and
+sourcing `~/.config/qwen38/templates.env`, run:
+
+```bash
+cd ~/.openclaw/workspace/documentation/qwen38-runpod-stack
+source ~/.config/qwen38/load-credentials.sh
+source ~/.config/qwen38/templates.env
+# Optional: set to the exact existing RunPod Hugging Face Secret name:
+# export QWEN38_HF_SECRET_NAME=HF_TOKEN
+python3 scripts/sync-runpod-secrets.py \\
+  --public-full "$QWEN38_TEMPLATE" \\
+  --public-lean "$QWEN38_TEMPLATE_PI" \\
+  --private-full "$QWEN38_TEMPLATE_TAILNET" \\
+  --private-lean "$QWEN38_TEMPLATE_TAILNET_PI"
+```
+
+The operation reads and updates only the four named templates. It uses REST
+`PATCH` with `env` updates, explicitly repairs private `ports: []`, and
+re-reads persisted state. It does **not** create or start a GPU pod. If any
+verification fails, stop and inspect the resulting template before use.
+The existing IDs stay unchanged.
