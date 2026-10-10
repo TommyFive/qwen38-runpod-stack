@@ -338,3 +338,9 @@ see [security and setup notes](docs/SECURITY.md).
 
 Existing template IDs can be updated in place using
 `scripts/sync-runpod-secrets.py` (see [security guide](docs/SECURITY.md)).
+
+For existing templates, refresh bundled bootstrap/Tailscale/storage/benchmark
+script bytes in place (no new IDs) by adding `--refresh-helpers` to
+`scripts/sync-runpod-secrets.py`. For RAM-only mode, cgroup v1 and v2 are
+supported only with a verified finite limit; unavailable memory accounting
+still fails closed.
