@@ -22,6 +22,7 @@ jobs:
           bash -n bin/qwen38fast
           bash -n setup.sh
           bash -n create-templates.sh
+          python3 -m py_compile scripts/private-template-ports.py
           for script in tests/*.sh; do bash -n "$script"; done
           python3 -m compileall -q bin/qwen38cold bin/qwen38bench bin/qwen38-proxy scripts tests
       - name: Keep isolated UI environment

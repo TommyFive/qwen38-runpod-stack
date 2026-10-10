@@ -166,3 +166,26 @@ as appropriate.
 Keep this PR in **Draft**, and original feature PRs open, until the paid
 GPU security + RAM/SSD correctness + benchmark + cold-start end-to-end
 smoke has been verified. CI passing is necessary but not sufficient.
+
+## Private-template port safety correction
+
+RunPod **defaults to 8888/http and 22/tcp** if the create request omits ports.
+The updated template creator explicitly calls REST PATCH with `{"ports":[]}`
+after creation, then re-reads the template and fails closed (deleting a newly
+created unsafe template on failure). `qwen38fast --network tailnet`
+independently GETs the selected live template metadata before paid pod creation
+and refuses templates with any published ports, missing ports metadata, or
+a mode other than `tailnet`.
+
+To repair the **existing** private template IDs without recreating the four
+templates, run locally with Keychain credentials sourced:
+
+```bash
+python3 scripts/private-template-ports.py repair "$QWEN38_TEMPLATE_TAILNET"
+python3 scripts/private-template-ports.py repair "$QWEN38_TEMPLATE_TAILNET_PI"
+python3 scripts/private-template-ports.py verify "$QWEN38_TEMPLATE_TAILNET"
+python3 scripts/private-template-ports.py verify "$QWEN38_TEMPLATE_TAILNET_PI"
+```
+
+If RunPod rejects or ignores explicit empty arrays, **do not deploy privately**.
+The CLI itself does not support setting an empty ports list.

@@ -84,6 +84,14 @@ WEBUI
     chmod +x "$dest/bin/open-webui"
 fi
 MOCK
+cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
+#!/usr/bin/env python3
+import sys
+assert sys.argv[1:3] == ["repair", sys.argv[2]]
+assert sys.argv[3:] == ["--delete-on-failure"]
+print("PASS: mocked port hardening", file=sys.stderr)
+MOCK_PORTS
+chmod +x "$TMP/bin/ports-helper"
 cat > "$TMP/bin/runpodctl" <<'MOCK'
 #!/usr/bin/env python3
 import json, os, sys
@@ -201,7 +209,7 @@ test ! -e "$RUNTIME_LOG_DIR/start-openwebui.sh"
 grep -Fq 'OpenWebUI disabled' "$TMP/no-admin"
 
 echo '=== direct RunPod template contract ==='
-bash "$ROOT/create-templates.sh" > "$TMP/templates-out" 2>&1
+QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/templates-out" 2>&1
 grep -Fq 'QWEN38_TEMPLATE=' "$TMP/templates-out"
 grep -Fq 'QWEN38_TEMPLATE_PI=' "$TMP/templates-out"
 python3 - "$TEST_TEMPLATE_FLAGS" <<'PY'

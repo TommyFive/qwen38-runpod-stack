@@ -7,6 +7,7 @@ BOOTSTRAP="$HERE/scripts/bootstrap-sglang-openwebui.sh"
 TS_RUNTIME="$HERE/scripts/tailscale-runtime.sh"
 STORAGE_HELPER="$HERE/scripts/model-storage.py"
 BENCH_SCRIPT="$HERE/scripts/benchmark_sglang.py"
+PORTS_HELPER="${QWEN38_PORTS_HELPER:-$HERE/scripts/private-template-ports.py}"
 MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
 MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
 MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
@@ -41,7 +42,8 @@ mk() { # name ports labels serve_webui network_mode
     args+=(--ports "$2" --port-labels "$3")
   fi
   args+=(--docker-start-cmd 'bash,-c,umask 077; echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh' --env "$ENV" -o json)
-  runpodctl "${args[@]}" 2>&1 | python3 -c 'import sys,json
+  local template_id
+  template_id=$(runpodctl "${args[@]}" 2>&1 | python3 -c 'import sys,json
 raw=sys.stdin.read()
 try:
     d=json.loads(raw[raw.index("{"):])
@@ -49,21 +51,31 @@ try:
     print(d["id"])
 except (ValueError,KeyError,TypeError):
     print("ERROR: template create failed; raw output suppressed to protect credentials",file=sys.stderr)
-    sys.exit(1)'
+    sys.exit(1)') || return 1
+  if [[ "$5" == tailnet ]]; then
+    # Omitted --ports causes RunPod to publish 8888/http + 22/tcp.
+    # PATCH to [] and re-read. Unsafe/new templates are deleted on failure.
+    python3 "$PORTS_HELPER" repair "$template_id" --delete-on-failure >&2 || return 1
+  fi
+  printf '%s\n' "$template_id"
 }
 
 echo "Full legacy template (SGLang + OpenWebUI, PUBLIC RunPod ports):"
-echo "  QWEN38_TEMPLATE=$(mk qwen38-uncensored-sglang-nvfp4 \
-  '8000/http,8080/http,22/tcp' '8000=SGLang API,8080=OpenWebUI,22=SSH' 1 runpod)"
+id=$(mk qwen38-uncensored-sglang-nvfp4 \
+  '8000/http,8080/http,22/tcp' '8000=SGLang API,8080=OpenWebUI,22=SSH' 1 runpod)
+echo "  QWEN38_TEMPLATE=$id"
 echo "Lean legacy template (SGLang API, PUBLIC RunPod ports):"
-echo "  QWEN38_TEMPLATE_PI=$(mk qwen38-uncensored-pi-sglang \
-  '8000/http,22/tcp' '8000=SGLang API,22=SSH' 0 runpod)"
+id=$(mk qwen38-uncensored-pi-sglang \
+  '8000/http,22/tcp' '8000=SGLang API,22=SSH' 0 runpod)
+echo "  QWEN38_TEMPLATE_PI=$id"
 echo "Full tailnet-only template (NO published RunPod ports):"
-echo "  QWEN38_TEMPLATE_TAILNET=$(mk qwen38-uncensored-tailnet \
-  '' '' 1 tailnet)"
+id=$(mk qwen38-uncensored-tailnet \
+  '' '' 1 tailnet)
+echo "  QWEN38_TEMPLATE_TAILNET=$id"
 echo "Lean tailnet-only template (NO published RunPod ports):"
-echo "  QWEN38_TEMPLATE_TAILNET_PI=$(mk qwen38-uncensored-tailnet-pi \
-  '' '' 0 tailnet)"
+id=$(mk qwen38-uncensored-tailnet-pi \
+  '' '' 0 tailnet)
+echo "  QWEN38_TEMPLATE_TAILNET_PI=$id"
 echo "For tailnet-only templates, verify 'runpodctl template get <id>' has NO public ports."
 echo "Configure TS_AUTHKEY for private launches (never commit credentials)."
 echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenWebUI,"

@@ -9,12 +9,24 @@ export HOME="$TMP/home"
 export PATH="$TMP/bin:$PATH"
 export TEST_EVENTS="$TMP/events.jsonl"
 
+cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
+#!/usr/bin/env python3
+import sys
+assert sys.argv[1:3] == ["repair", sys.argv[2]]
+assert sys.argv[3:] == ["--delete-on-failure"]
+print("PASS: mocked port hardening", file=sys.stderr)
+MOCK_PORTS
+chmod +x "$TMP/bin/ports-helper"
 cat > "$TMP/bin/runpodctl" <<'PY'
 #!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
 if args[:2] == ["pod", "list"]:
     print("[]")
+elif args[:2] == ["template", "get"]:
+    tid = args[2]
+    print(json.dumps({"id": tid, "ports": [], "portsConfig": [],
+                      "env": {"NETWORK_MODE": "tailnet"}}))
 elif args[:2] == ["template", "create"]:
     name = args[args.index("--name") + 1]
     env = json.loads(args[args.index("--env") + 1])
@@ -66,7 +78,7 @@ MOCK
 chmod +x "$TMP/bin/"*
 
 echo "=== create templates ==="
-bash "$ROOT/create-templates.sh" > "$TMP/templates.output"
+QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/templates.output"
 grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=' "$TMP/templates.output"
 
 echo "=== tailnet CLI launch mock ==="
