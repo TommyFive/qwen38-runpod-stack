@@ -485,6 +485,31 @@ def _verify_no_open_weight_references(blobs, proc_root=Path("/proc")):
             raise StorageError(f"cannot verify all process file references: {type(exc).__name__}") from exc
 
 
+
+def _write_release_receipt(data):
+    """Sanitized, private tmpfs receipt even with DEBUG=0; no key material."""
+    state = state_dir()
+    require(state.is_dir() and not state.is_symlink(),
+            "RAM cleanup receipt state directory invalid")
+    temporary = state / ".ram_release_receipt.tmp"
+    destination = state / "ram_release.json"
+    require(not temporary.is_symlink() and not destination.is_symlink(),
+            "RAM cleanup receipt destination is symlinked")
+    # Exclusive creation to avoid following malicious symlinks.
+    fd = os.open(temporary, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(data, handle, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
+
 def release_weight_blobs(proc_root=Path("/proc")):
     """Delete only verified, unreferenced Hugging Face weight blobs from tmpfs."""
     require(os.environ.get("MODEL_RAM_RELEASE_AFTER_LOAD", "0") == "1",
@@ -505,11 +530,13 @@ def release_weight_blobs(proc_root=Path("/proc")):
         blob.unlink()
     after = os.statvfs(root)
     after_free = after.f_bavail * after.f_frsize
-    print("QWEN38_RAM_RELEASE " + json.dumps({
+    receipt = {
         "status": "released", "files": len(blobs),
         "weight_gib": round(total_bytes / GIB, 3),
         "freed_gib": round(max(0, after_free - before_free) / GIB, 3),
-    }, separators=(",", ":")), flush=True)
+    }
+    print("QWEN38_RAM_RELEASE " + json.dumps(receipt, separators=(",", ":")), flush=True)
+    _write_release_receipt(receipt)
     return len(blobs), total_bytes
 
 
@@ -527,7 +554,9 @@ def _infer_ready():
         headers={"Authorization": "Bearer " + key,
                  "Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
+        # Never pass localhost Bearer traffic through an inherited proxy.
+        direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with direct.open(req, timeout=30) as response:
             require(response.status == 200, "inference not ready")
             result = json.loads(response.read(256 * 1024))
         return (isinstance(result.get("choices"), list) and
@@ -579,6 +608,7 @@ def release_after_ready():
         print("QWEN38_RAM_RELEASE WARNING: post-release inference failed; "
               "new download required for restart", file=sys.stderr)
         raise StorageError("post-release authenticated inference failed")
+    _write_release_receipt({"status": "verified_after_inference", "files": count})
     print(f"QWEN38_RAM_RELEASE status=verified_after_inference files={count}", flush=True)
 
 def monitor():
