@@ -52,6 +52,8 @@ NETWORK_MODE="${QWEN38_NETWORK_MODE:-runpod}"
 TS_ENABLE_SSH="${TS_ENABLE_SSH:-1}"
 TS_HOSTNAME="${TS_HOSTNAME:-}"
 TS_AUTHKEY="${TS_AUTHKEY:-}"
+CREDENTIAL_MODE="${QWEN38_CREDENTIAL_MODE:-runpod_secrets}"
+HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME:-}"
 TAILNET_DOMAIN="${QWEN38_TAILNET_DOMAIN:-}"
 
 TOKEN_FILE="$HOME/.cache/huggingface/token"
@@ -135,9 +137,18 @@ fi
 if [[ -n "$TS_HOSTNAME" && ! "$TS_HOSTNAME" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
     echo "TS_HOSTNAME must be a lowercase DNS label" >&2; exit 1
 fi
+case "$CREDENTIAL_MODE" in
+    runpod_secrets|local) ;;
+    *) echo "QWEN38_CREDENTIAL_MODE must be runpod_secrets or local" >&2; exit 64 ;;
+esac
+# Use secret references only after checking secret names against an allowlist.
+if [[ "$CREDENTIAL_MODE" == runpod_secrets && -n "$HF_SECRET_NAME" &&
+      ! "$HF_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
+    echo "QWEN38_HF_SECRET_NAME must be a RunPod secret identifier" >&2; exit 64
+fi
 if [[ "$NETWORK_MODE" == tailnet ]]; then
-    if [[ -z "$TS_AUTHKEY" ]]; then
-        echo "NETWORK_MODE=tailnet requires TS_AUTHKEY" >&2; exit 1
+    if [[ "$CREDENTIAL_MODE" == local && -z "$TS_AUTHKEY" ]]; then
+        echo "NETWORK_MODE=tailnet requires TS_AUTHKEY in local credential mode" >&2; exit 1
     fi
     if [[ -z "$TS_HOSTNAME" ]]; then
         TS_HOSTNAME="qwen38-$(python3 -c 'import secrets; print(secrets.token_hex(5))')"
@@ -200,14 +211,21 @@ if [[ "$BENCHMARK" == 1 ]]; then
     [[ -r "$BENCHMARK_SCRIPT" ]] || { echo "benchmark helper missing: $BENCHMARK_SCRIPT" >&2; exit 64; }
 fi
 
-if [[ ! -s "$KEY_FILE" ]]; then
-    mkdir -p "$(dirname "$KEY_FILE")"
-    python3 -c "import secrets; print('sk-qwen38-' + secrets.token_urlsafe(24))" > "$KEY_FILE"
-    chmod 600 "$KEY_FILE"
-    echo "generated a new API key: $KEY_FILE"
+if [[ "$CREDENTIAL_MODE" == local ]]; then
+    if [[ ! -s "$KEY_FILE" ]]; then
+        mkdir -p "$(dirname "$KEY_FILE")"
+        python3 -c "import secrets; print('sk-qwen38-' + secrets.token_urlsafe(24))" > "$KEY_FILE"
+        chmod 600 "$KEY_FILE"
+        echo "generated a new API key: $KEY_FILE"
+    fi
+    API_KEY=$(cat "$KEY_FILE")
+    [[ -n "$API_KEY" ]] || { echo "empty SGLANG_API_KEY" >&2; exit 64; }
+else
+    # The RunPod Secret is resolved inside the pod, not on this Mac.
+    # Do not generate a different local key and pretend it matches.
+    echo "RunPod Secrets: TS_AUTHKEY and SGLANG_API_KEY will be resolved by RunPod."
+    echo "Local proxy at 127.0.0.1:8388 needs the SAME LLAMA_API_KEY in ~/.runpod/qwen38.key."
 fi
-API_KEY=$(cat "$KEY_FILE")
-[[ -n "$API_KEY" ]] || { echo "empty SGLANG_API_KEY" >&2; exit 64; }
 WEBUI_ADMIN_PASSWORD=""
 if [[ $PI_MODE -eq 0 ]]; then
     if [[ -n "${QWEN38_WEBUI_ADMIN_PASSWORD:-}" ]]; then
@@ -231,7 +249,7 @@ if [[ "$running" != "0" ]]; then
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
+ENV_JSON=$(QWEN38_CREDENTIAL_MODE="$CREDENTIAL_MODE" QWEN38_HF_SECRET_NAME="$HF_SECRET_NAME" WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
 import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
@@ -254,7 +272,8 @@ env = {
     "MAX_LEN":       sys.argv[5],
     "MEM_FRAC":      sys.argv[6],
     "MAMBA_RATIO":   "4.59",
-    "SGLANG_API_KEY": pathlib.Path(sys.argv[7]).read_text().strip(),
+    "SGLANG_API_KEY": ("{{ RUNPOD_SECRET_LLAMA_API_KEY }}" if os.environ["QWEN38_CREDENTIAL_MODE"] == "runpod_secrets"
+                        else pathlib.Path(sys.argv[7]).read_text().strip()),
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
 }
@@ -269,14 +288,21 @@ if sys.argv[19] == "1":
         "BENCHMARK_TIMEOUT_SECONDS": sys.argv[22],
         "BENCHMARK_REPORT_PATH": sys.argv[23]
     })
-if os.environ.get("TS_AUTHKEY"):
-    env["TS_AUTHKEY"] = os.environ["TS_AUTHKEY"]
-token = os.environ.get("HF_TOKEN","")
-tokfile = pathlib.Path(sys.argv[2])
-if not token and tokfile.is_file():
-    token = tokfile.read_text().strip()
-if token:
-    env["HF_TOKEN"] = token
+if os.environ["QWEN38_CREDENTIAL_MODE"] == "runpod_secrets":
+    if sys.argv[11] == "tailnet":
+        env["TS_AUTHKEY"] = "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
+    hf_name = os.environ["QWEN38_HF_SECRET_NAME"]
+    if hf_name:
+        env["HF_TOKEN"] = "{{ RUNPOD_SECRET_" + hf_name + " }}"
+else:
+    if os.environ.get("TS_AUTHKEY"):
+        env["TS_AUTHKEY"] = os.environ["TS_AUTHKEY"]
+    token = os.environ.get("HF_TOKEN","")
+    tokfile = pathlib.Path(sys.argv[2])
+    if not token and tokfile.is_file():
+        token = tokfile.read_text().strip()
+    if token:
+        env["HF_TOKEN"] = token
 print(json.dumps(env))
 PY
 )
