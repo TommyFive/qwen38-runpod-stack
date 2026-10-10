@@ -26,7 +26,7 @@ import json, os, sys
 args=sys.argv[1:]
 if "up" in args:
     p=next((v.split("=",1)[1][5:] for v in args if v.startswith("--auth-key=file:")),None)
-    assert p and open(p).read().strip()=="tskey-auth-ci-fixture"
+    assert p and open(p).read().strip()==os.environ["TEST_EXPECTED_AUTH"]
 elif "status" in args:
     print(json.dumps({"Self":{"DNSName":"qwen38-test.tailc8dece.ts.net."}}))
 elif "serve" in args:
@@ -62,7 +62,8 @@ command() {
 source "$ROOT/scripts/tailscale-runtime.sh"
 
 export NETWORK_MODE=tailnet TS_HOSTNAME=qwen38-test TS_ENABLE_SSH=1
-export TS_AUTHKEY=tskey-auth-ci-fixture
+export TEST_EXPECTED_AUTH=tskey-auth-ci-fixture
+export TS_AUTHKEY="$TEST_EXPECTED_AUTH"
 ts_start
 daemon_pid="$TS_DAEMON_PID"
 [[ "$TS_ACTIVE" == 1 ]]
