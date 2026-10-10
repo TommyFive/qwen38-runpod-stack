@@ -1,5 +1,7 @@
 # PR #17: Final integration strategy and release gates (2026-10-10)
 
+> **UPDATED RELEASE VERDICT (2026-10-11): NO-GO / HOLD.** See [final release review](RELEASE_REVIEW_PR17_20261011.md), based on integration `ad481c4e`. The formerly confirmed tailnet ACL timeout and Tailscale certificate-state problem are **fixed and verified live** on Pod `s5titot9ae0zzv`: trusted TLS 443/8443, native SSH, private portless templates, negative API/WebUI auth tests all pass. **Outstanding release gates:** independent *external* positive SGLang valid-Bearer call, positive OpenWebUI admin session, explicit residual coverage acceptance, final GO and merge authorization. The initial strategy and old root-cause text below are historical where superseded; do not act on the dedicated-tag suggestion. No paid Pod running after exact-ID cleanup.
+
 > **Status:** Proposed merge criteria; no merge into `main` without explicit
 > owner approval. This is a **reconstructed, consolidated strategy** based on
 > issues #7–#11, existing PRs #12–#16, PR #19 and live integration reports.
@@ -31,11 +33,11 @@
 
 | Gate | Required proof | Current status | Priority |
 |---|---|---|---|
-| **G1: Tailscale HTTPS Serve #20** | Tailnet TLS certificate and API HTTPS :443 with Bearer 401/200; WebUI HTTPS :8443, auth/login, signup/anonymous blocked, native SSH retained, RunPod private ports still empty | **FAIL**: 443/8443 timeouts; live Pod Tailscale packet-filter **confirmed ACL denial** for authorized Mac mini (22 allowed, 443/8443 missing). Dedicated Pod tag/grant and E2E TLS/UI verification pending, see [#20](TAILNET_ACL_ISSUE20.md) | P0 |
+| **G1: Tailscale HTTPS Serve #20** | Tailnet trusted TLS 443/8443, API 401/200, WebUI auth and positive login, native SSH and zero public RunPod ports | **PARTIAL**: TLS, ACL, 443/8443, SSH and 401 negative paths **PASS** on `s5titot9ae0zzv`; *independent external valid-Bearer 200* and *positive WebUI admin login* still unverified (SSH credential access blocked). See [release review](RELEASE_REVIEW_PR17_20261011.md) | P0 |
 | **G2: Four template/config parity** | Read-only metadata GET for all existing public/private Full/Lean IDs; validate network mode, ports (private `[]`), embedded bootstrap/helper SHA or byte identity, RunPod Secret references and defaults; no credentials logged | **PASS (template parity 2026-10-10):** all four existing IDs read via RunPod, public port configs correct, private ports empty, all RunPod Secret references kept, bootstrap/storage/TS/benchmark helpers refreshed in place and byte SHA verified | P1 |
-| **G3: Auth/privacy negative and positive flows** | No anonymous public SGLang/API; authentication always on for public OpenWebUI; positive UI admin login over trusted HTTPS; debug redaction, private runtime data, fail-closed config | Private Full and Public Full negative API/UI checks passed (public SGLang 401 missing/wrong bearer, public UI auth=true/signup=false/anon chat 401); **positive authenticated UI login remains blocked/unverified** and Public Lean not separately GPU sampled | P1 |
+| **G3: Auth/privacy negative and positive flows** | No anonymous API/Chat; authenticated UI admin login and fail-closed privacy | **PARTIAL / RELEASE BLOCKER**: HTTPS missing/wrong Bearer 401, in-Pod authorized `/v1/models` 200, WebUI auth=true/signup=false/anonymous chat 401. **External positive auth and positive login missing**; Public Lean GPU not independently tested and requires owner risk acceptance or targeted validation | P1 |
 | **G4: Storage/settings integration** | RAM and cgroup preflight, main/draft on verified tmpfs, opt-in SSD and failure pathways, release-after-inference guarded and default OFF; read-only audit of generated paths and no silent fallback | RAM + release-opt-in and Public Full **SSD snapshot root** passed live; DEBUG=0/COLDSTART_TRACE=0/BENCHMARK=0 selected in paid SSD cohort. Full combinatorial switch matrix not exhaustively live checked | P1 |
-| **G5: Final review/CI** | Review final diff vs `main`, updated documentation, both GitHub Actions green at final head, all unresolved regressions documented, final Go/No-Go report | Pending final head | P1 |
+| **G5: Final review/CI** | Audit release diff and residual risks; CI at final SHA, owner GO | **PARTIAL**: static diff/security review and [GO/NO-GO document](RELEASE_REVIEW_PR17_20261011.md) created; CI was green at `ad481c4e`, no reviews recorded, current **NO-GO** until positive auth and explicit GO / merge authorization; rerun CI after changes | P1 |
 
 A **minimal paid cohort** after no-cost diagnosis should combine G1, G2–G4
 where possible. Previously validated benchmark throughput **must not** be
@@ -112,7 +114,7 @@ sample sizes and cache/region control, and candidate smaller SGLang image
   limitation.
 - #23 / #5 / #6 / #11 — observability/performance after baseline integration.
 - #21 — candidate minimal image on approved build host; not part of #17.
-- #20 — **must be resolved before merge** (HTTPS reachability/security).
+- #20 — **TLS/ACL defect is fixed and live verified**; full security release gate still requires independent valid-Bearer API 200 and positive admin UI login.
 
 Related evidence:
 [smoke](INTEGRATION_SMOKE_20261010.md),
