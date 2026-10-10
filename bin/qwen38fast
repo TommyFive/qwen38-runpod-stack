@@ -273,7 +273,7 @@ fi
 
 running=$(runpodctl pod list -o json | python3 -c "import sys,json; print(len(json.load(sys.stdin)))")
 if [[ "$running" != "0" ]]; then
-    echo "A pod is already running. 'qwen38fast status' shows which, 'qwen38fast stop' ends it."
+    echo "A pod is already running. Check 'qwen38fast status' and terminate only the intended Pod ID using 'runpodctl pod delete <exact-pod-id>'."
     exit 1
 fi
 
@@ -428,7 +428,7 @@ for ((attempt=0; attempt<90; attempt++)); do
     sleep 10
 done
 if [[ "$ready" != 1 ]]; then
-    echo "ERROR: model readiness timeout; the pod may still be running. Use qwen38fast stop." >&2
+    echo "ERROR: model readiness timeout; the pod may still be billed. Terminate the exact Pod ID explicitly." >&2
     exit 1
 fi
 cold_mark api_models_ready
@@ -479,12 +479,12 @@ if [[ $PI_MODE -eq 1 ]]; then
 cat <<EOF
 
 ════════════════════════════════════════════════════════════
-  Running, SGLang only, no OpenWebUI. Timer until $DEADLINE.
+  Running, SGLang only. Requested ${HOURS}h window; no guaranteed auto-stop.
 
   In pi:     pi --model runpod/qwen38-uncensored
 
   Measure:   qwen38bench $POD_ID
-  Stop:      qwen38pi stop
+  Stop:      runpodctl pod delete $POD_ID
 ════════════════════════════════════════════════════════════
 
 EOF
@@ -492,13 +492,13 @@ else
 cat <<EOF
 
 ════════════════════════════════════════════════════════════
-  Running. Timer until $DEADLINE, then RunPod terminates it itself.
+  Running. Requested ${HOURS}h window; no guaranteed auto-stop.
 
   In the terminal:   pi --model runpod/qwen38-uncensored
   In the browser:    $OWUI
 
   Measure:           qwen38bench $POD_ID
-  Stop:              qwen38fast stop
+  Stop:              runpodctl pod delete $POD_ID
 ════════════════════════════════════════════════════════════
 
 EOF
