@@ -7,6 +7,8 @@ Designed to ship as STORAGE_HELPER_B64 with the RunPod bootstrap.
 import json
 import math
 import os
+import subprocess
+import time
 from pathlib import Path
 import shlex
 import sys
@@ -404,10 +406,54 @@ def audit():
     print(json.dumps(output, indent=2))
 
 
+def monitor():
+    """Debug-only, read-only tmpfs and VRAM sampler; never handles credentials.
+
+    Sampling every second observes transient Xet/HF download peaks. Reporting
+    every 15 s bounds RunPod log volume while preserving the sampled peak.
+    """
+    mode, root, mount, _ = selected_storage()
+    require(mode == "ram", "RAM telemetry requires tmpfs mode")
+    stat = os.statvfs(existing_ancestor(root))
+    baseline = stat.f_bavail * stat.f_frsize
+    minimum = baseline
+    started = time.monotonic()
+    sample = 0
+    while True:
+        stat = os.statvfs(existing_ancestor(root))
+        free = stat.f_bavail * stat.f_frsize
+        minimum = min(minimum, free)
+        sample += 1
+        if sample == 1 or sample % 15 == 0:
+            result = {
+                "schema": 1,
+                "elapsed_sec": round(time.monotonic() - started, 1),
+                "shm_free_gib": round(free / GIB, 3),
+                "peak_tmpfs_delta_gib": round(max(0, baseline - minimum) / GIB, 3),
+                "peak_shm_used_gib": round((stat.f_blocks * stat.f_frsize - minimum) / GIB, 3),
+            }
+            try:
+                gpu = subprocess.run(
+                    ["nvidia-smi", "--query-gpu=memory.used",
+                     "--format=csv,noheader,nounits"],
+                    capture_output=True, text=True, timeout=5, check=False,
+                )
+                if gpu.returncode == 0:
+                    result["gpu_used_mib"] = [
+                        int(line.strip()) for line in gpu.stdout.splitlines()
+                        if line.strip().isdigit()
+                    ][:8]
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+            print("QWEN38_STORAGE_METRIC " + json.dumps(result, separators=(",", ":")),
+                  flush=True)
+        time.sleep(1)
+
+
 def main():
-    if len(sys.argv) != 2 or sys.argv[1] not in ("prepare", "download", "audit"):
-        raise StorageError("usage: model-storage.py prepare|download|audit")
-    {"prepare": prepare, "download": download, "audit": audit}[sys.argv[1]]()
+    if len(sys.argv) != 2 or sys.argv[1] not in ("prepare", "download", "audit", "monitor"):
+        raise StorageError("usage: model-storage.py prepare|download|audit|monitor")
+    {"prepare": prepare, "download": download, "audit": audit, "monitor": monitor}[sys.argv[1]]()
 
 
 if __name__ == "__main__":
