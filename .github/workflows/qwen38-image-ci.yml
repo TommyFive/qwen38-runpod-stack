@@ -39,6 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           bash -n images/sglang-qwen38/build-image.sh
+          bash -n images/sglang-qwen38/create-candidate-template.sh
           bash -n images/sglang-qwen38/cloudzy/bootstrap-and-start.sh
           bash -n images/sglang-qwen38/cloudzy/start-from-mac.sh
           bash -n images/sglang-qwen38/cloudzy/monitor-from-mac.sh
