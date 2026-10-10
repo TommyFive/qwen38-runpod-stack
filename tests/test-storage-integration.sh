@@ -52,7 +52,7 @@ export HOME="$TMP/home" PATH="$ROOT/bin:$TMP/bin:$PATH" \
        QWEN38_COLDSTART_TRACE=0
 
 bash "$ROOT/create-templates.sh" > "$TMP/templates.out"
-if QWEN38_MODEL_STORAGE=ram qwen38fast --pi > "$TMP/pi.out" 2>&1; then
+if QWEN38_MODEL_STORAGE=ram QWEN38_RAM_PEAK_FACTOR=1.75 qwen38fast --pi > "$TMP/pi.out" 2>&1; then
   echo 'ERROR: mock pod should never be deployed (pi)' >&2; exit 1
 fi
 if QWEN38_MODEL_STORAGE=ssd qwen38fast --storage ssd > "$TMP/full.out" 2>&1; then
@@ -79,5 +79,7 @@ for env in envs:
     assert env['SPEC'] == 'dflash2'
 assert {e['SERVE_WEBUI'] for e in envs} == {'0', '1'}
 assert {e['MODEL_STORAGE'] for e in envs} == {'ram', 'ssd'}
+assert any(e.get('MODEL_RAM_PEAK_FACTOR') == '1.75' for e in envs if e['MODEL_STORAGE'] == 'ram')
+assert all('MODEL_RAM_PEAK_FACTOR' not in e for e in envs if e['MODEL_STORAGE'] == 'ssd')
 print(f'model-storage launcher/template env: {len(envs)} checked, both modes and paths')
 PY
