@@ -41,6 +41,9 @@ jobs:
       - name: Tailscale native SSH contracts
         shell: bash
         run: bash tests/test-tailscale.sh
+      - name: Tailscale noexec binary-staging regression
+        shell: bash
+        run: bash tests/test-tailscale-binary-staging.sh
       - name: Public vs portless private template / launcher
         shell: bash
         run: bash tests/test-launch-network.sh
