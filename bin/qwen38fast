@@ -347,8 +347,10 @@ echo "  Storage: $MODEL_STORAGE"
 echo
 
 create_pod() {
-    local options=()
-    [[ "$NETWORK_MODE" == tailnet ]] && options+=(--ssh=false)
+    # macOS ships Bash 3.2, where an empty array under set -u is unbound.
+    # runpodctl defaults --ssh=true for public pods; make both modes explicit.
+    local options=(--ssh=true)
+    [[ "$NETWORK_MODE" == tailnet ]] && options=(--ssh=false)
     rp "${HOURS}h" pod create \
         --template-id "$TEMPLATE_ID" \
         --gpu-id "$GPU_ID" \
