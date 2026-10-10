@@ -34,6 +34,8 @@ elif args[:2] == ["template", "create"]:
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
+    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+    assert ("TS_AUTHKEY" in env) == (env["NETWORK_MODE"] == "tailnet")
     if env["NETWORK_MODE"] == "tailnet":
         assert not public, "private template must not publish ports"
         assert "--port-labels" not in args
@@ -55,6 +57,9 @@ env = json.loads(args[args.index("--env") + 1])
 with open(os.environ["TEST_EVENTS"], "a") as f:
     f.write(json.dumps({"kind":"pod","mode":env["NETWORK_MODE"],
                         "has_ts_authkey":"TS_AUTHKEY" in env,
+                        "ts_key_ref":env.get("TS_AUTHKEY"),
+                        "sglang_key_ref":env.get("SGLANG_API_KEY"),
+                        "hf_key_ref":env.get("HF_TOKEN"),
                         "ts_hostname":env["TS_HOSTNAME"],
                         "ts_enable_ssh":env["TS_ENABLE_SSH"],
                         "template":args[args.index("--template-id")+1],
@@ -92,7 +97,8 @@ export QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
 export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
 export QWEN38_COLDSTART_TRACE=0
 export QWEN38_TAILNET_DOMAIN=tailc8dece.ts.net
-export TS_AUTHKEY=tskey-auth-fixture-not-real
+unset TS_AUTHKEY || true
+export QWEN38_HF_SECRET_NAME=HF_TOKEN
 bash "$ROOT/bin/qwen38fast" --pi --network tailnet > "$TMP/tailnet.out"
 grep -Fq 'https://' "$TMP/tailnet.out"
 grep -Fq '.tailc8dece.ts.net/v1' "$TMP/tailnet.out"
@@ -105,7 +111,6 @@ assert d["api_url"].endswith(".tailc8dece.ts.net/v1")
 PY
 
 echo "=== tailnet full stack with deferred web UI ==="
-export TS_AUTHKEY=tskey-auth-fixture-not-real
 bash "$ROOT/bin/qwen38fast" --network tailnet > "$TMP/tailnet-full.out"
 grep -Fq 'https://' "$TMP/tailnet-full.out"
 grep -Fq '.tailc8dece.ts.net:8443' "$TMP/tailnet-full.out"
@@ -126,6 +131,9 @@ assert len([x for x in templates if x["mode"]=="tailnet" and not x["has_ports"]]
 assert len(pods)==3, pods
 private, full, public = pods
 assert private["mode"]=="tailnet" and private["disable_runpod_ssh"]
+assert private["ts_key_ref"]=="{{ RUNPOD_SECRET_TS_AUTHKEY }}"
+assert private["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+assert private["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 assert private["has_ts_authkey"] and private["runtime_included"]
 assert private["template"]=="private-pi" and private["serve_webui"]=="0"
 assert full["mode"]=="tailnet" and full["disable_runpod_ssh"]
@@ -133,5 +141,7 @@ assert full["has_ts_authkey"] and full["template"]=="private-full"
 assert full["serve_webui"]=="1"
 assert public["mode"]=="runpod" and not public["disable_runpod_ssh"]
 assert not public["has_ts_authkey"] and public["template"]=="legacy-pi"
+assert public["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+assert public["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 print("test-launch-network: ok")
 PY
