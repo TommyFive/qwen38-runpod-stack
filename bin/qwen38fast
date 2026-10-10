@@ -222,9 +222,21 @@ if [[ "$CREDENTIAL_MODE" == local ]]; then
     [[ -n "$API_KEY" ]] || { echo "empty SGLANG_API_KEY" >&2; exit 64; }
 else
     # The RunPod Secret is resolved inside the pod, not on this Mac.
-    # Do not generate a different local key and pretend it matches.
-    echo "RunPod Secrets: TS_AUTHKEY and SGLANG_API_KEY will be resolved by RunPod."
-    echo "Local proxy at 127.0.0.1:8388 needs the SAME LLAMA_API_KEY in ~/.runpod/qwen38.key."
+    # A local key may be supplied explicitly for authenticated health checks.
+    # Never assume the old auto-generated qwen38.key matches LLAMA_API_KEY.
+    API_KEY=""
+    if [[ -n "${QWEN38_SGLANG_CLIENT_KEY_FILE:-}" ]]; then
+        [[ -s "$QWEN38_SGLANG_CLIENT_KEY_FILE" ]] || {
+            echo "Configured QWEN38_SGLANG_CLIENT_KEY_FILE missing/empty; no pod created" >&2
+            exit 64
+        }
+        API_KEY=$(cat "$QWEN38_SGLANG_CLIENT_KEY_FILE")
+    fi
+    echo "RunPod Secrets: Tailscale (private) and SGLang use RunPod references."
+    if [[ -z "$API_KEY" ]]; then
+        echo "No local matching SGLang client key: authenticated readiness/TTFI probes will be skipped."
+    fi
+    echo "Local proxy needs the SAME LLAMA_API_KEY in ~/.runpod/qwen38.key."
 fi
 WEBUI_ADMIN_PASSWORD=""
 if [[ $PI_MODE -eq 0 ]]; then
@@ -379,6 +391,11 @@ echo "Pod:       $POD_ID"
 [[ $PI_MODE -eq 0 ]] && echo "OpenWebUI: $OWUI"
 echo "API:       $API"
 echo
+if [[ -z "$API_KEY" ]]; then
+    # No matching local secret: auth probes cannot validate model readiness.
+    # Do not spend 15 minutes on guaranteed 401s or report a false success.
+    echo "Model readiness and first inference NOT VERIFIED (no local LLAMA_API_KEY)."
+else
 echo "Waiting for the model (bounded to 15 minutes)..."
 ready=0
 for ((attempt=0; attempt<90; attempt++)); do
@@ -412,6 +429,8 @@ except (ValueError,AssertionError,KeyError,TypeError):
         echo "WARNING: TTFI inference probe failed" >&2
     fi
 fi
+
+fi  # authenticated readiness and inference require locally provisioned matching key
 
 # On the pod, OpenWebUI is now started only after model readiness. No remote
 # SSH restart is needed, including in private/portless tailnet-only mode.
