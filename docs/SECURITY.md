@@ -81,3 +81,37 @@ weights are **not** end-to-end encryption.
 The runtime redactor is defense-in-depth, not a mechanism to safely
 enable prompt logging. Do not place production/sensitive content into
 this stack without accepting the cloud trust boundary.
+
+### RunPod Secret references (default since 2026-10-10)
+
+The launcher defaults to `QWEN38_CREDENTIAL_MODE=runpod_secrets`, so the Pod
+control plane receives **references**, never cleartext values, for:
+
+- `SGLANG_API_KEY={{ RUNPOD_SECRET_LLAMA_API_KEY }}` (existing A40 secret, reused)
+- `TS_AUTHKEY={{ RUNPOD_SECRET_TS_AUTHKEY }}` on tailnet pods only
+- `HF_TOKEN={{ RUNPOD_SECRET_<name> }}` only when
+  `QWEN38_HF_SECRET_NAME=<exact Hugging Face secret name>` is provided.
+  Public checkpoints do not require an HF token, so absent name omits HF_TOKEN.
+
+The same references are embedded as template defaults for RunPod UI launches.
+The CLI supplies a complete `--env` override at pod creation, so it explicitly
+recreates these references and does not rely on the template defaults.
+
+`QWEN38_CREDENTIAL_MODE=local` is the legacy opt-in fallback, which loads
+Tailscale/HF secrets from local environment/files and generates
+`~/.runpod/qwen38.key`. **Do not export the old local secrets by default**; use
+`source ~/.config/qwen38/templates.env` and source a Keychain loader only to
+supply `RUNPOD_API_KEY` for CLI authentication if required.
+
+**Local proxy caveat:** `qwen38-proxy` reads `~/.runpod/qwen38.key` to
+send its Bearer token to SGLang. When the pod uses the existing RunPod
+`LLAMA_API_KEY` Secret, that local file must contain **exactly the same
+value** or authenticated calls through `127.0.0.1:8388` will fail.
+RunPod Secrets do not offer automatic plaintext retrieval to the proxy;
+no match can be inferred. Provision that value manually via the macOS
+Keychain/local protected file if local proxy access is required.
+
+RunPod REST omits `ports` in the JSON response for an empty port set.
+The port hardener interprets **absent** as empty, but rejects explicit null,
+malformed or nonempty lists, always PATCHes `{"ports":[]}` during repair,
+and re-reads to verify. Do not launch private pods until live checks pass.
