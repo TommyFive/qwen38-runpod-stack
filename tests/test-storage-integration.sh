@@ -78,7 +78,7 @@ for env in envs:
     assert env['MODEL_SSD_DIR'] == '/workspace/hf'
     assert env['SPEC'] == 'dflash2'
 assert {e['SERVE_WEBUI'] for e in envs} == {'0', '1'}
-assert {e['MODEL_STORAGE'] for e in envs} == {'ram', 'ssd'}
+assert {e['MODEL_STORAGE'] for e in envs} == {'ram', 'ssd'}, [(e['MODEL_STORAGE'],e.get('MODEL_RAM_PEAK_FACTOR')) for e in envs]
 assert any(e.get('MODEL_RAM_PEAK_FACTOR') == '1.75' for e in envs if e['MODEL_STORAGE'] == 'ram')
 assert all('MODEL_RAM_PEAK_FACTOR' not in e for e in envs if e['MODEL_STORAGE'] == 'ssd')
 print(f'model-storage launcher/template env: {len(envs)} checked, both modes and paths')
