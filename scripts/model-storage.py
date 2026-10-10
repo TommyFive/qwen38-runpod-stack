@@ -463,21 +463,36 @@ def _verify_no_open_weight_references(blobs, proc_root=Path("/proc")):
     The scan cannot prevent an unrelated process from opening a file *after*
     it finishes, so this guard is appropriate only for a controlled pod.
     """
-    needle = tuple(os.fsencode(str(blob)) for blob in blobs)
+    # /proc reports kernel paths, which may differ from userspace aliases
+    # (macOS test fixtures: /var resolves to /private/var).
+    absolute = {str(blob.resolve(strict=True)) for blob in blobs}
+    needle = tuple(os.fsencode(value) for value in absolute)
     require(proc_root.is_dir(), "proc filesystem unavailable")
+
+    def matches_reference(raw):
+        if any(item in raw for item in needle):
+            return True
+        try:
+            candidate = os.fsdecode(raw).replace(" (deleted)", "").strip()
+            return candidate.startswith("/") and os.path.realpath(candidate) in absolute
+        except (OSError, ValueError):
+            return False
     for process in proc_root.iterdir():
         if not process.name.isdecimal():
             continue
         try:
             mappings = (process / "maps").read_bytes()
-            require(not any(item in mappings for item in needle),
-                    "model weights still memory mapped by a process")
+            for line in mappings.splitlines():
+                fields = line.split(None, 5)
+                if len(fields) >= 6:
+                    require(not matches_reference(fields[5]),
+                            "model weights still memory mapped by a process")
             for fd in (process / "fd").iterdir():
                 try:
                     target = os.fsencode(os.readlink(fd))
                 except FileNotFoundError:
                     continue  # raced with a closed fd
-                require(not any(item in target for item in needle),
+                require(not matches_reference(target),
                         "model weights still held open by a process")
         except FileNotFoundError:
             continue  # process exited during scan
