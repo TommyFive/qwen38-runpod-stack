@@ -132,7 +132,7 @@ class StorageTests(unittest.TestCase):
         root, blobs, proc = self.release_fixture()
         os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
         mapped = proc / "123" / "maps"
-        mapped.write_text("abc " + str(blobs[0]) + " r--p\n")
+        mapped.write_text("000000-001000 r--p 000000 00:00 0 " + str(blobs[0]) + "\n")
         with patch.object(ms, "selected_storage",
                           return_value=("ram", root, str(self.ram.parent), "tmpfs")), \
              patch.object(ms, "mount_info", side_effect=self.fake_mount):
