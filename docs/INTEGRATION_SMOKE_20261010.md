@@ -1,9 +1,63 @@
 # Integrated RunPod GPU smoke — issues #7, #8, #9, #10, #11
 
+## Status nach echten GPU-Integrationstests — 2026-10-10
+
+**Wichtig:** Der ursprüngliche Text unterhalb dieses Abschnitts war der
+Testplan *vor* dem ersten GPU-Start. Die folgende Live-Matrix ist die
+maßgebliche, aktuelle Bewertung. Tests liefen auf 1× RTX PRO 6000
+($1.69/h), privatem Lean-Template syb1a3cqr6, DEBUG=1, RunPod Secrets
+und ohne veröffentlichte Ports. Alle bisherigen Test-Pods wurden
+gezielt beendet; 0 aktive Pods nach dem letzten Test.
+
+| Bereich | Reale Evidenz | Stand |
+|---|---|---|
+| Native RunPod CLI | API aus geschützter nativer Konfiguration über SSH-MCP funktionsfähig | PASS |
+| Alle vier Templates | In-place auf RunPod Secrets und aktuelle Helper migriert; beide privaten Port-Konfigurationen mehrfach unabhängig leer geprüft | PASS |
+| Tailscale | Native SSH im Pod und Serve HTTPS API auf 443 nach Reparatur des noexec-/dev/shm-Problems | PASS Private Lean |
+| Datenschutz | Pflicht-Bearer konfiguriert, positive authentifizierte Inferenz HTTP 200, DEBUG=1 inklusive Log-Redaktion und RAM-Laufzeit | TEILWEISE; negative Zugangstests und Full-UI offen |
+| RAM-only und cgroups | cgroup v1 live erkannt, 57.74 GiB freies tmpfs; Standard 2.5× benötigt 64.90 GiB und bricht korrekt ab, beaufsichtigte 1.75× benötigt 47.83 GiB und läuft | PASS als beaufsichtigter Test; Standard 2.5× absichtlich unverändert |
+| Gewichtedownload | Hauptmodell 19.18 GiB + DFlash2 3.58 GiB in etwa 3m26s; tatsächlich gemessener tmpfs-Höchststand 22.777 GiB | PASS |
+| VRAM und Inferenz | Hauptmodell 18.81 GB, Draft 3.73 GB im VRAM, KV/Mamba-Caches und CUDA Graphs initialisiert, erfolgreich authentifiziert inferiert | PASS |
+| In-Pod Benchmark | 3 Messungen pro Workload nach Warm-up: Technical 135.8, Code 187.1, Code Edit 190.6 tok/s; TTFT circa 62–64 ms | PASS; nur Loopback/Einzelkohorte |
+| Manuelle Gewichtsfreigabe | 0 offene mmap/FDs; 3 verifizierte Safetensors-Blobs (~22.73 GiB) entfernt; tmpfs von ~23 GiB auf ~31 MiB; VRAM unverändert; danach eine authentifizierte HTTP-200-Inferenz | PASS als manueller Proof-of-Concept |
+| Optionale automatische RAM-Freigabe | Separater Draft PR #19 mit Schalter MODEL_RAM_RELEASE_AFTER_LOAD=1, Standard 0; CI grün | LIVE-REGRESSION OFFEN |
+| Cold Start | Mehrere Image-Pulls beobachtet (ein Pull ~7m22s); Haupt- plus Draft-Download und GPU-Ladung separat gemessen | TEILWEISE; keine 5 unabhängigen Starts pro Kohorte |
+
+### Offene Release-Gates (nicht als erledigt kennzeichnen)
+
+- [ ] Private Endpunkte **ohne** Bearer authentifiziert ablehnen; öffentliches RunPod-Proxy-Routing auf portlosen Pods explizit negativ testen.
+- [ ] Vollständige OpenWebUI-Kohorte im privaten Full-Template inklusive Admin-Vorprovisionierung, deaktiviertem Signup und anonymem Chat-Ablehnungstest.
+- [ ] Öffentliche Full/Lean-Varianten gesondert überprüfen; positive Private-Lean-Ergebnisse beweisen deren Sicherheit nicht.
+- [ ] Deaktivierte Schalter DEBUG=0, BENCHMARK=0 und COLDSTART_TRACE=0 live testen.
+- [ ] SSD-Modus bewusst aktivieren und vergleichen; **niemals** stillschweigend RAM→SSD ausweichen.
+- [ ] PR #19 separat live testen (automatischer Cleanup nach erfolgreicher Inferenz/Benchmark, kein Cleanup mit Default 0 oder SSD), bevor er in die Integration übernommen wird.
+- [ ] Nach absichtlich freigegebenen Gewichten Audit/Diagnose für nicht mehr vorhandene Gewichtsdateien bewerten; Neustart/Reload erfordert erneuten Download.
+- [ ] Fünf unabhängige Starts pro zu vergleichender Kohorte, Region/Cache/Host klassifizieren; Median/p95 erst danach interpretieren.
+- [ ] Fehlleitende Netzwerkprobe mit 0.0 MB/s und Download-Fortschrittsanzeige in GiB/ETA beheben (separat erfasst).
+- [ ] Sicherer, ausschließlich QWEN38-Pods erfassender Reaper und TTL (Issue #18); globalen Reaper **nicht** aktivieren.
+- [ ] Finale Review aller ursprünglichen PRs und des integrierten Draft PR #17, dann erst Merge nach Freigabe.
+
+### Operative Eckpunkte
+
+Der Benchmark-Bericht liegt auf dem Mac mini unter
+~/.runpod/qwen38-live04-benchmark.json (0600). Alle vier existierenden
+Template-IDs wurden aktualisiert, nicht neu angelegt. Die ursprünglichen
+Feature-Branches #12–#16 sind als eigenständige Drafts **nicht**
+identisch mit dem getesteten Integrationsstand; deren PR-Diskussionen
+müssen die Integrationserkenntnisse ausdrücklich referenzieren.
+
+Beim Cleanup nur **runpodctl pod delete <EXAKTE_POD_ID>** verwenden.
+qwen38fast stop / qwen38pi stop löschen in der aktuellen Version
+potenziell alle Pods des RunPod-Kontos. Temporäre GPU-Tests haben
+keine garantierte automatische TTL, solange Issue #18 offen ist.
+
+---
+
+
 > **Integration branch:** `integration/issues-7-11-20261010`.
-> This is a pre-release candidate for a **deliberate paid RunPod test**, not a
-> claim that a real GPU pod was tested. Original PRs #12–#16 and `main`
-> remain unchanged. All integration CI is mock/offline.
+> This is a **partially GPU-verified** pre-release candidate. See the live
+> status matrix above: important release gates remain open. Original PRs #12–#16 and `main`
+> remain independent; see the PR audit. All integration CI is mock/offline.
 
 ## What is combined
 
@@ -38,7 +92,7 @@ Alternatively make a dedicated local tracking branch. The launcher needs
 `runpodctl`, the local `rp` wrapper and RunPod credentials. Do **not**
 paste bearer keys, HF tokens, Tailscale auth keys or web passwords into issues.
 
-## 1. Install user tools and create *new* templates
+## 1. Installed tools and existing templates (historical setup notes)
 
 ```bash
 ./setup.sh
@@ -46,7 +100,8 @@ paste bearer keys, HF tokens, Tailscale auth keys or web passwords into issues.
 ```
 
 `setup.sh` updates the current user's local commands and, on macOS,
-replaces/reloads its qwen38 proxy/reaper LaunchAgents. It is **not** a remote
+may replace/reload qwen38 proxy/reaper LaunchAgents. **Do not enable the old
+account-global reaper while Issue #18 is unresolved.** It is **not** a remote
 VPS action. `create-templates.sh` calls RunPod to create **four** new
 templates: public full/lean and portless tailnet full/lean. Retain the printed
 IDs and set **all four** `QWEN38_TEMPLATE`, `QWEN38_TEMPLATE_PI`,
@@ -55,27 +110,28 @@ shell config/environment as required. **Verify the two private templates have
 no `ports` or `port-labels` via actual RunPod template metadata/UI**
 before renting a GPU; an offline mock alone cannot prove this.
 
-For direct RunPod-UI pod creation, the new templates deliberately contain
-**no credentials**. Inject a nonempty `SGLANG_API_KEY`, `HF_TOKEN` when
-required, `TS_AUTHKEY` for private mode, and for OpenWebUI both
+For direct RunPod-UI pod creation, the current templates have **RunPod Secret
+references** for `SGLANG_API_KEY`/`LLAMA_API_KEY`, `HF_TOKEN` and private
+`TS_AUTHKEY`; these must resolve to existing RunPod Secrets at pod launch.
+For OpenWebUI supply both
 `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (16+ characters).
 Without a server API key startup **refuses** to expose an anonymous server;
-without OpenWebUI admin provisioning the UI **stays off**. Do not reuse the
-previous template IDs.
+without OpenWebUI admin provisioning the UI **stays off**. The four existing template IDs are retained and were updated in place with
+`scripts/sync-runpod-secrets.py --refresh-helpers`; no replacements required.
 
 ## 2. Select a safe first cohort (paid launch is a separate decision)
 
 Prefer **tailnet-only + lean API** first. The local machine must already
-reach the tailnet; use a non-reusable/ephemeral tagged Tailscale key with the
-appropriate ACLs and MagicDNS HTTPS Serve capabilities. Supply
+reach the tailnet; use a non-reusable/ephemeral tagged Tailscale key via RunPod Secret
+`TS_AUTHKEY` with appropriate ACLs and MagicDNS HTTPS Serve capabilities. Supply
 `QWEN38_TAILNET_DOMAIN` as the full `*.ts.net` tailnet DNS suffix. For
 instance, after exporting the four new template IDs (not shown here),
 set `QWEN38_NETWORK_MODE=tailnet` and run:
 
 ```bash
-# Local shell; input hidden. DO NOT echo the key or put it in command history.
-read -r -s -p 'Tailscale auth key: ' TS_AUTHKEY; printf '\n'
-export TS_AUTHKEY
+# RunPod Secret TS_AUTHKEY is already referenced by the private template.
+# Do not paste a plaintext key into environment, command history or GitHub.
+source ~/.config/qwen38/templates.env
 export QWEN38_TAILNET_DOMAIN='YOUR-TAILNET.ts.net'
 
 # Deliberately creates a paid RunPod pod. Un-comment only when ready.
@@ -88,13 +144,14 @@ build/compile on Salty/Rusty/Cloudzy or another VPN production host.
 
 **RAM caveat:** `MODEL_STORAGE=ram` is not just a cache preference. For
 main **plus** DFlash2/DSpark draft, the helper requires space for 2.5× weight
-inventory plus operating headroom, and a finite cgroup-v2 memory limit and
+inventory plus operating headroom, and a finite cgroup-v1 **or** cgroup-v2 memory limit and
 sufficient `/dev/shm` free capacity. Many RunPod containers have **much less
 shared memory than GPU VRAM**: the RAM preflight can refuse the launch before
 HF download. It **never silently falls back** to persistent storage. On a
 deliberate second cohort, use `--storage ssd` instead and record the storage
-difference in cold-start measurements. Do **not** lower safety margins or
-change tmpfs mounts solely to bypass a failure.
+difference in cold-start measurements. Do **not** silently lower safety margins or change tmpfs mounts solely to
+bypass a failure; the completed GPU run deliberately opted into a measured
+1.75× factor, while the 2.5× production default remains unchanged.
 
 **WebUI second cohort:** Repeat a separate controlled full-stack run without
 `--pi`. The launcher creates/reuses a strong local password at
@@ -152,7 +209,7 @@ timing is inferred by the bootstrap; collect independently corroborated
 RunPod UI/API evidence before adding `--platform`. Aim for **at least five
 independent starts per cohort** before interpreting median/p95. Full GPU
 smoke, memory sizing, direct-template visibility, real OpenWebUI provisioning,
-TLS/Serve reachability, and true cold-start timings are **not CI-verified**.
+TLS/Serve reachability, and true cold-start timings are **not fully verified by CI or the single paid GPU cohort**.
 
 ## 5. Cleanup / expected release gates
 
