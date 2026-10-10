@@ -1,13 +1,11 @@
 name: Qwen38 image build (GitHub-hosted candidate)
 
-# Trial build on PR #21, subsequently switch back to manual-only.
-# NEVER deploys to RunPod or publishes without workflow_dispatch publish=true.
+# Large builds must be explicitly requested, never triggered by code pushes.
+# Label "run-qwen38-image-build" on PR #21 to start a candidate build. Remove
+# and re-add the label for a subsequent run. GHCR publishing is dispatch-only.
 on:
   pull_request:
-    types: [synchronize]
-    paths:
-      - 'images/sglang-qwen38/**'
-      - '.github/workflows/qwen38-image-build.yml'
+    types: [labeled]
   workflow_dispatch:
     inputs:
       publish:
@@ -29,6 +27,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' &&
+       github.event.action == 'labeled' &&
+       github.event.label.name == 'run-qwen38-image-build' &&
        github.event.pull_request.number == 21 &&
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
