@@ -43,22 +43,34 @@ Image-path PR/push checks run Python unittest and Bash syntax verification
 on ordinary GitHub runners without Docker, GPUs or cloud cost.
 
 The heavyweight [image build workflow](../../.github/workflows/qwen38-image-build.yml)
-is manual-only and requires a self-hosted Linux x64 runner specifically
-labeled qwen38-build. Provision that runner ONLY on an approved dedicated
-build host, NOT Salty/Rusty/Cloudzy or any VPN/Passwall production VPS.
-Prepare Docker Buildx and significant fast SSD space (budget at least
-200 GiB free; observe actual usage). Manual GitHub workflow_dispatch is
-normally available after the workflow file is on the default branch.
+uses a GitHub-hosted **ubuntu-24.04 (x86_64)** runner with Docker Buildx.
+It does **not** run automatically on code pushes. To request another build
+from draft PR #21, add the issue/PR label `run-qwen38-image-build`
+(remove and re-add it for another explicit run). Alternatively, once the
+workflow file exists on the default branch, use `workflow_dispatch`.
+A runner performs an initial SDK cleanup and aborts before the build if
+fewer than 100 GiB are free in the Docker root filesystem. The first
+hosted runner reported a ~145 GB root filesystem with ~86 GB available
+before cleanup; available disk space is verified on each fresh runner.
 
-On an approved Linux x86_64 build host only, the following runs a local
-Docker build and does NOT launch a RunPod pod or push to GHCR:
+**First GitHub-hosted attempt:** [Actions run #38042274792](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38042274792)
+ended in `failure` after ~58 minutes. Checkout, offline tests,
+SDK cleanup and Docker-space preflight passed. The Docker-build step
+was the last observed active step, but GitHub job metadata retains
+its stale `in_progress` status despite the completed failed job.
+The job log download currently fails with `404 BlobNotFound`, so the
+actual root cause (OOM, disk, compiler, runner termination, etc.)
+**has not been established**. Do not infer a successful container or
+a memory root cause. Do not rerun blindly.
+
+A direct build on an *approved* Linux x86_64 host remains possible,
+but never compile on Salty, Rusty, Cloudzy or VPN/Passwall hosts:
 
     bash images/sglang-qwen38/build-image.sh --tag ghcr.io/tommyfive/qwen38-sglang:candidate-manual
 
-The manual workflow has a separate publish=false default. To push, the
-workflow input must explicitly be true. Direct script publishing also
-requires both --push and QWEN38_IMAGE_PUBLISH=YES. GHCR visibility is
-independently managed. Nothing changes the four RunPod templates.
+Publishing is default-off. Only a workflow dispatch with `publish=true`
+or an explicitly guarded `--push` invocation may publish a candidate.
+GHCR visibility is managed independently. No action changes RunPod templates.
 
 ## Required validation before rollout
 
