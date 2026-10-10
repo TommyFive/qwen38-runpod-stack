@@ -1,5 +1,21 @@
 # Integrated RunPod GPU smoke — issues #7, #8, #9, #10, #11
 
+## Test 1 completed — Private Full / Community Cloud, 2026-10-10
+
+**Recorded reproducible evidence:** [Full timeline and validation matrix](https://github.com/TommyFive/qwen38-runpod-stack/blob/feature/19-optional-postload-ram-release/docs/INTEGRATION_FULL_COMMUNITY_20261010.md) (added on Draft PR #19's feature branch). The active test was performed from an isolated worktree pinned to exact commit `bffa632`, not the main integration checkout.
+
+- **Cloud:** COMMUNITY explicitly requested; billed **$1.69/h**, matching RunPod GPU catalog Community price ($1.69/h) instead of Secure ($2.49/h). The CLI does not expose `cloudType`; mark this **rate-inferred, not direct-metadata verified**. Datacenter/region: **unknown**.
+- **Measured stages:** Pod creation to downloaded Docker image **4m38s** (includes scheduler/platform delay); main+DFlash2 HF download **3m27.7s**; SGLang process to first authenticated completion **~104s**; end-to-end first inference **~9m59s**. OpenWebUI install **43.17s**; admin created and first observed `/api/config` 200 after **~10m44s**.
+- **Optional RAM cleanup PR #19: PASS on paid GPU** with `MODEL_RAM_RELEASE_AFTER_LOAD=1`, `BENCHMARK=0`, `DEBUG=1`, `COLDSTART_TRACE=1`, explicitly supervised `MODEL_RAM_PEAK_FACTOR=1.75`. After authenticated inference, exactly three Safetensors blobs released **22.731 GiB**; authenticated inference passed again and private receipt `verified_after_inference` was created. The production default release flag **remains OFF**.
+- **OpenWebUI:** app started, admin account auto-provisioned, `auth=true`, `enable_signup=false`; anonymous chat/user APIs **401**, anonymous signup **403**. Actual authenticated OpenWebUI login not validated due a blocked credential-bearing probe.
+- **Network blocker:** local SGLang and OpenWebUI healthy, native Tailscale SSH works, private published RunPod endpoints **404**, but Tailscale Serve 443/8443 **timeouts** despite configured handlers. **[Issue #20](https://github.com/TommyFive/qwen38-runpod-stack/issues/20)**: release gate until end-to-end tailnet HTTPS works and TLS/auth is verified. No ACL change or port exposure was performed.
+- **Unexpected RAM overhead:** after weights released, Full OpenWebUI `uv` package cache still consumed ~**7 GiB tmpfs** (`/dev/shm/qwen38-hf/xdg/uv/archive-v0`), in addition to ~0.9 GiB model cache metadata. Treat separately from model download footprint.
+- **Clean termination:** exact Pod ID targeted-delete successful; RunPod 0 active, 0 USD/h; local 45-minute kill guard canceled. Detailed nonsecret RunPod and pod markers saved under `~/.runpod/qwen38-pr19-test1-*` as 0600 files.
+
+**Consequences for release status:** RAM cleanup is now **live validated** but PR #19 has not been merged. Private Full is **only partially accepted** because tailnet HTTPS and positive authenticated UI login remain open. No matched Secure Cloud run or 5-start cohort exists; the user's Community-vs-Secure speed hypothesis is **not yet confirmed**.
+
+---
+
 ## Status nach echten GPU-Integrationstests — 2026-10-10
 
 **Wichtig:** Der ursprüngliche Text unterhalb dieses Abschnitts war der
@@ -25,12 +41,12 @@ gezielt beendet; 0 aktive Pods nach dem letzten Test.
 
 ### Offene Release-Gates (nicht als erledigt kennzeichnen)
 
-- [ ] Private Endpunkte **ohne** Bearer authentifiziert ablehnen; öffentliches RunPod-Proxy-Routing auf portlosen Pods explizit negativ testen.
-- [ ] Vollständige OpenWebUI-Kohorte im privaten Full-Template inklusive Admin-Vorprovisionierung, deaktiviertem Signup und anonymem Chat-Ablehnungstest.
+- [x] Private SGLang ohne/falschen Bearer 401; RunPod öffentliche 8000/8080-Proxy-Adressen 404, auch nach App-Start. **Tailnet HTTPS 443/8443 weiterhin unerreichbar**, Issue #20.
+- [x] Private Full OpenWebUI erfolgreich gestartet, Admin angelegt, Signup 403 / anonymous Chat API 401 und auth=true. **Offen bleiben positives Login und erreichbares Tailnet-HTTPS 8443** (Issue #20).
 - [ ] Öffentliche Full/Lean-Varianten gesondert überprüfen; positive Private-Lean-Ergebnisse beweisen deren Sicherheit nicht.
 - [ ] Deaktivierte Schalter DEBUG=0, BENCHMARK=0 und COLDSTART_TRACE=0 live testen.
 - [ ] SSD-Modus bewusst aktivieren und vergleichen; **niemals** stillschweigend RAM→SSD ausweichen.
-- [ ] PR #19 separat live testen (automatischer Cleanup nach erfolgreicher Inferenz/Benchmark, kein Cleanup mit Default 0 oder SSD), bevor er in die Integration übernommen wird.
+- [x] PR #19 automatische RAM-Freigabe auf echter RTX PRO 6000 mit BENCHMARK=0 und authentifizierter Inferenz vor/nach Cleanup bestanden. Default OFF und SSD-negative Fall sind CI-verifiziert, noch nicht beide live geprüft. Integration/Merge weiter offen.
 - [ ] Nach absichtlich freigegebenen Gewichten Audit/Diagnose für nicht mehr vorhandene Gewichtsdateien bewerten; Neustart/Reload erfordert erneuten Download.
 - [ ] Fünf unabhängige Starts pro zu vergleichender Kohorte, Region/Cache/Host klassifizieren; Median/p95 erst danach interpretieren.
 - [ ] Fehlleitende Netzwerkprobe mit 0.0 MB/s und Download-Fortschrittsanzeige in GiB/ETA beheben (separat erfasst).
