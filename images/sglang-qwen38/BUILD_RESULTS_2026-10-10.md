@@ -65,12 +65,15 @@ Step #73 contains repeated `sgl-kernel cubin download failed, retrying in 30s`; 
 
 Peak usage is sampled and may miss momentary extremes. The Alibaba Cloud screenshot showed peak CPU use near 100% for several minutes but mostly significantly lower, so doubling vCPU is not a proven large benefit. The SSD usage plot is **space consumed**, not IOPS/throughput/saturation; PL1 advantage is unproven. RAM >32GiB was needed at observed parallelism.
 
-## Important size measurement still outstanding
+## Compressed image-size measurement (verified 2026-10-11)
 
-- Baseline `lmsysorg/sglang:dev-qwen38-27b-dflash2`: **14.676 decimal GB compressed** (linux/amd64 manifest, 68 layers) from the initial source-image analysis.
-- Candidate: **41.69 decimal GB uncompressed** in Docker, 31 filesystem layers. **Compressed registry layer sum unknown** until authenticated registry manifest inspection.
-- These are different size metrics and **must not be directly compared**. A smaller layer count alone does not establish image-size savings.
-- Use `images/sglang-qwen38/manifest-size.py` to sum the compressed layer sizes from an OCI/Docker single-platform manifest JSON.
+- Baseline: 14.676 GB compressed in 68 linux/amd64 registry layers (rounded).
+- Candidate: **12,907,436,335 bytes = 12.907 GB compressed**, in 31 layers.
+- Difference: **1.769 GB smaller, approximately 12.1% reduction**.
+- Private GHCR manifest was read by user on Mac mini using `inspect-ghcr-size.py` with a hidden-input read-capable token, and verified against the immutable manifest digest `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`. No image layers were downloaded.
+- Five largest compressed layers: 6.981, 2.323, 1.508, 0.828, and 0.728 GB (rounded). Largest layer accounts for about 54.1% of compressed bytes.
+- Archived Docker image history identifies its corresponding ~17.1 GB uncompressed layer as the full SGLang Python site-packages copy. Other uncompressed layers are <=4.89 GB. See [LAYER_AUDIT_2026-10-11.md](LAYER_AUDIT_2026-10-11.md) for source locations, risk assessment and follow-up profiling.
+- The measured **size** improvement is not yet a measured **cold-start** improvement. GPU A/B comparison remains pending.
 
 ## Preserved forensic evidence
 
@@ -88,9 +91,9 @@ It contains `buildkit.log`, `resource-samples.jsonl`, `image-history.txt`, `imag
 ## Prioritized next work
 
 1. **GPU compatibility first:** Private RunPod GHCR registry auth via `--registry-auth-id`, GPU Blackwell (RTX PRO 6000), unchanged model/DFlash2 startup, Bearer auth, verify no functional regressions. Separate from production templates and only after explicit paid-Pod authorization.
-2. **Manifest measurement:** Authenticate GHCR read access on an existing workstation. Resolve candidate compressed manifest layer sum; compare with the baseline and inspect largest layers. Do not pull 41 GB merely to read the manifest.
+2. **Layer analysis:** Analyze the 6.981-GB compressed Python site-packages layer and profile installed package footprints during the next separately authorized runtime container test; do not download large layers just for a manifest.
 3. **Caching:** Preserve a remote BuildKit registry cache for subsequent ECS rebuilds using carefully scoped `--cache-to`/`--cache-from`, recognizing that the old live cache cannot be recovered from the build-record archive.
 4. **Performance:** Separate Rust gateway artifact build/caching from runtime changes and investigate cubin retry failures. Compare direct registry `--push` versus local `--load` only on a deliberately authorized future CPU build.
 5. **IO validation:** Measure SSD IOPS/throughput and CPU iowait *during* a future build before spending on PL1; do not infer saturation from used-capacity charts.
 
-**Do not merge PR #21 or replace production RunPod templates until the GPU validation and compressed-size result are known.**
+**Do not merge PR #21 or replace production RunPod templates until GPU runtime compatibility and comparable cold-start validation are complete.**
