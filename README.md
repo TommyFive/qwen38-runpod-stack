@@ -329,8 +329,9 @@ Detailed explanations: [Tailscale setup above](#optional-tailscale-native-ssh-an
 
 `qwen38fast` uses RunPod Secret references by default: `SGLANG_API_KEY`
 references existing `LLAMA_API_KEY`; private `TS_AUTHKEY` references
-`TS_AUTHKEY`. Set `QWEN38_HF_SECRET_NAME` to the exact RunPod Hugging Face
-secret name to enable `HF_TOKEN`. For previous local-secret behavior,
+`TS_AUTHKEY`. `HF_TOKEN` references the existing RunPod Secret `HF_TOKEN`
+by default. Set `QWEN38_HF_SECRET_NAME` to override its name, or explicitly
+set it to an empty string to omit an optional Hugging Face token. For previous local-secret behavior,
 set `QWEN38_CREDENTIAL_MODE=local`. The local Qwen38 proxy requires the
 **same** SGLang API key as the RunPod `LLAMA_API_KEY` Secret;
 see [security and setup notes](docs/SECURITY.md).
