@@ -220,9 +220,11 @@ broader secret handling and OpenWebUI authentication hardening are tracked in
 [issue #8](https://github.com/TommyFive/qwen38-runpod-stack/issues/8).
 **Current integration runtime** requires OpenWebUI authentication and disables
 anonymous signup; negative anonymous access checks passed on the live Private
-Full pod. Tailnet HTTPS Serve 443/8443 is still **unreachable** in that cohort
-([#20](https://github.com/TommyFive/qwen38-runpod-stack/issues/20)); do not
-present this path as working until TLS/API/UI checks pass.
+Full pod. The **confirmed root cause of #20** is the live Pod's Tailscale
+packet filter: the Mac mini client can access TCP/22, **not 443 or 8443**.
+Read the [targeted ACL/tag remediation and E2E acceptance](docs/TAILNET_ACL_ISSUE20.md).
+Do not broadly grant access to all tagged infrastructure, expose RunPod public
+ports, or claim the Tailnet HTTPS path works until TLS/API/UI checks pass.
 
 **Fail-closed behavior:** An empty/invalid token or failed Tailscale/Serve
 setup in `tailnet` mode aborts the pod bootstrap before model download.

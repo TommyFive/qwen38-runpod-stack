@@ -9,6 +9,36 @@
 > validated GPU inference and benchmark remain in scope. See
 > [integration strategy](INTEGRATION_STRATEGY_PR17_20261010.md).
 
+## Test 2 — Private Full Secure, live ACL root-cause confirmation (2026-10-10)
+
+**New live findings:** RunPod Secure RTX PRO 6000, actual $2.49/h, pod
+`xyijp8lpaauxqq` (targeted-deleted, 0 active after cleanup). All four
+existing template IDs were synchronized **in place** to the same exact
+repository bootstrap/Tailscale/storage/benchmark helpers and verified
+to preserve RunPod Secret references. Both private templates have zero
+public ports. Mac mini checkout updated to `58ecc266` and installed helpers
+were synchronized **without `setup.sh`** (legacy global reaper still disabled).
+
+On the live Pod, the Tailscale `PacketFilterRules` admitted Mac mini -> Pod
+**TCP/22 only**, with a broad Tailnet -> Pod **TCP/8080** rule; **no
+443/8443 admission**. Native SSH via Tailnet IPv4 worked; forced-hostname
+HTTPS TCP 443/8443 timed out. Thus #20's **root cause is the actual Tailnet
+ACL/grant**, not merely a conjectured Serve configuration problem.
+SGLang unauthenticated local API returned **401** and local WebUI
+`/api/config` returned **200**. HTTPS Serve must not be labeled PASS for
+Private Full until a narrowly scoped Tailnet grant and positive TLS/auth
+tests are complete. Dedicated Pod tag + scoped grants and RunPod Secret key
+rotation are documented in [TAILNET_ACL_ISSUE20.md](TAILNET_ACL_ISSUE20.md).
+No Tailscale ACL or key was changed, and public RunPod ports were not opened.
+
+New Secure cold-start **single observation, NOT a matched cloud comparison**:
+creation 10:19:02 UTC, bootstrap 10:20:54.786, combined model+draft
+download 10:20:57.436–10:21:10.983 (13.55s), `/health_generate`
+10:22:28.344 (~206s after pod creation); region/image cache unknown.
+This non-blocking performance evidence is tracked in #23.
+
+---
+  
 ## Test 1 completed — Private Full / Community Cloud, 2026-10-10
 
 **Recorded reproducible evidence:** [Full timeline and validation matrix](https://github.com/TommyFive/qwen38-runpod-stack/blob/feature/19-optional-postload-ram-release/docs/INTEGRATION_FULL_COMMUNITY_20261010.md) (initially added on PR #19's feature branch, now merged into integration). The active test was performed from an isolated worktree pinned to exact commit `bffa632`, not the main integration checkout.
@@ -50,7 +80,7 @@ gezielt beendet; 0 aktive Pods nach dem letzten Test.
 
 ### Offene Release-Gates (nicht als erledigt kennzeichnen)
 
-- [x] Private SGLang ohne/falschen Bearer 401; RunPod öffentliche 8000/8080-Proxy-Adressen 404, auch nach App-Start. **Tailnet HTTPS 443/8443 weiterhin unerreichbar**, Issue #20.
+- [x] Private SGLang ohne/falschen Bearer 401; RunPod öffentliche 8000/8080-Proxy-Adressen 404, auch nach App-Start. **Tailnet HTTPS 443/8443 weiterhin unerreichbar; fehlende eingehende ACL/Grants bestätigt**, Issue #20.
 - [x] Private Full OpenWebUI erfolgreich gestartet, Admin angelegt, Signup 403 / anonymous Chat API 401 und auth=true. **Offen bleiben positives Login und erreichbares Tailnet-HTTPS 8443** (Issue #20).
 - [ ] Öffentliche Full/Lean-Varianten gesondert überprüfen; positive Private-Lean-Ergebnisse beweisen deren Sicherheit nicht.
 - [ ] Deaktivierte Schalter DEBUG=0 und COLDSTART_TRACE=0 live testen; **BENCHMARK=0 im Private-Full-Run mit Auto-RAM-Freigabe erfolgreich bestätigt**.

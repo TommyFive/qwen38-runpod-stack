@@ -16,8 +16,8 @@
 - Both offline GitHub workflows passed on the audited head.
 - Mac mini local checkout matched that commit with clean Git status; installed
   `qwen38fast`, bootstrap and model-storage helper did **not** match checkout
-  bytes. Repair that installation drift only after documenting the deployment
-  steps and avoiding unintended reaper activation.
+  bytes. This local helper drift was resolved on the Mac mini
+  using targeted file installs, not `setup.sh`; the old reaper remains off.
 - Live validation so far: RTX PRO 6000 Private Lean and Private Full,
   authenticated SGLang + DFlash2 inference, RAM-backed main+draft, native
   Tailscale SSH, absent public RunPod proxy exposure for portless templates,
@@ -31,8 +31,8 @@
 
 | Gate | Required proof | Current status | Priority |
 |---|---|---|---|
-| **G1: Tailscale HTTPS Serve #20** | Tailnet TLS certificate and API HTTPS :443 with Bearer 401/200; WebUI HTTPS :8443, auth/login, signup/anonymous blocked, native SSH retained, RunPod private ports still empty | **FAIL**: 443/8443 timeouts in last Private Full live test; root cause not confirmed | P0 |
-| **G2: Four template/config parity** | Read-only metadata GET for all existing public/private Full/Lean IDs; validate network mode, ports (private `[]`), embedded bootstrap/helper SHA or byte identity, RunPod Secret references and defaults; no credentials logged | Previous live verification only; new audit did not complete live metadata validation | P1 |
+| **G1: Tailscale HTTPS Serve #20** | Tailnet TLS certificate and API HTTPS :443 with Bearer 401/200; WebUI HTTPS :8443, auth/login, signup/anonymous blocked, native SSH retained, RunPod private ports still empty | **FAIL**: 443/8443 timeouts; live Pod Tailscale packet-filter **confirmed ACL denial** for authorized Mac mini (22 allowed, 443/8443 missing). Dedicated Pod tag/grant and E2E TLS/UI verification pending, see [#20](TAILNET_ACL_ISSUE20.md) | P0 |
+| **G2: Four template/config parity** | Read-only metadata GET for all existing public/private Full/Lean IDs; validate network mode, ports (private `[]`), embedded bootstrap/helper SHA or byte identity, RunPod Secret references and defaults; no credentials logged | **PASS (template parity 2026-10-10):** all four existing IDs read via RunPod, public port configs correct, private ports empty, all RunPod Secret references kept, bootstrap/storage/TS/benchmark helpers refreshed in place and byte SHA verified | P1 |
 | **G3: Auth/privacy negative and positive flows** | No anonymous public SGLang/API; authentication always on for public OpenWebUI; positive UI admin login over trusted HTTPS; debug redaction, private runtime data, fail-closed config | Negative live tests passed on Private Full. Positive login and public-variant verification still missing | P1 |
 | **G4: Storage/settings integration** | RAM and cgroup preflight, main/draft on verified tmpfs, opt-in SSD and failure pathways, release-after-inference guarded and default OFF; read-only audit of generated paths and no silent fallback | RAM + release-opt-in passed live. SSD path not GPU-verified; all switch configurations not sampled | P1 |
 | **G5: Final review/CI** | Review final diff vs `main`, updated documentation, both GitHub Actions green at final head, all unresolved regressions documented, final Go/No-Go report | Pending final head | P1 |

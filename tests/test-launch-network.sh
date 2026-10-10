@@ -104,6 +104,12 @@ unset QWEN38_HF_SECRET_NAME || true
 bash "$ROOT/bin/qwen38fast" --pi --network tailnet > "$TMP/tailnet.out"
 grep -Fq 'https://' "$TMP/tailnet.out"
 grep -Fq '.tailc8dece.ts.net/v1' "$TMP/tailnet.out"
+grep -Fq 'no guaranteed auto-stop' "$TMP/tailnet.out"
+grep -Fq 'runpodctl pod delete pod-ci' "$TMP/tailnet.out"
+if grep -Fq 'then RunPod terminates it itself' "$ROOT/bin/qwen38fast"; then
+  echo 'FAIL: false RunPod timer guarantee' >&2
+  exit 1
+fi
 test "$(stat -c %a "$HOME/.runpod/current-endpoint.json")" = 600
 python3 - "$HOME/.runpod/current-endpoint.json" <<'PY'
 import json,sys
