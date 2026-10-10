@@ -1,6 +1,6 @@
 # One-time Cloudzy CPU image build
 
-**Prepared only:** These files do not deploy, purchase, power on, delete, or alter any cloud server. The user clicks Deploy Now separately in Cloudzy and supplies the resulting new public IPv4.
+**Archived one-time procedure (2026-10-11):** These scripts were originally named for Cloudzy but were used with the user's dedicated Alibaba ECS Frankfurt build VM. The image build and GHCR publication succeeded; the user subsequently deleted the ECS instance. The Mac mini's stored IP/host-key mapping now refers to a **deleted** VM and must not be used for a new build without explicit re-registration/review. These files do not provision, purchase, power on or delete any cloud VM; they require a separately approved new temporary VM.
 
 ## Cloudzy selection
 
