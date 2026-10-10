@@ -63,6 +63,34 @@ actual root cause (OOM, disk, compiler, runner termination, etc.)
 **has not been established**. Do not infer a successful container or
 a memory root cause. Do not rerun blindly.
 
+### Durable diagnostics before a second expensive attempt
+
+The next build has added two independent diagnostic paths:
+
+- The BuildKit console output is saved to a local file with
+  `BUILDKIT_PROGRESS=plain` and uploaded by
+  `actions/upload-artifact` on normal success/failure. It is retained
+  for 7 days and **never** copied into PR comments.
+- An independent, restricted watchdog samples free disk, available RAM,
+  cgroup `oom_kill`, build log byte count and numeric BuildKit stage ID.
+  It writes one **sanitized** PR #21 comment and updates it approximately
+  every 120 seconds via GitHub API with `issues:write` permission. This
+  survives loss of normal job logs if GitHub accepted an earlier checkpoint.
+  Raw logs, environment, tokens and paths are not posted. The build child
+  does not receive the GitHub API token.
+- The watchdog interrupts its **isolated** build process group if free SSD
+  falls below 12 GiB or available RAM is below 1.5 GiB for three consecutive
+  30-second samples. These are safety limits, not predictions of build success.
+
+A total runner disappearance can also prevent an artifact upload or the
+*last* checkpoint. The last successfully written PR comment remains durable,
+but an exact root cause may still require GitHub Support. An interrupted
+build must not be treated as complete.
+
+No automatic rerun was triggered when these diagnostics were added.
+To authorize the next heavy build, explicitly add the PR label
+`run-qwen38-image-build`; the label triggers the single-PR hosted build.
+
 A direct build on an *approved* Linux x86_64 host remains possible,
 but never compile on Salty, Rusty, Cloudzy or VPN/Passwall hosts:
 
