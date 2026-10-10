@@ -1,6 +1,6 @@
 # Qwen38 experimental minimal SGLang image
 
-**Status: candidate only; not yet built, published, or GPU-tested.**
+**Status (2026-10-11): candidate built on Alibaba ECS and successfully pushed to private GHCR; not yet GPU-tested or merged.** See [measured build results](BUILD_RESULTS_2026-10-10.md), [GPU validation plan](GPU_VALIDATION.md), and [compressed manifest-size tool](manifest-size.py).
 This module is intentionally independent of the Qwen38 launcher, Tailscale,
 privacy, RAM storage, and the four existing RunPod templates.
 Background: [cold-start issue #11](https://github.com/TommyFive/qwen38-runpod-stack/issues/11).
