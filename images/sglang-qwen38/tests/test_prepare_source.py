@@ -98,7 +98,7 @@ class BuildContractTests(unittest.TestCase):
         self.assertEqual(lock["cuda_version"], "13.0.3")
         self.assertEqual(lock["flashinfer_version"], "0.6.17")
         self.assertTrue(lock["flashinfer_jit_cache"])
-        self.assertEqual(lock["baseline_amd64_compressed_bytes"], 14676000000)
+        self.assertEqual(lock["baseline_amd64_compressed_gb_rounded"], 14.676)
         self.assertIn("--target \"$TARGET\"", build)
         self.assertIn("--build-arg \"BUILD_TYPE=$BUILD_TYPE\"", build)
         self.assertIn("--build-arg \"INSTALL_FLASHINFER_JIT_CACHE=$JIT_CACHE\"", build)
