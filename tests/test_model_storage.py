@@ -70,6 +70,70 @@ class StorageTests(unittest.TestCase):
         with self.assertRaisesRegex(ms.StorageError, "finite"):
             ms.cgroup_available(str(cg))
 
+    def test_cgroup_v1_mounted_memory_controller(self):
+        controller = self.base / "sys" / "memory"
+        member = controller / "slice" / "pod"
+        member.mkdir(parents=True)
+        (member / "memory.limit_in_bytes").write_text("10000")
+        (member / "memory.usage_in_bytes").write_text("2500")
+        mountinfo = self.base / "mountinfo"
+        mountinfo.write_text(
+            f"11 5 0:42 / {controller} rw - cgroup cgroup rw,memory\n")
+        membership = self.base / "cgroup"
+        membership.write_text("7:cpu,cpuacct:/slice/pod\n8:memory:/slice/pod\n")
+        self.assertEqual(ms.cgroup_available(str(controller), str(mountinfo),
+                                             str(membership)), 7500)
+
+    def test_cgroup_v1_delegated_mount_root(self):
+        controller = self.base / "sys" / "memory"
+        controller.mkdir(parents=True)
+        (controller / "memory.limit_in_bytes").write_text("10000")
+        (controller / "memory.usage_in_bytes").write_text("3000")
+        mountinfo = self.base / "mountinfo"
+        mountinfo.write_text(
+            f"11 5 0:42 /outer/pod {controller} rw - cgroup cgroup rw,memory\n")
+        membership = self.base / "cgroup"
+        membership.write_text("8:memory:/outer/pod\n")
+        self.assertEqual(ms.cgroup_available(str(controller), str(mountinfo),
+                                             str(membership)), 7000)
+
+    def test_cgroup_v1_unlimited_and_missing_fail_closed(self):
+        controller = self.base / "sys" / "memory"
+        controller.mkdir(parents=True)
+        (controller / "memory.limit_in_bytes").write_text("9223372036854771712")
+        (controller / "memory.usage_in_bytes").write_text("500")
+        mountinfo = self.base / "mountinfo"
+        mountinfo.write_text(
+            f"11 5 0:42 / {controller} rw - cgroup cgroup rw,memory\n")
+        membership = self.base / "cgroup"
+        membership.write_text("8:memory:/\n")
+        with self.assertRaisesRegex(ms.StorageError, "unlimited"):
+            ms.cgroup_available(str(controller), str(mountinfo), str(membership))
+        (controller / "memory.limit_in_bytes").unlink()
+        with self.assertRaisesRegex(ms.StorageError, "cannot read"):
+            ms.cgroup_available(str(controller), str(mountinfo), str(membership))
+
+    def test_cgroup_missing_controller_fails_closed(self):
+        directory = self.base / "nomemory"
+        directory.mkdir()
+        mountinfo = self.base / "mountinfo"
+        mountinfo.write_text("4 1 0:7 / /sys/fs/cgroup ro - tmpfs tmpfs rw\n")
+        membership = self.base / "cgroup"
+        membership.write_text("2:cpu:/\n")
+        with self.assertRaisesRegex(ms.StorageError, "cannot establish finite"):
+            ms.cgroup_available(str(directory), str(mountinfo), str(membership))
+
+    def test_ram_preflight_reports_tmpfs_capacity_before_missing_cgroup(self):
+        err = io.StringIO()
+        with patch.object(ms, "repo_bytes", return_value=10 * ms.GIB), \
+             patch.object(ms, "cgroup_available", side_effect=ms.StorageError("missing cgroup")), \
+             patch("os.statvfs", return_value=SimpleNamespace(f_bavail=90, f_frsize=ms.GIB)), \
+             patch("sys.stderr", err):
+            with self.assertRaisesRegex(ms.StorageError, "missing cgroup"):
+                ms.preflight(self.ram, str(self.ram.parent))
+        self.assertIn("shm_available=90.00 GiB", err.getvalue())
+        self.assertIn("shm_required=33.00 GiB", err.getvalue())
+
     def test_ram_full_cgroup_full_and_host_ram_limited(self):
         with patch.object(ms, "repo_bytes", return_value=10 * ms.GIB), \
              patch.object(ms, "cgroup_available", return_value=200 * ms.GIB), \
