@@ -4,9 +4,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 TS_SECRET_DIR="$(mktemp -d /dev/shm/qwen38-ci.XXXXXXXX)"
-trap 'if [[ -f "$TMP/daemon.pid" ]]; then kill "$(cat "$TMP/daemon.pid")" 2>/dev/null || :; fi; rm -rf "$TMP" "$TS_SECRET_DIR"' EXIT
+trap 'if [[ -f "$TMP/daemon.pid" ]]; then kill "$(cat "$TMP/daemon.pid")" 2>/dev/null || :; fi; rm -rf "$TMP" "$TS_SECRET_DIR" "${TS_RUNTIME_DIR:-}"' EXIT
 mkdir -p "$TMP/bin" "$TMP/work"
-export TS_RUNTIME_DIR="$TMP/work"
+export TS_RUNTIME_DIR="$(mktemp -d /dev/shm/qwen38-ci-runtime.XXXXXXXX)"
 export TS_SECRET_DIR
 export TEST_CALL_LOG="$TMP/calls"
 export PATH="$TMP/bin:$PATH"
@@ -95,4 +95,4 @@ grep -Fq -- "--https=8443 http://127.0.0.1:8080" "$TEST_CALL_LOG"
 if grep -Fq 'serve --tcp=22' "$TEST_CALL_LOG"; then echo "FAIL: legacy TCP/22 forwarding" >&2; exit 1; fi
 if grep -Fq 'tskey-auth-test-only' "$TEST_CALL_LOG"; then echo "FAIL: auth key exposed to command arguments" >&2; exit 1; fi
 
-echo "test-tailscale: ok"
+grep -Fq -- "--statedir=$TS_RUNTIME_DIR/state" "$TEST_CALL_LOG"; echo "test-tailscale: ok"

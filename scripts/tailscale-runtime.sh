@@ -58,8 +58,20 @@ ts_start() {
     unset TS_AUTHKEY
     export -n TS_AUTHKEY 2>/dev/null || true
 
-    local work="${TS_RUNTIME_DIR:-/tmp/qwen38-tailscale}"
-    install -d -m 700 "$work" || { rm -f "$auth_file"; return 70; }
+    # Serve TLS needs a writable TailscaleVarRoot for ACME certificates.
+    # --state=mem: by itself gives NO TailscaleVarRoot and TLS handshakes fail.
+    # Use an isolated RAM-only statedir; machine identity remains mem-only.
+    local work="${TS_RUNTIME_DIR:-/dev/shm/qwen38-tailscale}"
+    if [[ "$work" != /dev/shm/* || "$work" == *"/../"* ||
+          "$work" == *"/.." || -L "$work" ]]; then
+        echo "ERROR: Tailscale runtime directory must be a real /dev/shm directory" >&2
+        rm -f "$auth_file"; return 70
+    fi
+    install -d -m 700 "$work" "$work/state" || { rm -f "$auth_file"; return 70; }
+    if [[ "$(realpath "$work")" != /dev/shm/* || "$(realpath "$work/state")" != /dev/shm/* ]]; then
+        echo "ERROR: Tailscale runtime state escaped tmpfs" >&2
+        rm -f "$auth_file"; return 70
+    fi
     local cli daemon
     if command -v tailscale >/dev/null 2>&1 && command -v tailscaled >/dev/null 2>&1; then
         cli="$(command -v tailscale)"
@@ -116,8 +128,8 @@ ts_start() {
 
     TS_SOCKET="$work/tailscaled.sock"
     echo "TAILSCALE: starting userspace daemon"
-    "$daemon" --tun=userspace-networking --state=mem: --socket="$TS_SOCKET" \
-        --no-logs-no-support --port=0 > "$work/tailscaled.log" 2>&1 &
+    "$daemon" --tun=userspace-networking --state=mem: --statedir="$work/state" \
+        --socket="$TS_SOCKET" --no-logs-no-support --port=0 > "$work/tailscaled.log" 2>&1 &
     TS_DAEMON_PID=$!
     local i
     for ((i=0; i<100; i++)); do

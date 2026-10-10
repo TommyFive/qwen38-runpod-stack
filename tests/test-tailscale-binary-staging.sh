@@ -14,8 +14,13 @@ export PATH="$TMP/bin:$PATH"
 
 cat > "$TMP/source/tailscale_1.102.3_amd64/tailscaled" <<'DAEMON'
 #!/usr/bin/env python3
-import socket, sys, time
+import socket, sys, time, os
 p=next(x.split("=",1)[1] for x in sys.argv if x.startswith("--socket="))
+state=next(x.split("=",1)[1] for x in sys.argv if x.startswith("--statedir="))
+assert state == os.environ["TS_RUNTIME_DIR"]+"/state"
+assert "--state=mem:" in sys.argv
+assert os.path.isdir(state)
+assert state.startswith("/dev/shm/")
 s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)
 s.bind(p);s.listen(2)
 while True: time.sleep(1)
@@ -71,6 +76,8 @@ daemon_pid="$TS_DAEMON_PID"
 [[ "$TS_CLI" == "$TS_BIN_DIR/tailscale_1.102.3_amd64/tailscale" ]]
 [[ "$TS_SOCKET" == "$TS_RUNTIME_DIR/tailscaled.sock" ]]
 [[ -S "$TS_SOCKET" ]]
+[[ -d "$TS_RUNTIME_DIR/state" ]]
+[[ "$(stat -f -c %T "$TS_RUNTIME_DIR/state")" == tmpfs ]]
 [[ "$TS_DNS_NAME" == "qwen38-test.tailc8dece.ts.net" ]]
 [[ ! -e "$TS_BIN_DIR/tailscale.tar.gz" ]]
 [[ ! -e "$TS_BIN_DIR/tailscale.sha256" ]]
