@@ -73,7 +73,7 @@ secrets = sorted({os.environ.get(k, "") for k in (
     "SGLANG_API_KEY", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN",
     "WEBUI_ADMIN_PASSWORD", "TS_AUTHKEY", "OPENAI_API_KEY"
 ) if os.environ.get(k, "")}, key=len, reverse=True)
-allow = re.compile(r"^(===|---|ERROR:|WARNING:|SSH_READY|SSH disabled|TAILSCALE:|QWEN38_COLDSTART |Benchmark |MODEL STORAGE ERROR:|Storage mode:|RAM mode verified:|model=|download probe:|GPU:|privacy:)")
+allow = re.compile(r"^(===|---|ERROR:|WARNING:|SSH_READY|SSH disabled|TAILSCALE:|QWEN38_COLDSTART |QWEN38_STORAGE_METRIC|Benchmark |MODEL STORAGE ERROR:|Storage mode:|RAM mode verified:|model=|download probe:|GPU:|privacy:)")
 for line in sys.stdin:
     for secret in secrets:
         line = line.replace(secret, "[REDACTED]")
@@ -246,6 +246,15 @@ if ! python3 "$RUNTIME_LOG_DIR/model-storage.py" prepare > "$RUNTIME_LOG_DIR/mod
 fi
 # shellcheck source=/dev/null
 source "$RUNTIME_LOG_DIR/model-storage-env.sh"
+# RAM telemetry samples once per second, summarizing peak usage every 15 s.
+# Only DEBUG=1; no HF tokens/API keys passed to the read-only monitor.
+# Keep its stdout attached to the redacted bootstrap log for remote diagnosis.
+if [[ "$DEBUG" == 1 && "$MODEL_STORAGE" == ram ]]; then
+    env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u SGLANG_API_KEY -u TS_AUTHKEY \
+        python3 -u "$RUNTIME_LOG_DIR/model-storage.py" monitor &
+    STORAGE_MONITOR_PID=$!
+    echo "QWEN38_STORAGE_METRIC: read-only RAM monitor started"
+fi
 [[ -n "${HF_TOKEN:-}" ]] && export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 cat > /workspace/smoke-storage.sh <<'SMOKE'
 #!/usr/bin/env bash
