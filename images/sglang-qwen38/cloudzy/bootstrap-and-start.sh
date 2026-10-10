@@ -10,6 +10,9 @@ SHA="$1"
 [[ "$ID" == ubuntu && "$VERSION_ID" == 24.04 ]] || die "Ubuntu Server 24.04 required"
 [[ ! -e /opt/qwen38-cloudzy/.started ]] || die "Existing builder detected"
 [[ ! -e /var/log/qwen38-cloudzy/buildkit.log ]] || die "Refusing existing build log"
+# Additional guard against pointing the launcher at an older production VM.
+uptime_seconds=$(cut -d. -f1 /proc/uptime)
+((uptime_seconds < 24*3600)) || die "Refusing a VM with uptime over 24 hours"
 mem_kib=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
 ((mem_kib >= 52*1024*1024)) || die "64GB class RAM required"
 (( $(nproc) >= 8 )) || die "At least 8 vCPU required"
