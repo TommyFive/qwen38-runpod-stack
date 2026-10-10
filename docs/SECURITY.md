@@ -89,9 +89,10 @@ control plane receives **references**, never cleartext values, for:
 
 - `SGLANG_API_KEY={{ RUNPOD_SECRET_LLAMA_API_KEY }}` (existing A40 secret, reused)
 - `TS_AUTHKEY={{ RUNPOD_SECRET_TS_AUTHKEY }}` on tailnet pods only
-- `HF_TOKEN={{ RUNPOD_SECRET_<name> }}` only when
-  `QWEN38_HF_SECRET_NAME=<exact Hugging Face secret name>` is provided.
-  Public checkpoints do not require an HF token, so absent name omits HF_TOKEN.
+- `HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}` by default, using the existing
+  Hugging Face RunPod Secret named `HF_TOKEN`. The name is configurable with
+  `QWEN38_HF_SECRET_NAME`; set it to an explicit empty string to omit a token
+  for public models.
 
 The same references are embedded as template defaults for RunPod UI launches.
 The CLI supplies a complete `--env` override at pod creation, so it explicitly
@@ -125,8 +126,7 @@ sourcing `~/.config/qwen38/templates.env`, run:
 cd ~/.openclaw/workspace/documentation/qwen38-runpod-stack
 source ~/.config/qwen38/load-credentials.sh
 source ~/.config/qwen38/templates.env
-# Optional: set to the exact existing RunPod Hugging Face Secret name:
-# export QWEN38_HF_SECRET_NAME=HF_TOKEN
+# The existing RunPod Hugging Face Secret HF_TOKEN is used automatically.
 python3 scripts/sync-runpod-secrets.py \\
   --public-full "$QWEN38_TEMPLATE" \\
   --public-lean "$QWEN38_TEMPLATE_PI" \\
