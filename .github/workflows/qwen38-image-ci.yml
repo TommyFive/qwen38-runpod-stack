@@ -19,6 +19,22 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 (Node 24)
+      - name: Inspect hosted runner capacity (read-only, no image build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== RUNNER ==="
+          uname -a
+          echo "=== FILESYSTEMS ==="
+          df -hT / "$RUNNER_TEMP" /var/lib/docker || true
+          echo "=== BLOCK DEVICES ==="
+          lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS || true
+          echo "=== MEMORY ==="
+          free -h
+          echo "=== DOCKER ROOT ==="
+          docker info --format 'DockerRootDir={{.DockerRootDir}}' || true
+          echo "=== AVAILABLE SPACE ==="
+          df -B1 --output=target,size,avail / | tail -n 1
       - name: Lint build entrypoint and Python syntax
         run: |
           set -euo pipefail
