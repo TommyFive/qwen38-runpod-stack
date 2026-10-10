@@ -27,6 +27,10 @@ A prior Private Lean run reported reachable Serve on 443; we do **not**
 assume the previous and current Tailscale policy snapshots were identical.
 The current live Pod ACL rules explain the reproducible Private Full failure.
 
+## Owner-approved policy update (2026-10-10)
+
+The owner requires these HTTPS ports to be reachable by **all Tailnet members**, not just OpenClaw clients. The RunPod authentication key already has `tag:runpod-llm` and `tag:ssh-target`. Keep both tags and add TCP 443/8443 to the existing wildcard-source grant (which already allows TCP 8080) targeting `tag:runpod-llm`. This is tailnet-only access, not public RunPod port exposure. The test for `tag:openclaw` was updated accordingly. Live application/TLS validation remains outstanding; renewing the expiring auth key must preserve its existing tags. **This owner decision supersedes the dedicated-tag/narrow-source proposal in the historical section below.**
+
 ## Correct least-privilege design (tailnet-admin action required)
 
 **Do not** add `tag:tagged-devices:443/8443` broadly. That tag also covers
