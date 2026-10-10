@@ -4,6 +4,7 @@
 No pods launched, no secret values read or printed. Requires RUNPOD_API_KEY.
 """
 import importlib.util
+import base64
 import os
 from pathlib import Path
 import re
@@ -15,11 +16,30 @@ ports = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ports)
 
 SECRET_KEYS = ("TS_AUTHKEY", "SGLANG_API_KEY", "HF_TOKEN", "WEBUI_ADMIN_PASSWORD")
+BUNDLED_HELPERS = {
+    "BOOTSTRAP_B64": "scripts/bootstrap-sglang-openwebui.sh",
+    "TAILSCALE_RUNTIME_B64": "scripts/tailscale-runtime.sh",
+    "STORAGE_HELPER_B64": "scripts/model-storage.py",
+    "BENCHMARK_B64": "scripts/benchmark_sglang.py",
+}
+
+
+def read_bundled_helpers():
+    """Only trusted checkout files; never read keys, API configuration or tokens."""
+    repo = Path(__file__).resolve().parents[1]
+    result = {}
+    for key, relative in BUNDLED_HELPERS.items():
+        source = repo / relative
+        if not source.is_file() or source.is_symlink():
+            raise ports.PortSafetyError("missing or symlinked bundled helper: " + relative)
+        result[key] = base64.b64encode(source.read_bytes()).decode("ascii")
+    return result
+
 API_REFERENCE = "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
 TS_REFERENCE = "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
 
 
-def make_env(existing, mode, hf_secret):
+def make_env(existing, mode, hf_secret, helpers=None):
     if not isinstance(existing, dict):
         raise ports.PortSafetyError("template env is missing or malformed")
     if mode not in ("runpod", "tailnet") or existing.get("NETWORK_MODE") != mode:
@@ -31,6 +51,12 @@ def make_env(existing, mode, hf_secret):
     if "WEBUI_ADMIN_PASSWORD" in existing:
         raise ports.PortSafetyError("pre-existing WEBUI_ADMIN_PASSWORD; refuses to copy it")
     new = dict(existing)
+    if helpers is not None:
+        if set(helpers) != set(BUNDLED_HELPERS) or not all(helpers.values()):
+            raise ports.PortSafetyError("incomplete helper bundle")
+        if any(not existing.get(key) for key in BUNDLED_HELPERS):
+            raise ports.PortSafetyError("template is missing an embedded helper")
+        new.update(helpers)
     new["SGLANG_API_KEY"] = API_REFERENCE
     if mode == "tailnet":
         new["TS_AUTHKEY"] = TS_REFERENCE
@@ -43,12 +69,12 @@ def make_env(existing, mode, hf_secret):
     return new
 
 
-def sync(template_id, mode, hf_secret):
+def sync(template_id, mode, hf_secret, helpers=None):
     before = ports.request("GET", template_id)
     if before.get("id") != template_id:
         raise ports.PortSafetyError("template ID mismatch")
     old_env = before.get("env")
-    new_env = make_env(old_env, mode, hf_secret)
+    new_env = make_env(old_env, mode, hf_secret, helpers)
     old_ports = before.get("ports", [])
     if not isinstance(old_ports, list):
         raise ports.PortSafetyError("unexpected ports format")
@@ -72,11 +98,14 @@ def main():
     parser.add_argument("--public-lean", required=True)
     parser.add_argument("--private-full", required=True)
     parser.add_argument("--private-lean", required=True)
+    parser.add_argument("--refresh-helpers", action="store_true",
+                        help="refresh four embedded helper scripts from this git checkout")
     args = parser.parse_args()
     hf_secret = os.environ.get("QWEN38_HF_SECRET_NAME", "HF_TOKEN")
     if hf_secret and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", hf_secret):
         print("FAIL: invalid QWEN38_HF_SECRET_NAME", file=sys.stderr)
         return 64
+    helpers = read_bundled_helpers() if args.refresh_helpers else None
     for template_id, mode in (
         (args.public_full, "runpod"),
         (args.public_lean, "runpod"),
@@ -84,7 +113,7 @@ def main():
         (args.private_lean, "tailnet"),
     ):
         try:
-            sync(template_id, mode, hf_secret)
+            sync(template_id, mode, hf_secret, helpers)
         except ports.PortSafetyError as exc:
             print("FAIL: " + mode + " template " + template_id + ": " + str(exc),
                   file=sys.stderr)
