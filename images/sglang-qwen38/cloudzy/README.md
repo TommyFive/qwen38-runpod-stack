@@ -18,14 +18,74 @@ On the Mac mini, the prepared checkout path is:
 
     /Users/rentamac/.local/share/qwen38-cloudzy-builder-src
 
-After the VM is online, and only with the new public IPv4:
+After the VM is online, and only with the new public IPv4
+(the launcher asynchronously schedules the bootstrap and returns promptly):
 
     cd /Users/rentamac/.local/share/qwen38-cloudzy-builder-src
     bash images/sglang-qwen38/cloudzy/start-from-mac.sh NEW_PUBLIC_IPV4
 
 Alternatively give the IP to the assistant and approve the same remote Mac mini command through SSH-MCP. This runs only on the named new VM, never on existing production VPS.
 
-The launcher pins the current clean Git commit, rejects incorrect hardware/OS or a pre-existing builder, installs official Docker Engine and Buildx, runs offline source checks, constructs a dedicated Docker-container builder with a max of two concurrent BuildKit steps and a 48g memory cap, then triggers a detached systemd one-shot image build. There is no GHCR push, RunPod launch, or automatic VM deletion.
+The launcher pins the current clean Git commit, saves the target after a successful SSH preflight, and schedules a detached bootstrap service. The bootstrap rejects incorrect hardware/OS or a pre-existing builder, installs official Docker Engine and Buildx, runs offline source checks, constructs a dedicated Docker-container builder with a max of two concurrent BuildKit steps and a 48g memory cap, then triggers a detached systemd one-shot image build. There is no GHCR push, RunPod launch, or automatic VM deletion.
+
+## Permanent ChatGPT access through Mac mini (required design)
+
+The starting script `start-from-mac.sh NEW_PUBLIC_IPV4` now makes a
+**read-only SSH preflight**, pins the new SSH host key in a dedicated
+`known_hosts` file, and saves the VPS IP + immutable source SHA in a
+private local directory:
+
+    /Users/rentamac/.local/state/qwen38-cloudzy-builder/current-ip
+    /Users/rentamac/.local/state/qwen38-cloudzy-builder/current-sha
+    /Users/rentamac/.local/state/qwen38-cloudzy-builder/known_hosts
+
+These files have restricted 0600/0700 permissions; they contain no password
+or private key. The Ed25519 **private** key stays in Mac mini's existing
+`~/.ssh/id_ed25519`. First connection uses SSH trust-on-first-use:
+**verify the printed SHA256 host-key fingerprint with the Cloudzy console
+whenever possible.** Later connections use `StrictHostKeyChecking=yes`;
+an unexpected SSH host key change fails closed.
+
+**The bootstrap itself is now launched as a detached systemd unit**
+`qwen38-cloudzy-bootstrap`, so installing Docker and preparing the builder
+does not depend on a live SSH-MCP terminal session. On success the bootstrap
+starts `qwen38-cloudzy-image` as another independent systemd service.
+
+ChatGPT, in any later conversation with SSH-MCP access, can run the
+following on the existing `mac-mini-admin` profile, without requesting
+the IP again, opening a persistent PTY, or installing a new SSH-MCP profile:
+
+    bash /Users/rentamac/.local/share/qwen38-cloudzy-builder-src/images/sglang-qwen38/cloudzy/monitor-from-mac.sh status
+    bash /Users/rentamac/.local/share/qwen38-cloudzy-builder-src/images/sglang-qwen38/cloudzy/monitor-from-mac.sh resources
+    bash /Users/rentamac/.local/share/qwen38-cloudzy-builder-src/images/sglang-qwen38/cloudzy/monitor-from-mac.sh errors
+    bash /Users/rentamac/.local/share/qwen38-cloudzy-builder-src/images/sglang-qwen38/cloudzy/monitor-from-mac.sh logs
+    bash /Users/rentamac/.local/share/qwen38-cloudzy-builder-src/images/sglang-qwen38/cloudzy/monitor-from-mac.sh bootstrap
+    bash /Users/rentamac/.local/share/qwen38-cloudzy-builder-src/images/sglang-qwen38/cloudzy/monitor-from-mac.sh docker
+
+`status` combines systemd state, pinned commit, image exit code,
+last RAM/SSD sample, current host resources and recent service journal.
+`resources` reads the 12 latest 30-second resource samples,
+`errors` extracts BuildKit/systemd/kernel errors,
+`logs` shows the 65 latest BuildKit lines, `bootstrap` shows install
+progress, and `docker` checks BuildKit/container storage.
+All six are read-only on the VM. They reconnect using standard noninteractive
+SSH to port 22 and are available after the original chat/browser closes,
+**as long as the VM remains running and reachable and Mac mini/SSH-MCP
+remains available**. This is on-demand monitoring, **not an autonomous
+notification or scheduled background task**.
+
+To make a private diagnostic copy on Mac mini before deleting the VM:
+
+    bash /Users/rentamac/.local/share/qwen38-cloudzy-builder-src/images/sglang-qwen38/cloudzy/monitor-from-mac.sh archive
+
+This writes a 0600 tarball under
+`/Users/rentamac/.local/share/qwen38-cloudzy-builder-archives/`.
+The full image itself **is not contained in this log archive**; it
+must be separately published/exported with explicit approval.
+
+If Cloudzy powers off, deletes or reprovisions the VPS, these commands
+will fail with connection errors or a host-key mismatch as expected.
+Never silently replace stored host keys when the IP is recycled.
 
 ## Logs, monitoring, results
 
