@@ -193,7 +193,14 @@ def main():
             or args.heartbeat < args.interval
             or args.heartbeat_after_30m < args.interval or args.fast_start_seconds < 0):
         ap.error("Invalid PID, run ID, sampling interval, or heartbeat interval")
-    comment_id = None
+    # When Actions preflight has already proved comment rights, reuse its
+    # comment instead of creating a second one. Never use arbitrary user text.
+    try:
+        comment_id = int(os.environ.get("QWEN38_STATUS_COMMENT_ID", "0")) or None
+    except ValueError:
+        ap.error("Invalid PR status comment ID")
+    if comment_id is not None and comment_id <= 0:
+        ap.error("Invalid PR status comment ID")
     started = time.monotonic()
     last_heartbeat = None
     consecutive_low_mem = 0
