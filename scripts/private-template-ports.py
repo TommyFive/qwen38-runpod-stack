@@ -25,7 +25,12 @@ def request(method, template_id, payload=None):
     data = json.dumps(payload).encode() if payload is not None else None
     req = urllib.request.Request(API + template_id, method=method, data=data,
                                  headers={"Authorization": "Bearer " + key,
-                                          "Content-Type": "application/json"})
+                                          "Content-Type": "application/json",
+                                          "Accept": "application/json",
+                                          # RunPod edge returns HTTP 403 to Python-urllib UA.
+                                          # A browser-compatible UA reaches API auth (HTTP 401 unauthenticated).
+                                          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                                                        "AppleWebKit/537.36 qwen38-private-template-ports/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=20) as response:
             if method == "DELETE":
