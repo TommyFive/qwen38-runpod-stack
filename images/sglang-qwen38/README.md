@@ -72,9 +72,12 @@ The next build has added two independent diagnostic paths:
   `actions/upload-artifact` on normal success/failure. It is retained
   for 7 days and **never** copied into PR comments.
 - An independent, restricted watchdog samples free disk, available RAM,
-  cgroup `oom_kill`, build log byte count and numeric BuildKit stage ID.
-  It writes one **sanitized** PR #21 comment and updates it approximately
-  every 120 seconds via GitHub API with `issues:write` permission. This
+  cgroup `oom_kill`, build log byte count and numeric BuildKit stage ID,
+  including **used/total/free SSD**, **used/total/available RAM**, and percentages.
+  It writes one **sanitized** PR #21 comment and updates it every 120 seconds
+  during the first 30 minutes, then **every 30 seconds from minute 30**.
+  Actions stdout receives a sanitized resource sample every 30 seconds.
+  PR comments use GitHub API `issues:write` permission. This
   survives loss of normal job logs if GitHub accepted an earlier checkpoint.
   Raw logs, environment, tokens and paths are not posted. The build child
   does not receive the GitHub API token.
