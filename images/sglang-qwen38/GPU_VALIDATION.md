@@ -28,6 +28,24 @@ See [BUILD_RESULTS_2026-10-10.md](BUILD_RESULTS_2026-10-10.md) for verified buil
 
 4. Verify the registry tag's digest equals the pushed digest. An authenticated manifest read is sufficient; a full local Docker pull is optional and costly in network/disk.
 
+**Non-deploying preparation now implemented:** The script
+`images/sglang-qwen38/create-candidate-template.sh` is a **dry-run by default**,
+pinned to the published manifest digest. It discovers the existing RunPod
+`ghcr.io` registry-auth entry and (only with explicit
+`QWEN38_CREATE_CANDIDATE_TEMPLATE=YES`) creates an **isolated** lean
+candidate template, no Pod or GPU. The template includes the existing
+bootstrap and a fail-closed guard that refuses to start SGLang with no
+`SGLANG_API_KEY`. The user's existing `qwen38fast` launcher can then use the
+returned test template ID through `QWEN38_TEMPLATE_PI`, injecting its normal
+authenticated environment. No `create-templates.sh` or production template
+change is required.
+
+The authenticated RunPod CLI available on Mac mini currently lists **one**
+registry credential entry named `ghcr.io`. Its ability to pull this particular
+private GHCR package is still **untested**; no token contents were inspected.
+Do not create a Pod before confirming these constraints and obtaining explicit
+paid-GPU approval.
+
 ## Gate B: Isolated test template, no production changes
 
 - Start with an **isolated test template** / Pod configured with the candidate **by pinned digest**, not with a mutable tag.
