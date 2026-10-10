@@ -9,6 +9,8 @@ import math
 import os
 import subprocess
 import time
+import urllib.request
+import urllib.error
 from pathlib import Path
 import shlex
 import sys
@@ -406,6 +408,179 @@ def audit():
     print(json.dumps(output, indent=2))
 
 
+
+def _release_file_candidates(root, mount):
+    """Resolve ONLY snapshot .safetensors symlinks into their HF blob stores."""
+    state = state_dir()
+    require(state.is_dir() and not state.is_symlink(), "invalid model state directory")
+    chosen = []
+    for repo, name in zip(model_repos(), ("model", "draft")):
+        pointer = state / (name + "_path")
+        require(pointer.is_file() and not pointer.is_symlink(),
+                f"verified {name} checkpoint pointer missing")
+        snapshot = Path(pointer.read_text(encoding="utf-8").strip())
+        repo_dir = root / "hub" / ("models--" + repo.replace("/", "--"))
+        require(snapshot.is_dir() and snapshot.parent.name == "snapshots" and
+                snapshot.parent.parent == repo_dir and not snapshot.is_symlink(),
+                f"unexpected {name} snapshot location")
+        verify_snapshot(snapshot, root, mount)
+        entries = list(snapshot.rglob("*.safetensors"))
+        require(entries and len(entries) <= 128,
+                f"no or excessive safetensors in {name} checkpoint")
+        # Never silently leave an alternate weight format, or delete non-weight files.
+        for alt in ("*.bin", "*.pt", "*.gguf", "*.ckpt"):
+            require(not list(snapshot.rglob(alt)),
+                    f"alternate weight format present in {name}; refusing cleanup")
+        blobdir = repo_dir / "blobs"
+        for entry in entries:
+            require(entry.is_symlink(), "non-symlink weight file; refusing cleanup")
+            blob = entry.resolve(strict=True)
+            require(blob.is_file() and blob.parent == blobdir and not blob.is_symlink()
+                    and blob.stat().st_nlink == 1,
+                    "weight blob is outside expected cache or hard-linked")
+            require(mount_info(str(blob))[0] == mount, "weight blob crosses tmpfs mount")
+            require(blob.stat().st_size > 1024 * 1024, "unexpectedly tiny weight blob")
+            chosen.append((entry, blob))
+    blobs = {str(blob): blob for _, blob in chosen}
+    require(len(blobs) == len(chosen), "shared checkpoint blobs; refusing cleanup")
+    require(len(chosen) <= 128, "too many weight files")
+    # Do not invalidate any other Hugging Face snapshots in this cache.
+    for link in (root / "hub").glob("models--*/snapshots/*/**/*.safetensors"):
+        if link.is_symlink() and link not in {e for e, _ in chosen}:
+            try:
+                other = link.resolve(strict=True)
+            except (OSError, RuntimeError):
+                raise StorageError("unexpected stale weight symlink in cache")
+            require(str(other) not in blobs,
+                    "blob referenced by another snapshot; refusing cleanup")
+    return chosen
+
+
+def _verify_no_open_weight_references(blobs, proc_root=Path("/proc")):
+    """Fail closed if a process references any weight blob through mmap or fd.
+
+    Must be root-readable /proc; an inaccessible process means no deletion.
+    The scan cannot prevent an unrelated process from opening a file *after*
+    it finishes, so this guard is appropriate only for a controlled pod.
+    """
+    needle = tuple(os.fsencode(str(blob)) for blob in blobs)
+    require(proc_root.is_dir(), "proc filesystem unavailable")
+    for process in proc_root.iterdir():
+        if not process.name.isdecimal():
+            continue
+        try:
+            mappings = (process / "maps").read_bytes()
+            require(not any(item in mappings for item in needle),
+                    "model weights still memory mapped by a process")
+            for fd in (process / "fd").iterdir():
+                try:
+                    target = os.fsencode(os.readlink(fd))
+                except FileNotFoundError:
+                    continue  # raced with a closed fd
+                require(not any(item in target for item in needle),
+                        "model weights still held open by a process")
+        except FileNotFoundError:
+            continue  # process exited during scan
+        except (PermissionError, OSError) as exc:
+            raise StorageError(f"cannot verify all process file references: {type(exc).__name__}") from exc
+
+
+def release_weight_blobs(proc_root=Path("/proc")):
+    """Delete only verified, unreferenced Hugging Face weight blobs from tmpfs."""
+    require(os.environ.get("MODEL_RAM_RELEASE_AFTER_LOAD", "0") == "1",
+            "RAM release requires explicit MODEL_RAM_RELEASE_AFTER_LOAD=1")
+    mode, root, mount, _ = selected_storage()
+    require(mode == "ram" and root.is_dir(), "RAM release requires active tmpfs mode")
+    require(not root.is_symlink(), "model storage root is symlinked")
+    chosen = _release_file_candidates(root, mount)
+    blobs = [blob for _, blob in chosen]
+    _verify_no_open_weight_references(blobs, Path(proc_root))
+    before = os.statvfs(root)
+    before_free = before.f_bavail * before.f_frsize
+    total_bytes = sum(blob.stat().st_size for blob in blobs)
+    # Remove snapshot links first, so no stale dangling symlinks remain.
+    for link, _ in chosen:
+        link.unlink()
+    for blob in blobs:
+        blob.unlink()
+    after = os.statvfs(root)
+    after_free = after.f_bavail * after.f_frsize
+    print("QWEN38_RAM_RELEASE " + json.dumps({
+        "status": "released", "files": len(blobs),
+        "weight_gib": round(total_bytes / GIB, 3),
+        "freed_gib": round(max(0, after_free - before_free) / GIB, 3),
+    }, separators=(",", ":")), flush=True)
+    return len(blobs), total_bytes
+
+
+def _infer_ready():
+    """Real, authenticated completion (not merely /v1/models or HTTP 200)."""
+    key = os.environ.get("SGLANG_API_KEY", "")
+    require(key and "{{" not in key, "resolved SGLang Bearer key required")
+    payload = json.dumps({
+        "model": os.environ.get("SERVED_NAME", "qwen38-uncensored"),
+        "messages": [{"role": "user", "content": "Reply with one word: READY"}],
+        "max_tokens": 12, "temperature": 0,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "http://127.0.0.1:8000/v1/chat/completions", data=payload,
+        headers={"Authorization": "Bearer " + key,
+                 "Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            require(response.status == 200, "inference not ready")
+            result = json.loads(response.read(256 * 1024))
+        return (isinstance(result.get("choices"), list) and
+                bool(result["choices"]) and
+                int(result.get("usage", {}).get("completion_tokens", 0)) > 0)
+    except (OSError, ValueError, TypeError, KeyError):
+        return False
+
+
+def release_after_ready():
+    """Opt-in worker; never frees weights before real inference and benchmark."""
+    require(os.environ.get("MODEL_RAM_RELEASE_AFTER_LOAD", "0") == "1",
+            "automatic RAM release is disabled")
+    require(os.environ.get("MODEL_STORAGE", "ram") == "ram",
+            "automatic RAM release cannot operate in SSD mode")
+    deadline = time.monotonic() + 1200
+    print("QWEN38_RAM_RELEASE status=waiting_for_inference", flush=True)
+    while time.monotonic() < deadline:
+        if _infer_ready():
+            break
+        time.sleep(5)
+    else:
+        raise StorageError("RAM release skipped: authenticated inference not ready")
+    if os.environ.get("BENCHMARK", "0") == "1":
+        report = Path(os.environ.get("BENCHMARK_REPORT_PATH",
+                                     "/dev/shm/qwen38-benchmark.json"))
+        require(str(report).startswith("/dev/shm/") and not report.is_symlink(),
+                "benchmark report must be private RAM path")
+        while time.monotonic() < deadline:
+            try:
+                data = json.loads(report.read_text(encoding="utf-8"))
+                status = data.get("status")
+                if status == "completed":
+                    break
+                if status in ("failed", "error", "timeout"):
+                    raise StorageError("RAM release skipped: benchmark failed")
+            except FileNotFoundError:
+                pass
+            except ValueError:
+                raise StorageError("RAM release skipped: invalid benchmark report")
+            time.sleep(5)
+        else:
+            raise StorageError("RAM release skipped: benchmark did not complete")
+    # Another authenticated inference immediately before destructive operation.
+    require(_infer_ready(), "RAM release skipped: inference became unavailable")
+    count, _ = release_weight_blobs()
+    # The in-VRAM SGLang process must continue serving after the cleanup.
+    if not _infer_ready():
+        print("QWEN38_RAM_RELEASE WARNING: post-release inference failed; "
+              "new download required for restart", file=sys.stderr)
+        raise StorageError("post-release authenticated inference failed")
+    print(f"QWEN38_RAM_RELEASE status=verified_after_inference files={count}", flush=True)
+
 def monitor():
     """Debug-only, read-only tmpfs and VRAM sampler; never handles credentials.
 
@@ -451,9 +626,9 @@ def monitor():
 
 
 def main():
-    if len(sys.argv) != 2 or sys.argv[1] not in ("prepare", "download", "audit", "monitor"):
-        raise StorageError("usage: model-storage.py prepare|download|audit|monitor")
-    {"prepare": prepare, "download": download, "audit": audit, "monitor": monitor}[sys.argv[1]]()
+    if len(sys.argv) != 2 or sys.argv[1] not in ("prepare", "download", "audit", "monitor", "release-after-ready"):
+        raise StorageError("usage: model-storage.py prepare|download|audit|monitor|release-after-ready")
+    {"prepare": prepare, "download": download, "audit": audit, "monitor": monitor, "release-after-ready": release_after_ready}[sys.argv[1]]()
 
 
 if __name__ == "__main__":
