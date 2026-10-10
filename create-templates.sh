@@ -35,6 +35,7 @@ mk() { # name ports labels serve_webui network_mode
     "STORAGE_HELPER_B64":sys.argv[6], "BENCHMARK_B64":sys.argv[7],
     "MODEL_STORAGE":sys.argv[8], "MODEL_RAM_DIR":sys.argv[9],
     "MODEL_SSD_DIR":sys.argv[10], "BENCHMARK":"0",
+    "MODEL_RAM_RELEASE_AFTER_LOAD":"0",
     "DEBUG":"0", "COLDSTART_TRACE":"1",
     "RUNTIME_LOG_DIR":"/dev/shm/qwen38-runtime",
     "SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLAMA_API_KEY }}",

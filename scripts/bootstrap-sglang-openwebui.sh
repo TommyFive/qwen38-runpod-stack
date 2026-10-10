@@ -21,6 +21,7 @@
 #   TAILSCALE_RUNTIME_B64 optional bundled native SSH userspace helper
 #   STORAGE_HELPER_B64 required bundled RAM/SSD cache helper
 #   MODEL_STORAGE   ram (default), ssd opt-in
+#   MODEL_RAM_RELEASE_AFTER_LOAD  0 (default), 1 opt-in release after inference
 #   BENCHMARK       0 (default), 1 bounded authenticated offline benchmark
 #   BENCHMARK_B64   bundled Python benchmark when enabled
 #   COLDSTART_TRACE 1 (default), 0 disables timing milestones
@@ -73,7 +74,7 @@ secrets = sorted({os.environ.get(k, "") for k in (
     "SGLANG_API_KEY", "HF_TOKEN", "HUGGING_FACE_HUB_TOKEN",
     "WEBUI_ADMIN_PASSWORD", "TS_AUTHKEY", "OPENAI_API_KEY"
 ) if os.environ.get(k, "")}, key=len, reverse=True)
-allow = re.compile(r"^(===|---|ERROR:|WARNING:|SSH_READY|SSH disabled|TAILSCALE:|QWEN38_COLDSTART |QWEN38_STORAGE_METRIC|Benchmark |MODEL STORAGE ERROR:|Storage mode:|RAM mode verified:|model=|download probe:|GPU:|privacy:)")
+allow = re.compile(r"^(===|---|ERROR:|WARNING:|SSH_READY|SSH disabled|TAILSCALE:|QWEN38_COLDSTART |QWEN38_STORAGE_METRIC|QWEN38_RAM_RELEASE|Benchmark |MODEL STORAGE ERROR:|Storage mode:|RAM mode verified:|model=|download probe:|GPU:|privacy:)")
 for line in sys.stdin:
     for secret in secrets:
         line = line.replace(secret, "[REDACTED]")
@@ -97,6 +98,12 @@ BENCHMARK="${BENCHMARK:-0}"
 COLDSTART_TRACE="${COLDSTART_TRACE:-1}"
 [[ "$BENCHMARK" == 0 || "$BENCHMARK" == 1 ]] || { echo "ERROR: BENCHMARK must be 0 or 1" >&2; exit 64; }
 [[ "$COLDSTART_TRACE" == 0 || "$COLDSTART_TRACE" == 1 ]] || { echo "ERROR: COLDSTART_TRACE must be 0 or 1" >&2; exit 64; }
+MODEL_RAM_RELEASE_AFTER_LOAD="${MODEL_RAM_RELEASE_AFTER_LOAD:-0}"
+[[ "$MODEL_RAM_RELEASE_AFTER_LOAD" == 0 || "$MODEL_RAM_RELEASE_AFTER_LOAD" == 1 ]] || { echo "ERROR: MODEL_RAM_RELEASE_AFTER_LOAD must be 0 or 1" >&2; exit 64; }
+if [[ "$MODEL_RAM_RELEASE_AFTER_LOAD" == 1 && "${MODEL_STORAGE:-ram}" != ram ]]; then
+    echo "ERROR: RAM release requires MODEL_STORAGE=ram" >&2; exit 64
+fi
+export MODEL_RAM_RELEASE_AFTER_LOAD
 cold_mark() {
     [[ "$COLDSTART_TRACE" == 1 ]] || return 0
     python3 - "$1" <<'PY_COLD'
@@ -483,6 +490,15 @@ if [[ "$BENCHMARK" == 1 ]]; then
     fi
 fi
 unset BENCHMARK_B64
+# Opt-in background cleanup after real authenticated inference and, if enabled,
+# a fully completed benchmark. Never remove weights by default or during load.
+if [[ "$MODEL_RAM_RELEASE_AFTER_LOAD" == 1 ]]; then
+    echo "QWEN38_RAM_RELEASE status=scheduled (default remains disabled)"
+    # The storage helper knows exactly which verified snapshot weights are safe
+    # to remove. HF and Tailscale tokens are not needed by the worker.
+    launch_private ram-release env -u HF_TOKEN -u HUGGING_FACE_HUB_TOKEN -u TS_AUTHKEY \
+        python3 -u "$RUNTIME_LOG_DIR/model-storage.py" release-after-ready
+fi
 echo "=== bootstrap done; authenticated SGLang starting ==="
 if [[ -n "$BENCH_PID" ]]; then
     trap 'kill "$BENCH_PID" 2>/dev/null || true; kill "$KEEPALIVE_PID" 2>/dev/null || true; exit 0' TERM INT

@@ -198,3 +198,32 @@ After deletion the server cannot reliably restart/reload weights without
 redownloading them. Any future automated cleanup must explicitly opt in,
 verify full readiness and first inference, check open FDs/mmap, remove only
 validated weight blobs, verify freed tmpfs space, and retest inference.
+
+### Optional post-load RAM release (off by default)
+
+`MODEL_RAM_RELEASE_AFTER_LOAD=0` is the **default** in both launcher and
+RunPod templates; **no file is deleted**. For a deliberate RAM-only pod,
+set `QWEN38_MODEL_RAM_RELEASE_AFTER_LOAD=1` on the host launcher, or
+`MODEL_RAM_RELEASE_AFTER_LOAD=1` in RunPod's direct pod environment.
+SSD mode rejects the flag. The default RAM peak admission factor **2.5**
+does not change; the separately supported
+`QWEN38_RAM_PEAK_FACTOR=1.75` is a supervised opt-in measurement setting.
+
+When enabled, a background worker waits up to 20 minutes for an actual
+authenticated chat completion. If BENCHMARK=1 it additionally waits for a
+**completed** benchmark report. It then proves the checkpoint snapshots
+belong to the current selected tmpfs Hugging Face repositories, rejects
+unexpected/extra weight formats, hardlinks, shared blobs, alternate mounts,
+missing references and any process that still holds a Safetensors blob
+open or mmap'd via /proc. It removes only verified snapshot Safetensors
+symlinks and their cache blobs. Tokenizers and configs remain. A new
+authenticated inference verifies service remains available; a sanitized
+receipt appears in `/dev/shm/qwen38-runtime/ram_release.json` even if
+DEBUG=0. In DEBUG=1 an additional `ram-release.log` is available.
+
+**Operational trade-off:** After deleting weights, a process crash,
+server restart, dynamic reload or alternate model load requires
+re-downloading weights. A process may race to open a weight between the
+last /proc check and deletion; this is a best-effort safeguard on controlled
+private pods, not a generic safe-live-unload contract. The cleanup never
+executes automatically with the default setting.

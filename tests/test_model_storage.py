@@ -85,6 +85,117 @@ class StorageTests(unittest.TestCase):
         self.assertIn('"gpu_used_mib":[1234]', lines[0])
         self.assertIn('"peak_tmpfs_delta_gib":10.0', lines[0])
 
+    def release_fixture(self):
+        """Two independent HF repos with one reproducible safetensors blob each."""
+        root = self.ram
+        blob_names = []
+        for repo, name in zip(ms.model_repos(), ("model", "draft")):
+            base = root / "hub" / ("models--" + repo.replace("/", "--"))
+            snapshot = base / "snapshots" / "fixture-rev"
+            blobdir = base / "blobs"
+            snapshot.mkdir(parents=True)
+            blobdir.mkdir(parents=True)
+            blob = blobdir / ("a" * 62 + name[:2])
+            blob.write_bytes(b"x" * (2 * 1024 * 1024))
+            (snapshot / "weight.safetensors").symlink_to(blob)
+            (snapshot / "config.json").write_text("{}")
+            (self.state / (name + "_path")).write_text(str(snapshot))
+            blob_names.append(blob)
+        proc = self.base / "proc"
+        pid = proc / "123"
+        (pid / "fd").mkdir(parents=True)
+        (pid / "maps").write_text("")
+        return root, blob_names, proc
+
+    def test_release_default_off_fails_closed(self):
+        root, blobs, proc = self.release_fixture()
+        with patch.object(ms, "selected_storage",
+                          return_value=("ram", root, str(self.ram.parent), "tmpfs")):
+            with self.assertRaisesRegex(ms.StorageError, "explicit"):
+                ms.release_weight_blobs(proc)
+        self.assertTrue(all(p.exists() for p in blobs))
+
+    def test_release_preserves_config_and_releases_only_verified_blobs(self):
+        root, blobs, proc = self.release_fixture()
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        with patch.object(ms, "selected_storage",
+                          return_value=("ram", root, str(self.ram.parent), "tmpfs")), \
+             patch.object(ms, "mount_info", side_effect=self.fake_mount):
+            count, bytes_removed = ms.release_weight_blobs(proc)
+        self.assertEqual(count, 2)
+        self.assertEqual(bytes_removed, 4 * 1024 * 1024)
+        self.assertTrue(all(not p.exists() for p in blobs))
+        self.assertEqual(len(list(root.rglob("*.safetensors"))), 0)
+        self.assertEqual(len(list(root.rglob("config.json"))), 2)
+
+    def test_release_fails_closed_for_open_mapping_and_fd(self):
+        root, blobs, proc = self.release_fixture()
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        mapped = proc / "123" / "maps"
+        mapped.write_text("000000-001000 r--p 000000 00:00 0 " + str(blobs[0]) + "\n")
+        with patch.object(ms, "selected_storage",
+                          return_value=("ram", root, str(self.ram.parent), "tmpfs")), \
+             patch.object(ms, "mount_info", side_effect=self.fake_mount):
+            with self.assertRaisesRegex(ms.StorageError, "mapped"):
+                ms.release_weight_blobs(proc)
+            mapped.write_text("")
+            (proc / "123" / "fd" / "6").symlink_to(blobs[0])
+            with self.assertRaisesRegex(ms.StorageError, "held open"):
+                ms.release_weight_blobs(proc)
+        self.assertTrue(all(p.exists() for p in blobs))
+
+    def test_release_refuses_wrong_mode_symlink_and_alternate_format(self):
+        root, blobs, proc = self.release_fixture()
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        with patch.object(ms, "selected_storage",
+                          return_value=("ssd", root, str(self.ram.parent), "overlay")):
+            with self.assertRaisesRegex(ms.StorageError, "tmpfs"):
+                ms.release_weight_blobs(proc)
+        snapshot = root / "hub" / "models--example--main" / "snapshots" / "fixture-rev"
+        (snapshot / "unverified.bin").write_bytes(b"unverified")
+        with patch.object(ms, "selected_storage",
+                          return_value=("ram", root, str(self.ram.parent), "tmpfs")), \
+             patch.object(ms, "mount_info", side_effect=self.fake_mount):
+            with self.assertRaisesRegex(ms.StorageError, "alternate"):
+                ms.release_weight_blobs(proc)
+        self.assertTrue(all(p.exists() for p in blobs))
+
+    def test_release_waits_for_authenticated_inference_and_benchmark(self):
+        root, blobs, proc = self.release_fixture()
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        os.environ["BENCHMARK"] = "1"
+        report = self.base / "report.json"
+        os.environ["BENCHMARK_REPORT_PATH"] = str(report)
+        with patch.object(ms, "_infer_ready", return_value=False), \
+             patch.object(ms.time, "monotonic", side_effect=[0, 1201]):
+            with self.assertRaisesRegex(ms.StorageError, "not ready"):
+                ms.release_after_ready()
+        self.assertTrue(all(p.exists() for p in blobs))
+
+    def test_release_after_ready_verified_success_path(self):
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        os.environ["BENCHMARK"] = "1"
+        os.environ["BENCHMARK_REPORT_PATH"] = "/dev/shm/qwen38-ci-fixture.json"
+        with patch.object(ms, "_infer_ready", side_effect=[True, True, True]) as inference, \
+             patch.object(ms, "release_weight_blobs", return_value=(2, 4*1024*1024)) as cleanup, \
+             patch.object(ms, "_write_release_receipt") as receipt, \
+             patch.object(Path, "read_text", return_value='{"status":"completed"}'):
+            ms.release_after_ready()
+        self.assertEqual(inference.call_count, 3)
+        cleanup.assert_called_once_with()
+        receipt.assert_called_once_with({"status": "verified_after_inference", "files": 2})
+
+    def test_release_after_ready_skips_on_failed_benchmark(self):
+        os.environ["MODEL_RAM_RELEASE_AFTER_LOAD"] = "1"
+        os.environ["BENCHMARK"] = "1"
+        os.environ["BENCHMARK_REPORT_PATH"] = "/dev/shm/qwen38-ci-fixture.json"
+        with patch.object(ms, "_infer_ready", return_value=True), \
+             patch.object(ms, "release_weight_blobs") as cleanup, \
+             patch.object(Path, "read_text", return_value='{"status":"failed"}'):
+            with self.assertRaisesRegex(ms.StorageError, "benchmark failed"):
+                ms.release_after_ready()
+        cleanup.assert_not_called()
+
     def test_cgroup_limited_and_unlimited(self):
         cg = self.base / "cg"
         cg.mkdir()
