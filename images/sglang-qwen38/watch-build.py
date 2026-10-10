@@ -22,14 +22,30 @@ GIB = 1024 ** 3
 MARKER = "<!-- qwen38-image-resource-watch -->"
 
 
-def mem_available_bytes(path="/proc/meminfo"):
+def memory_bytes(path="/proc/meminfo"):
+    """Return (total, available) in bytes or (None, None) if unavailable."""
+    values = {}
     try:
         for line in Path(path).read_text().splitlines():
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) * 1024
+            key, _, value = line.partition(":")
+            if key in ("MemTotal", "MemAvailable"):
+                values[key] = int(value.split()[0]) * 1024
     except (OSError, ValueError, IndexError):
-        pass
-    return None
+        return None, None
+    return values.get("MemTotal"), values.get("MemAvailable")
+
+
+def mem_available_bytes(path="/proc/meminfo"):
+    """Keep simple compatibility with existing offline tests."""
+    return memory_bytes(path)[1]
+
+
+def should_publish(elapsed_seconds, since_last_seconds, before=120, after=30, switch_at=1800):
+    """Two-minute heartbeat first, then 30-second heartbeat after minute 30."""
+    if since_last_seconds is None:
+        return True
+    period = after if elapsed_seconds >= switch_at else before
+    return since_last_seconds >= period
 
 
 def oom_kills(path="/sys/fs/cgroup/memory.events"):
@@ -56,12 +72,18 @@ def last_buildkit_step(path):
 
 
 def snapshot(log_path, disk="/var/lib/docker"):
-    disk_bytes = shutil.disk_usage(disk).free
-    mem = mem_available_bytes()
+    disk_stat = shutil.disk_usage(disk)
+    mem_total, mem_available = memory_bytes()
     return {
         "time_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "disk_free_gib": round(disk_bytes / GIB, 2),
-        "mem_available_gib": round(mem / GIB, 2) if mem is not None else None,
+        "disk_free_gib": round(disk_stat.free / GIB, 2),
+        "disk_used_gib": round(disk_stat.used / GIB, 2),
+        "disk_total_gib": round(disk_stat.total / GIB, 2),
+        "disk_used_percent": round(100 * disk_stat.used / disk_stat.total, 1) if disk_stat.total else None,
+        "mem_available_gib": round(mem_available / GIB, 2) if mem_available is not None else None,
+        "mem_used_gib": round((mem_total - mem_available) / GIB, 2) if mem_total is not None and mem_available is not None else None,
+        "mem_total_gib": round(mem_total / GIB, 2) if mem_total is not None else None,
+        "mem_used_percent": round(100 * (mem_total - mem_available) / mem_total, 1) if mem_total and mem_available is not None else None,
         "cgroup_oom_kill": oom_kills(),
         "buildkit_step_number": last_buildkit_step(log_path),
         "build_log_bytes": log_path.stat().st_size if log_path.exists() else 0,
@@ -76,8 +98,19 @@ def make_comment(s, run_id, state):
         f"Run: https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/{run_id}",
         f"State: **{state}**",
         f"Last checkpoint: {s['time_utc']}",
-        f"Free disk: **{s['disk_free_gib']:.2f} GiB**",
-        f"Available RAM: **{s['mem_available_gib']:.2f} GiB**" if s["mem_available_gib"] is not None else "Available RAM: unknown",
+        f"Build elapsed: **{s.get('elapsed_seconds', 0) // 60} min {s.get('elapsed_seconds', 0) % 60:02d} s**",
+        "PR update cadence: 120 s until minute 30, then 30 s; resource samples in Actions every 30 s.",
+        (
+            f"SSD used: **{s['disk_used_gib']:.2f} / {s['disk_total_gib']:.2f} GiB** "
+            f"({s['disk_used_percent']:.1f} %), free: **{s['disk_free_gib']:.2f} GiB**"
+        ),
+        (
+            f"RAM used: **{s['mem_used_gib']:.2f} / {s['mem_total_gib']:.2f} GiB** "
+            f"({s['mem_used_percent']:.1f} %), available: **{s['mem_available_gib']:.2f} GiB**"
+            if s["mem_used_gib"] is not None and s["mem_total_gib"] is not None
+               and s["mem_used_percent"] is not None and s["mem_available_gib"] is not None
+            else "RAM: unknown"
+        ),
         f"cgroup oom_kill: {s['cgroup_oom_kill'] if s['cgroup_oom_kill'] is not None else 'unknown'}",
         f"Last BuildKit step ID: {s['buildkit_step_number'] if s['buildkit_step_number'] is not None else 'unknown'}",
         f"Build log size: {s['build_log_bytes']} bytes (contents **not** published here)",
@@ -151,13 +184,18 @@ def main():
     ap.add_argument("--disk", default="/var/lib/docker")
     ap.add_argument("--interval", type=int, default=30)
     ap.add_argument("--heartbeat", type=int, default=120)
+    ap.add_argument("--heartbeat-after-30m", type=int, default=30)
+    ap.add_argument("--fast-start-seconds", type=int, default=1800)
     ap.add_argument("--min-free-disk-gib", type=float, default=12.0)
     ap.add_argument("--min-available-ram-gib", type=float, default=1.5)
     args = ap.parse_args()
-    if args.pid <= 1 or args.run_id <= 0 or args.interval < 5 or args.heartbeat < args.interval:
+    if (args.pid <= 1 or args.run_id <= 0 or args.interval < 5
+            or args.heartbeat < args.interval
+            or args.heartbeat_after_30m < args.interval or args.fast_start_seconds < 0):
         ap.error("Invalid PID, run ID, sampling interval, or heartbeat interval")
     comment_id = None
-    last_heartbeat = -args.heartbeat
+    started = time.monotonic()
+    last_heartbeat = None
     consecutive_low_mem = 0
     stopped = False
     while process_exists(args.pid):
@@ -168,6 +206,8 @@ def main():
             time.sleep(args.interval)
             continue
         now = time.monotonic()
+        elapsed = now - started
+        s["elapsed_seconds"] = int(elapsed)
         state = "building"
         if s["disk_free_gib"] < args.min_free_disk_gib:
             state = "stopping: low disk"
@@ -179,8 +219,12 @@ def main():
         if consecutive_low_mem >= 3:
             state = "stopping: low RAM"
             stopped = True
-        if now - last_heartbeat >= args.heartbeat or stopped:
-            print("Resource checkpoint: " + json.dumps(s, sort_keys=True), flush=True)
+        # Emit machine usage to the Actions console every 30 seconds; publish
+        # one redacted PR comment every 2 minutes, switching to 30 seconds at 30m.
+        print("Resource sample: " + json.dumps(s, sort_keys=True), flush=True)
+        since_last = None if last_heartbeat is None else now - last_heartbeat
+        if should_publish(elapsed, since_last, args.heartbeat,
+                          args.heartbeat_after_30m, args.fast_start_seconds) or stopped:
             comment_id = github_comment(make_comment(s, args.run_id, state), comment_id)
             last_heartbeat = now
         if stopped:
@@ -189,6 +233,7 @@ def main():
         time.sleep(args.interval)
     try:
         s = snapshot(args.log, args.disk)
+        s["elapsed_seconds"] = int(time.monotonic() - started)
         print("Last resource checkpoint: " + json.dumps(s, sort_keys=True), flush=True)
         github_comment(make_comment(s, args.run_id, "build process ended (result unknown)"), comment_id)
     except OSError:
