@@ -1,0 +1,55 @@
+name: Qwen38 image build (manual / dedicated host)
+
+# Deliberately NOT triggered by push or pull_request. Heavy CUDA builds only on
+# an explicitly provisioned, dedicated Linux x86_64 image-build runner.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish candidate to GHCR (default false; never changes RunPod templates)'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    # Provision this dedicated build-host label explicitly; production VPS are forbidden.
+    runs-on: [self-hosted, linux, x64, qwen38-build]
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Offline source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n images/sglang-qwen38/build-image.sh
+          python3 -m unittest discover -v -s images/sglang-qwen38/tests -p 'test_*.py'
+      - name: Record build-host properties (without secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          uname -a
+          docker version
+          docker buildx version
+          df -h .
+          docker info --format 'DockerRootDir={{.DockerRootDir}}'
+      - name: Build pinned AMD64 candidate (publish optional)
+        shell: bash
+        env:
+          IMAGE_TAG: ghcr.io/tommyfive/qwen38-sglang:candidate-${{ github.sha }}
+          PUBLISH_IMAGE: ${{ inputs.publish }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "$PUBLISH_IMAGE" == true ]]; then
+            printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+            QWEN38_IMAGE_PUBLISH=YES bash images/sglang-qwen38/build-image.sh --tag "$IMAGE_TAG" --push
+          else
+            bash images/sglang-qwen38/build-image.sh --tag "$IMAGE_TAG"
+          fi
+          echo "Candidate tag: $IMAGE_TAG"
+          echo "Published: $PUBLISH_IMAGE"
