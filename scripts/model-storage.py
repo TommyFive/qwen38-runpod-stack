@@ -445,14 +445,15 @@ def _release_file_candidates(root, mount):
     require(len(blobs) == len(chosen), "shared checkpoint blobs; refusing cleanup")
     require(len(chosen) <= 128, "too many weight files")
     # Do not invalidate any other Hugging Face snapshots in this cache.
-    for link in (root / "hub").glob("models--*/snapshots/*/**/*.safetensors"):
-        if link.is_symlink() and link not in {e for e, _ in chosen}:
+    allowed_links = {entry for entry, _ in chosen}
+    for link in (root / "hub").rglob("*"):
+        if link.is_symlink() and link not in allowed_links:
             try:
                 other = link.resolve(strict=True)
             except (OSError, RuntimeError):
-                raise StorageError("unexpected stale weight symlink in cache")
+                raise StorageError("unexpected stale symlink in HF cache")
             require(str(other) not in blobs,
-                    "blob referenced by another snapshot; refusing cleanup")
+                    "weight blob referenced by another cache entry; refusing cleanup")
     return chosen
 
 
@@ -466,7 +467,8 @@ def _verify_no_open_weight_references(blobs, proc_root=Path("/proc")):
     # /proc reports kernel paths, which may differ from userspace aliases
     # (macOS test fixtures: /var resolves to /private/var).
     absolute = {str(blob.resolve(strict=True)) for blob in blobs}
-    needle = tuple(os.fsencode(value) for value in absolute)
+    aliases = {str(blob) for blob in blobs} | absolute
+    needle = tuple(os.fsencode(value) for value in aliases)
     require(proc_root.is_dir(), "proc filesystem unavailable")
 
     def matches_reference(raw):
@@ -534,7 +536,7 @@ def release_weight_blobs(proc_root=Path("/proc")):
     require(not root.is_symlink(), "model storage root is symlinked")
     chosen = _release_file_candidates(root, mount)
     blobs = [blob for _, blob in chosen]
-    _verify_no_open_weight_references(blobs, Path(proc_root))
+    _verify_no_open_weight_references(blobs + [link for link, _ in chosen], Path(proc_root))
     before = os.statvfs(root)
     before_free = before.f_bavail * before.f_frsize
     total_bytes = sum(blob.stat().st_size for blob in blobs)
