@@ -98,7 +98,7 @@ class PortsTests(unittest.TestCase):
     def test_native_config_fallback_and_permissions(self):
         with tempfile.TemporaryDirectory() as directory:
             cfg = Path(directory) / "config.toml"
-            cfg.write_text('apiKey = "runpod-ci-test-only"\\n')
+            cfg.write_text('apiKey = "runpod-ci-test-only"\n')
             cfg.chmod(0o600)
             with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}):
                 self.assertEqual(ports.runpod_api_key(cfg), "runpod-ci-test-only")
@@ -111,7 +111,7 @@ class PortsTests(unittest.TestCase):
             self.assertEqual(ports.runpod_api_key(Path("/nonexistent")), "runpod-env-ci")
 
     def test_missing_key_denies_without_network(self):
-        with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+        with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \
              patch.object(ports, "runpod_api_key", side_effect=ports.PortSafetyError("absent")):
             with self.assertRaises(ports.PortSafetyError):
                 ports.request("GET", "abc123")
