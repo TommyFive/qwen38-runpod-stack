@@ -1,5 +1,14 @@
 # Integrated RunPod GPU smoke — issues #7, #8, #9, #10, #11
 
+> **Release-gate reclassification (owner decision, 2026-10-10):**
+> Tailscale HTTPS Serve #20 is still a mandatory blocker. Safe project-scoped
+> Reaper/TTL #18 is **accepted/deferred** because the RunPod account is only
+> used for QWEN38 pods (risk tracking #22). Additional cold-start and download
+> observability/optimizations (#5, #6, #11; follow-up #23) are **post-merge**,
+> not required for PR #17. Current UTC/monotonic host+pod cold-start markers,
+> validated GPU inference and benchmark remain in scope. See
+> [integration strategy](INTEGRATION_STRATEGY_PR17_20261010.md).
+
 ## Test 1 completed — Private Full / Community Cloud, 2026-10-10
 
 **Recorded reproducible evidence:** [Full timeline and validation matrix](https://github.com/TommyFive/qwen38-runpod-stack/blob/feature/19-optional-postload-ram-release/docs/INTEGRATION_FULL_COMMUNITY_20261010.md) (initially added on PR #19's feature branch, now merged into integration). The active test was performed from an isolated worktree pinned to exact commit `bffa632`, not the main integration checkout.
@@ -48,9 +57,9 @@ gezielt beendet; 0 aktive Pods nach dem letzten Test.
 - [ ] SSD-Modus bewusst aktivieren und vergleichen; **niemals** stillschweigend RAM→SSD ausweichen.
 - [x] PR #19 automatische RAM-Freigabe auf echter RTX PRO 6000 mit BENCHMARK=0 und authentifizierter Inferenz vor/nach Cleanup bestanden. Default OFF und SSD-negative Fall sind CI-verifiziert, noch nicht beide live geprüft. PR #19 in den Integrationsbranch gemergt; Release nach main weiter offen.
 - [ ] Nach absichtlich freigegebenen Gewichten Audit/Diagnose für nicht mehr vorhandene Gewichtsdateien bewerten; Neustart/Reload erfordert erneuten Download.
-- [ ] Fünf unabhängige Starts pro zu vergleichender Kohorte, Region/Cache/Host klassifizieren; Median/p95 erst danach interpretieren.
-- [ ] Fehlleitende Netzwerkprobe mit 0.0 MB/s und Download-Fortschrittsanzeige in GiB/ETA beheben (separat erfasst).
-- [ ] Sicherer, ausschließlich QWEN38-Pods erfassender Reaper und TTL (Issue #18); globalen Reaper **nicht** aktivieren.
+- [ ] **POST-MERGE #23, not an integration release gate:** Independent starts across matched cloud/region/cache cohorts before interpreting median/p95.
+- [ ] **POST-MERGE #23, not an integration release gate:** Fix misleading 0.0 MB/s probe (#5) and byte-weighted model download progress (#6).
+- [ ] **ACCEPTED/POST-MERGE #18/#22, not an integration release gate:** project-only reaper/TTL/stop. **Only QWEN38 pods may exist in this account.** Legacy global reaper remains disabled for supervised integration tests; do not run `setup.sh` without considering its reaper LaunchAgent side effect.
 - [x] PR #19 in den Integrationsbranch gemergt und PRs #12–#16 als durch #17 abgelöst geschlossen. **Offen:** Finale Sicherheits- und Release-Review von PR #17 vor dem Merge nach main.
 
 ### Operative Eckpunkte
@@ -64,8 +73,10 @@ Kommentare bleiben erhalten; sie dürfen nicht separat nach main gemergt werden.
 
 Beim Cleanup nur **runpodctl pod delete <EXAKTE_POD_ID>** verwenden.
 qwen38fast stop / qwen38pi stop löschen in der aktuellen Version
-potenziell alle Pods des RunPod-Kontos. Temporäre GPU-Tests haben
-keine garantierte automatische TTL, solange Issue #18 offen ist.
+potenziell alle Pods des RunPod-Kontos. **Der Account ist laut Besitzer
+QWEN38-only**; dieses Risiko wird ausdrücklich akzeptiert und in #22
+dokumentiert. Temporäre GPU-Tests haben weiterhin keine garantierte
+automatische TTL. #18 ist künftig zu beheben, aber kein Merge-Blocker.
 
 ---
 
@@ -236,8 +247,12 @@ Use a targeted `runpodctl pod delete <exact-pod-id>` when other pods must
 survive. Remove per-test ephemeral Tailscale nodes/keys via tailnet management
 as appropriate.
 
-Keep **PR #17 in Draft** until HTTPS Serve issue #20, safe TTL reaper
-issue #18, and remaining security/storage and cold-start release gates pass.
+Keep **PR #17 in Draft** until HTTPS Serve issue #20 and the remaining
+functional, authentication, storage and template release gates pass.
+Account-wide stop/reaper TTL (#18/#22) is **explicitly accepted/deferred**
+under the single-project RunPod account assumption. The current cold-start
+instrumentation is accepted for this release; further performance and
+observability optimizations (#23, #5, #6, #11) are **non-blocking**.
 Original feature PRs #12–#16 are already consolidated and closed. CI passing is necessary but not sufficient.
 
 ## Private-template port safety correction
