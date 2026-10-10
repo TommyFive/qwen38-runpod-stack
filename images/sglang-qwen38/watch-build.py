@@ -154,6 +154,18 @@ def github_comment(body, previous_id=None):
         return previous_id
 
 
+def memory_critical(available_gib, low_samples, low_threshold=2.5, hard_threshold=1.25):
+    """Fail early before hosted runner OOM: immediate hard limit, or 2 samples."""
+    if available_gib is None:
+        return False, 0
+    if available_gib < hard_threshold:
+        return True, low_samples + 1
+    if available_gib < low_threshold:
+        count = low_samples + 1
+        return count >= 2, count
+    return False, 0
+
+
 def process_exists(pid):
     try:
         os.kill(pid, 0)
@@ -219,12 +231,15 @@ def main():
         if s["disk_free_gib"] < args.min_free_disk_gib:
             state = "stopping: low disk"
             stopped = True
-        if s["mem_available_gib"] is not None and s["mem_available_gib"] < args.min_available_ram_gib:
-            consecutive_low_mem += 1
-        else:
-            consecutive_low_mem = 0
-        if consecutive_low_mem >= 3:
-            state = "stopping: low RAM"
+        # 16 GiB hosted runner ran from 2.33 GiB to 0.10 GiB available
+        # between telemetry samples in failed run #38049903745. Three
+        # consecutive samples at 1.5 GiB was too slow to prevent shutdown.
+        mem_critical, consecutive_low_mem = memory_critical(
+            s["mem_available_gib"], consecutive_low_mem,
+            low_threshold=max(args.min_available_ram_gib, 2.5)
+        )
+        if mem_critical:
+            state = "stopping: critically low RAM"
             stopped = True
         # Emit machine usage to the Actions console every 30 seconds; publish
         # one redacted PR comment every 2 minutes, switching to 30 seconds at 30m.
