@@ -21,9 +21,11 @@ A rented Blackwell GPU is cheaper than a hosted uncensored API once you actually
 use it, and it is roughly ten times faster than the same model on a laptop. This
 repo makes that a single command: it starts the pod, serves the model over an
 OpenAI-compatible API, and gives your coding agent a **fixed local URL** that
-always points at whatever pod is currently running. Layered shutdown protection
-reduces the risk of forgotten pods draining your balance, including a
-server-side timer when the installed RunPod CLI supports it.
+always points at whatever pod is currently running. **Cost-control limitation:** stop/reaper currently operate on all pods in the
+RunPod account. The owner explicitly limits this account to QWEN38-only pods;
+that assumption is essential. The legacy reaper is not active on the audited
+headless Mac mini, and no reliable automatic TTL is guaranteed with the
+installed RunPod CLI. See [Cost control](#cost-control) and [#22](https://github.com/TommyFive/qwen38-runpod-stack/issues/22).
 
 Measured on 2026-08-23: **~150 tok/s** on an RTX PRO 6000 with SGLang plus
 DFlash2 speculative decoding, single stream, 262K context. See
@@ -87,8 +89,8 @@ running → the proxy returns a clean 503 telling you to start one.
 | `bin/qwen38pi` | Lean: SGLang API only, for a coding agent. No OpenWebUI, ready sooner |
 | `bin/qwen38bench` | Measures decode rate, TTFT and accepted-token length (discards a warmup run) |
 | `bin/qwen38-proxy` | Local proxy on `127.0.0.1:8388` that always targets the running pod |
-| `bin/rp` | `runpodctl` wrapper that adds a server timer when supported and preserves the local reaper fallback |
-| `bin/runpod-reaper` | LaunchAgent backstop that kills forgotten pods after 1h |
+| `bin/rp` | `runpodctl` wrapper that requests a server timer only when the CLI supports one; not a guaranteed TTL |
+| `bin/runpod-reaper` | **Legacy account-wide** 1h cleanup; disabled on audited Mac mini; use only in QWEN38-only accounts |
 | `scripts/bootstrap-sglang-openwebui.sh` | Runs inside the pod: downloads weights, starts SGLang (optionally OpenWebUI) |
 | `launchagents/*.template` | macOS LaunchAgents for proxy and reaper; `__HOME__` is filled in at setup |
 | `pi/models.runpod.json` | The provider block for `~/.pi/agent/models.json` |
@@ -216,8 +218,11 @@ existing `runpodctl --env` API transmits both `TS_AUTHKEY` and
 Do not consider this zero-trace secret delivery or full data privacy; the
 broader secret handling and OpenWebUI authentication hardening are tracked in
 [issue #8](https://github.com/TommyFive/qwen38-runpod-stack/issues/8).
-**Legacy public OpenWebUI still runs with authentication disabled** until
-that fix is merged. Prefer private tailnet-only mode for sensitive data.
+**Current integration runtime** requires OpenWebUI authentication and disables
+anonymous signup; negative anonymous access checks passed on the live Private
+Full pod. Tailnet HTTPS Serve 443/8443 is still **unreachable** in that cohort
+([#20](https://github.com/TommyFive/qwen38-runpod-stack/issues/20)); do not
+present this path as working until TLS/API/UI checks pass.
 
 **Fail-closed behavior:** An empty/invalid token or failed Tailscale/Serve
 setup in `tailnet` mode aborts the pod bootstrap before model download.
@@ -247,19 +252,36 @@ qwen38bench                              # picks the running pod, 5 runs + warmu
 
 ## Cost control
 
-Cost protection is layered:
+**Accepted single-project limitation for PR #17 (2026-10-10):** the RunPod
+account is currently used **exclusively for QWEN38 project pods**. With this
+assumption, the existing account-wide `qwen38fast stop` /
+`qwen38pi stop` behavior is accepted as a temporary limitation. **These
+commands list and delete every visible pod in the RunPod account**, not only
+the pod created by the current invocation. They are unsafe in a mixed-use
+account. Do **not** add unrelated workloads without first fixing
+[#18](https://github.com/TommyFive/qwen38-runpod-stack/issues/18); the
+accepted risk is recorded in
+[#22](https://github.com/TommyFive/qwen38-runpod-stack/issues/22).
 
-1. **`rp` wrapper** — detects whether `runpodctl` supports
-   `--terminate-after` and adds it when available.
-2. **Server-side timer** — when supported, fires even with the Mac asleep.
-3. **`runpod-reaper`** — remains enabled and, while the Mac is awake, kills any
-   pod older than 1h that isn't named `keep-*`.
+The existing `runpod-reaper` also operates **account-wide**, using a
+global default 1h age threshold with a `keep-` name exemption; it does not
+enforce requested per-pod durations such as `qwen38fast 4h`. The legacy
+reaper LaunchAgent was **not installed** on the headless Mac mini during the
+2026-10-10 audit, but **`./setup.sh` installs/loads it**; account scope and
+activation must be considered before running setup. The installed
+`runpodctl 2.15.0` has no `--terminate-after` option. Neither `rp` nor
+the absent reaper currently guarantees an automatic shutdown after the
+requested rental window.
 
-If the installed CLI has no server-side timer flag, `rp` warns and does not add
-an unsupported option or exempt long-running pods from the reaper. Protection
-is then local only and cannot fire while the Mac is asleep.
+For paid tests, record the exact Pod ID, actively monitor the RunPod
+billing rate, and terminate the **specific Pod ID** using
+`runpodctl pod delete <exact-pod-id>` or the RunPod dashboard. A nominal
+`2h`/`4h` argument is **not a hard cost ceiling**. Keep the global reaper
+disabled for supervised integration testing. Implementing a correctly
+scoped per-pod TTL is **post-merge**, not a PR #17 merge blocker.
 
-Full details in [docs/COST_CONTROL.md](docs/COST_CONTROL.md).
+Full details: [docs/COST_CONTROL.md](docs/COST_CONTROL.md).
+
 
 ## Security
 
@@ -303,7 +325,9 @@ MIT, see [LICENSE](LICENSE). The model itself is Apache 2.0.
 ## Integrated pre-release branch — #7, #8, #9, #10, #11 (2026-10-10)
 
 A common integration branch, `integration/issues-7-11-20261010`,
-combines the five still-separate feature PRs **#12, #13, #14, #15, #16**.
+consolidates feature PRs **#12–#16** (now closed as superseded by PR #17).
+PR #19's optional automatic post-load RAM release is also merged into this
+integration branch and defaults OFF.
 It includes native **Tailscale SSH** and a private/portless tailnet path,
 credentialed **SGLang/OpenWebUI** with private tmpfs runtime state, RAM-only
 checkpoint and HF cache by default (explicit `--storage ssd` opt-in),
@@ -311,12 +335,22 @@ opt-in authenticated **in-pod benchmarking** (`--benchmark`), and
 cold-start tracing/`qwen38cold` reporting.
 
 See **[complete integration/test guide](docs/INTEGRATION_SMOKE_20261010.md)**
-before renting a pod. The integration CI runs all offline contracts
-together; **a paid GPU, public-port exposure check, Tailscale Serve,
-OpenWebUI authentication and real model storage still require an on-demand
-RunPod smoke test**. Running pods and existing embedded RunPod templates
-do **not** update when GitHub changes; recreate all four templates
-before using this code. This branch is not merged into `main`.
+before renting a pod. Both GitHub Actions workflows passed at commit
+`84672f280cdb7f23746b00199809c2059438e7b0`. Private Lean/Full GPU
+smokes established real inference, RAM model+draft storage, optional automatic
+22.731 GiB weight release and several negative API/UI auth checks, but
+**Tailnet HTTPS Serve 443/8443 remains blocked by #20** and a positive HTTPS
+OpenWebUI login has not passed. Public/SSD mode and the current templates need
+appropriate release review. Running pods and embedded templates do **not**
+update from Git commits; existing four template IDs can instead be refreshed
+**in place** via the documented helper with explicit verification.
+
+[PR #17 release strategy](docs/INTEGRATION_STRATEGY_PR17_20261010.md)
+separates mandatory functional/security acceptance from **accepted non-blocking**
+RunPod account-wide cleanup ([#22](https://github.com/TommyFive/qwen38-runpod-stack/issues/22),
+engineering follow-up #18) and further cold-start/observability optimization
+([#23](https://github.com/TommyFive/qwen38-runpod-stack/issues/23),
+related #5/#6/#11). This branch is not merged into `main`.
 
 Detailed explanations: [Tailscale setup above](#optional-tailscale-native-ssh-and-private-network-mode),
 [privacy and threat model](docs/SECURITY.md),
