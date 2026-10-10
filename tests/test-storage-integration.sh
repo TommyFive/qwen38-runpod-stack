@@ -32,10 +32,13 @@ echo "unexpected runpodctl operation: $*" >&2
 exit 1
 MOCK
 cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
-#!/usr/bin/env bash
-set -euo pipefail
-[[ "${1:-}" == repair && -n "${2:-}" && "${3:-}" == --delete-on-failure ]]
-echo "PASS: mocked zero-port verification" >&2
+#!/usr/bin/env python3
+import sys
+assert len(sys.argv) == 4
+assert sys.argv[1] == "repair"
+assert sys.argv[2]
+assert sys.argv[3] == "--delete-on-failure"
+print("PASS: mocked zero-port verification", file=sys.stderr)
 MOCK_PORTS
 chmod +x "$TMP/bin/ports-helper"
 export QWEN38_PORTS_HELPER="$TMP/bin/ports-helper"
