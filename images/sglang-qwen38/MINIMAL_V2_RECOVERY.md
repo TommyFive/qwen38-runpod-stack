@@ -1,6 +1,6 @@
 # Qwen38 minimal-v2: independent post-VPS recovery runbook
 
-**Status: storage verified; restored runtime **NOT YET** verified.** The disposable Aliyun ECS is shut down. This runbook requires a separately approved, disposable Linux AMD64 test host with sufficient storage; it is documentation only and **does not authorize** host changes, GPU spend, package visibility changes, production deployment or RunPod template changes.
+**Status: storage verified; restored runtime NOT YET verified.** The disposable Aliyun ECS is shut down. This runbook requires a separately approved, disposable Linux AMD64 test host with sufficient storage; it is documentation only and **does not authorize** host changes, GPU spend, package visibility changes, production deployment or RunPod template changes.
 
 Source of truth: [minimal-v2 checkpoint](MINIMAL_V2_CHECKPOINT_2026-10-12.md), [closed-loop GHCR upload proof](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38159273066), [GitHub release fallback](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/minimal-v2-cpu-checkpoint-20261012), [25/25 part validation log](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38158692348), and [remaining acceptance issue #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46).
 
@@ -8,10 +8,10 @@ Source of truth: [minimal-v2 checkpoint](MINIMAL_V2_CHECKPOINT_2026-10-12.md), [
 
 Both were published and remotely inspected on **2026-10-12, 01:43 China time**:
 
-| Candidate | Pinned image reference | Status |
-|---|---|---|
-| A — remove Rust intermediates | `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e` | Remote manifest / tag verified |
-| B — remove Rust intermediates + SHA-equal CUDA duplicate symlinks | `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7` | Remote manifest / tag verified |
+| Candidate | Pinned image reference | Immutable published tag | Status |
+|---|---|---|---|
+| A — remove Rust intermediates | `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e` | `cpu-rust-20261012-4fb0b652` | Remote manifest / tag verified |
+| B — remove Rust intermediates + SHA-equal CUDA duplicate symlinks | `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7` | `cpu-rust-cuda-20261012-4fb0b652` | Remote manifest / tag verified |
 
 If the checkpoint package is private, authenticate with a narrowly scoped read-only GHCR credential; do not copy tokens into terminal history. Do not change visibility to recover the images. On an approved target, download by **digest**, not mutable tags. Use `docker image inspect`, `docker history`, a no-network CPU import smoke, exact runtime config comparison and symlink targets to establish actual image recoverability. **No full cold pull or runtime smoke is claimed by the original backup logs.**
 
