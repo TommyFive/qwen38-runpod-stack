@@ -10,10 +10,17 @@ REPO="ghcr.io/tommyfive/qwen38-minimal-v2-cpu"
 test -s "$AUTH" || { echo "Missing temporary GHCR authentication"; exit 8; }
 skopeo --version
 for mode in rust rust-cuda; do
-  src="$ROOT/minimal-v2-$mode.oci.tar"
+  src="$ROOT/oci-split-$mode"
+  for attempt in $(seq 1 360); do
+    if [[ -s "$src/index.json" ]]; then break; fi
+    if (( attempt % 12 == 0 )); then echo "Waiting for GHCR-safe split OCI $mode $(date -u +%FT%TZ)"; fi
+    sleep 15
+  done
+  test -s "$src/index.json" || { echo "Timeout waiting for split OCI $mode"; exit 9; }
   tag="cpu-$mode-20261012-4fb0b652"
   dst="$REPO:$tag"
-  test -s "$src" || { echo "Missing immutable OCI archive: $src"; exit 9; }
+  test -s "$src/split-report.json" || { echo "Missing split OCI report: $src"; exit 9; }
+  skopeo inspect --raw "oci:$src:checkpoint" > "$ROOT/ghcr-$mode-local-manifest.json"
   echo "=== BEGIN $mode $(date -u +%FT%TZ) destination=$dst ==="
   if skopeo inspect --authfile "$AUTH" "docker://$dst" >/dev/null 2>&1; then
     echo "Remote tag already exists. Refusing overwrite: $dst"
@@ -22,7 +29,7 @@ for mode in rust rust-cuda; do
   # Skopeo copies existing compressed blobs and OCI config without Docker load.
   # Retry network errors; keep a complete copy log for audit.
   if ! skopeo copy --all --retry-times 5 --authfile "$AUTH" \
-     "oci-archive:$src" "docker://$dst" > "$ROOT/ghcr-copy-$mode.log" 2>&1; then
+     "oci:$src:checkpoint" "docker://$dst" > "$ROOT/ghcr-copy-$mode.log" 2>&1; then
      cat "$ROOT/ghcr-copy-$mode.log"
      echo "FAIL uploading $mode"
      exit 11
