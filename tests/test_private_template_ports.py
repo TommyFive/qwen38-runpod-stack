@@ -68,7 +68,7 @@ class PortsTests(unittest.TestCase):
 
     def test_secret_reference_allowed_but_plaintext_rejected(self):
         t = template([])
-        t["env"]["SGLANG_API_KEY"] = "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+        t["env"]["SGLANG_API_KEY"] = "{{ RUNPOD_SECRET_LLM_API_KEY }}"
         t["env"]["TS_AUTHKEY"] = "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
         t["env"]["HF_TOKEN"] = "{{ RUNPOD_SECRET_CUSTOM_HF }}"
         ports.validate(t, "abc123")
