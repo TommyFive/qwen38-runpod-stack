@@ -46,7 +46,8 @@ def main():
     endpoint=json.loads(r.stdout)
     if endpoint.get("id")!=a.pod_id:raise RuntimeError("SSH identity mismatch")
     token=read_key(endpoint["ip"],endpoint["port"])
-    spec=importlib.util.spec_from_file_location("qwen38bench_reference",BENCH)
+    from importlib.machinery import SourceFileLoader
+    spec=importlib.util.spec_from_loader("qwen38bench_reference",SourceFileLoader("qwen38bench_reference",str(BENCH)))
     q=importlib.util.module_from_spec(spec)
     spec.loader.exec_module(q)
     q.HEADERS["Authorization"]="Bearer "+token
