@@ -44,6 +44,8 @@ elif args[:2] == ["registry", "list"]:
     print(json.dumps([{"id":"test-ghcr-registry","name":"ghcr.io"}]))
 elif args[:2] == ["template", "list"]:
     if os.getenv("QWEN38_MOCK_EXISTING"):
+        assert "--type" in args and args[args.index("--type") + 1] == "user"
+        assert "--all" not in args, "resume must not include global/public templates"
         print(json.dumps([json.loads(p.read_text()) for p in store.glob("*.json")]))
         sys.exit(0)
     # Minimal offline fixtures: custom + upstream names both resolve.
