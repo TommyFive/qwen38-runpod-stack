@@ -18,7 +18,7 @@ HERE=Path(__file__).resolve().parent
 ROOT=Path("/Users/rentamac/.local/share/qwen38-coldstart-tests")
 TEMPLATE="fjz0hj6xwc"
 GPU="NVIDIA RTX PRO 6000 Blackwell Server Edition"
-REGION="EUR-IS-1"
+REGION="AUTO"
 NAME="qwen38-imgtest-20261011"
 TIMEOUT_SEC=3300
 
@@ -65,8 +65,8 @@ def main():
     if len(gpu)!=1 or gpu[0].get("communityPricePerHr",1e9)>1.69 or not gpu[0].get("communityCloud"):
         raise ValueError("Target GPU cost/availability unexpected")
     stock={x["dataCenterId"]:x.get("stockStatus") for x in gpu[0].get("dataCenterAvailability",[])}
-    if stock.get(REGION) not in ("Medium","High","Low"):
-        raise ValueError("Target DC no longer available")
+    if not any(status in ("Medium","High","Low") for status in stock.values()):
+        raise ValueError("No Community Cloud GPU stock reported")
     ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
     os.chmod(ROOT,0o700)
     folder=ROOT/(NAME+"-"+dt.datetime.now(dt.timezone.utc).strftime("%H%M%S"))
@@ -85,7 +85,7 @@ def main():
     print("POD_CREATE_BEGIN",pre,"region",REGION,"price_hour",gpu[0]["communityPricePerHr"],flush=True)
     argv=["pod","create","--name",NAME,"--template-id",TEMPLATE,
       "--gpu-id",GPU,"--gpu-count","1","--cloud-type","COMMUNITY",
-      "--data-center-ids",REGION,"--container-disk-in-gb","150","-o","json"]
+      "--container-disk-in-gb","150","-o","json"]
     response=run(*argv,timeout=90)
     pod_id=response.get("id")
     if not isinstance(pod_id,str) or len(pod_id)<6:
