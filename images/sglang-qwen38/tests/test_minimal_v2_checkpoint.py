@@ -44,7 +44,7 @@ class MinimalV2CheckpointTests(unittest.TestCase):
             self.assertRegex(x["digest"], r"^sha256:[0-9a-f]{64}$")
         for mode, candidate in DATA["candidates"].items():
             parts = sorted(x for x in assets if re.fullmatch(
-                r"release-" + re.escape(mode) + r"\\.part-[a-z]{2}", x["name"]
+                r"release-" + re.escape(mode) + r"\.part-[a-z]{2}", x["name"]
             ))
             self.assertEqual(len(parts), candidate["release_part_count"])
             expected = ["release-" + mode + ".part-a" + chr(ord("a") + n)
