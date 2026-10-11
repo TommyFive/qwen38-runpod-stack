@@ -37,7 +37,7 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **Startup compatibility fix** | Upstream's `pip install open-webui` modifies the live SGLang/PyTorch environment, which can break the NCCL/DeepEP startup check. This fork installs OpenWebUI in a **separate virtual environment**, protecting SGLang's GPU dependencies and allowing the Full stack to start cleanly. |
 | **TLS on ephemeral Pods** | Tailscale machine identity and certificate state stored in RAM: `--state=mem:` plus a `/dev/shm` `--statedir`, with verified TLS on both endpoints. |
 | **Authentication and privacy** | Mandatory SGLang API key; OpenWebUI authentication enabled, signup disabled, pre-provisioned admin, runtime logs and WebUI data on tmpfs by default, `DEBUG=0` quiet mode and redacted diagnostics. |
-| **RunPod Secrets** | Default use of RunPod secret **references** (`LLAMA_API_KEY`, optional `HF_TOKEN`, private `TS_AUTHKEY`) rather than injecting local cleartext into the launcher; optional explicit local-credential mode. |
+| **RunPod Secrets** | Default use of RunPod secret **references** (`LLM_API_KEY`, optional `HF_TOKEN`, private `TS_AUTHKEY`) rather than injecting local cleartext into the launcher; optional explicit local-credential mode. |
 | **Real RAM-only model downloads** | **Both the main model and DFlash2 draft are downloaded directly from Hugging Face into a RAM-backed `/dev/shm` cache**, not downloaded to SSD and copied afterward. Since the ~22.7 GiB model blobs do not occupy the container SSD, you can provision **significantly less disk** for a new Pod/template, subject to space needed by the Docker image, OpenWebUI installation and other runtime files. The existing example templates still request **150 GB container disk**; reducing that allocation is a separate template choice, **not** automatic. `MODEL_STORAGE=ssd` remains available as an opt-in fallback. |
 | **Optional RAM reclaim** | Experimental post-inference checkpoint-blob release after authenticated model use; **off by default** and only allowed with RAM storage. |
 | **Correct tokens/s measurement** | Both the in-Pod benchmark and external `qwen38bench` count **actual generated tokens** via SGLang `usage.completion_tokens`, not Server-Sent Events (SSE) chunks. An SSE chunk can contain multiple tokens or none. Standardized in-Pod workloads run only with `BENCHMARK=1`. |
@@ -155,11 +155,13 @@ Provision RunPod Secrets via its console (never commit or echo real values):
 
 | RunPod Secret | Purpose |
 |---|---|
-| `LLAMA_API_KEY` | **Required** SGLang API Bearer secret (mapped to `SGLANG_API_KEY`) |
+| `LLM_API_KEY` | **Required for new templates/CLI launches**; engine-neutral RunPod Secret with the SGLang Bearer key, mapped to `SGLANG_API_KEY` |
 | `TS_AUTHKEY` | **Required for private mode**; tagged/ephemeral Tailscale enrollment |
 | `HF_TOKEN` | Optional for Hugging Face downloads; omit if the model is public and not needed |
 
-Create four templates **once**, or refresh existing IDs with the helper documented in [Security](docs/SECURITY.md):
+**API key naming (this Qwen38 repository only):** New templates and `qwen38fast` now reference `SGLANG_API_KEY={{ RUNPOD_SECRET_LLM_API_KEY }}`. The actual HTTP request still uses `Authorization: Bearer <key>`; no API protocol, model engine, or A40 repository change is involved. **Before using the new default, create the RunPod Secret `LLM_API_KEY` with the *same secret value* as the previously used `LLAMA_API_KEY`** if you want existing clients/proxies to continue working. A Secret is never copied or renamed automatically. During migration, set `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` for the Qwen38 CLI/template helper to keep using the existing key name. See the [safe migration procedure](docs/SECURITY.md#api-secret-name-migration).
+
+Create four templates **once**, or refresh existing IDs with the helper documented in [Security](docs/SECURITY.md). **Merging this code does not modify existing RunPod templates or running Pods**; refresh saved templates only after the `LLM_API_KEY` Secret has been provisioned and verified:
 
 ```bash
 ./create-templates.sh    # creates FOUR templates; record the returned IDs
@@ -215,7 +217,7 @@ The `1h` argument above is **not an automatic termination guarantee**. Billing c
 
 The proxy listens on `http://127.0.0.1:8388/v1`. It reads `~/.runpod/current-pod` and `~/.runpod/current-endpoint.json` and routes to the chosen public **or** Tailnet URL. Configure your client once (see [`pi/models.runpod.json`](pi/models.runpod.json)); run `qwen38-proxy` manually unless you deliberately installed the proxy LaunchAgent.
 
-**Important:** the local proxy reads `~/.runpod/qwen38.key`. It must contain the **same value** as the RunPod `LLAMA_API_KEY` secret. The default RunPod-secret mode does **not** automatically copy that secret to your Mac. Optionally set `QWEN38_SGLANG_CLIENT_KEY_FILE` to a securely stored matching file for launcher readiness/TTFI probes. Never paste a live token into chat, Git, console logs or shell history.
+**Important:** the local proxy reads `~/.runpod/qwen38.key`. It must contain the **same value** as the selected RunPod API Secret (`LLM_API_KEY` by default, `LLAMA_API_KEY` with the legacy override). The default RunPod-secret mode does **not** automatically copy that secret to your Mac. Optionally set `QWEN38_SGLANG_CLIENT_KEY_FILE` to a securely stored matching file for launcher readiness/TTFI probes. Never paste a live token into chat, Git, console logs or shell history.
 
 For authenticated HTTP status testing, the correct external API returns `401` without a Bearer and `200` with a valid one. HTTPS/TLS should verify normally; do not add `-k`.
 
@@ -236,7 +238,7 @@ For authenticated HTTP status testing, the correct external API returns `401` wi
 | `ENABLE_SSH` | `0` | Optional **classic OpenSSH** access/debugging; separate from native Tailscale SSH. |
 | `OPENWEBUI_VERSION` | `0.11.4` | Pin the Full template's OpenWebUI version; use a version verified with the image. |
 
-**Authentication settings:** `SGLANG_API_KEY` (RunPod Secret `LLAMA_API_KEY`) is mandatory. Private templates additionally require `TS_AUTHKEY` (RunPod Secret); Full templates require `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (minimum 16 characters). Do **not** store real credentials in Git.
+**Authentication settings:** Pod variable `SGLANG_API_KEY` (new RunPod Secret `LLM_API_KEY`, or legacy `LLAMA_API_KEY` when explicitly selected) is mandatory. Private templates additionally require `TS_AUTHKEY` (RunPod Secret); Full templates require `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (minimum 16 characters). Do **not** store real credentials in Git.
 
 **Important:** These template settings apply to Pods started via the **RunPod Control UI**. The optional local `qwen38fast` launcher creates its own full environment, so changing the template's ENV does **not automatically override** that launcher's settings.
 

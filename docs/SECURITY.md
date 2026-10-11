@@ -90,7 +90,7 @@ this stack without accepting the cloud trust boundary.
 The launcher defaults to `QWEN38_CREDENTIAL_MODE=runpod_secrets`, so the Pod
 control plane receives **references**, never cleartext values, for:
 
-- `SGLANG_API_KEY={{ RUNPOD_SECRET_LLAMA_API_KEY }}` (existing A40 secret, reused)
+- `SGLANG_API_KEY={{ RUNPOD_SECRET_LLM_API_KEY }}` (new Qwen38 default; the old `LLAMA_API_KEY` may be selected explicitly during migration)
 - `TS_AUTHKEY={{ RUNPOD_SECRET_TS_AUTHKEY }}` on tailnet pods only
 - `HF_TOKEN={{ RUNPOD_SECRET_HF_TOKEN }}` by default, using the existing
   Hugging Face RunPod Secret named `HF_TOKEN`. The name is configurable with
@@ -108,9 +108,10 @@ Tailscale/HF secrets from local environment/files and generates
 supply `RUNPOD_API_KEY` for CLI authentication if required.
 
 **Local proxy caveat:** `qwen38-proxy` reads `~/.runpod/qwen38.key` to
-send its Bearer token to SGLang. When the pod uses the existing RunPod
-`LLAMA_API_KEY` Secret, that local file must contain **exactly the same
-value** or authenticated calls through `127.0.0.1:8388` will fail.
+send its Bearer token to SGLang. When the pod uses the selected RunPod
+`LLM_API_KEY` Secret (or the legacy `LLAMA_API_KEY` override), that local file
+must contain **exactly the same value** or authenticated calls through
+`127.0.0.1:8388` will fail.
 RunPod Secrets do not offer automatic plaintext retrieval to the proxy;
 no match can be inferred. Provision that value manually via the macOS
 Keychain/local protected file if local proxy access is required.
@@ -119,6 +120,40 @@ RunPod REST omits `ports` in the JSON response for an empty port set.
 The port hardener interprets **absent** as empty, but rejects explicit null,
 malformed or nonempty lists, always PATCHes `{"ports":[]}` during repair,
 and re-reads to verify. Do not launch private pods until live checks pass.
+
+### API Secret name migration
+
+**Only the Qwen38 project changes.** The A40/llama.cpp project still uses its
+existing `LLAMA_API_KEY` Secret and remains untouched. The new, engine-neutral
+RunPod **Secret name** is `LLM_API_KEY`; the **Pod environment variable**
+is still `SGLANG_API_KEY` and SGLang still uses the normal
+`Authorization: Bearer <key>` HTTP header.
+
+1. In RunPod Secrets, **create `LLM_API_KEY`**, supplying the **same secret
+   value** as the existing `LLAMA_API_KEY` if existing clients/proxies should
+   keep working. The scripts cannot read, clone, or rename RunPod Secret values,
+   and cannot confirm availability from a repository-only deployment.
+2. Until the new Secret is created, **keep old Qwen38 templates** unchanged and
+   use `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` when starting Pods with
+   `qwen38fast` or creating/synchronizing Qwen38 templates.
+3. Once the new Secret exists, update **only the four Qwen38 templates** using
+   `scripts/sync-runpod-secrets.py` as below (with
+   `QWEN38_API_SECRET_NAME=LLM_API_KEY`, or leave that variable unset).
+   Verify each template's `SGLANG_API_KEY` reference equals
+   `{{ RUNPOD_SECRET_LLM_API_KEY }}`, and verify private templates still
+   publish zero RunPod ports. **Do not change the A40 template.**
+4. Launch one new test Pod only when separately approved; confirm no/wrong
+   Bearer yields HTTP 401 and the matching key yields HTTP 200. Check
+   the proxy's protected `~/.runpod/qwen38.key` and optional
+   `QWEN38_SGLANG_CLIENT_KEY_FILE` match the same secret **value**.
+5. Keep the old RunPod Secret `LLAMA_API_KEY` for the untouched A40 project.
+   The override remains available for legacy Qwen38 templates. If a new
+   Secret is missing/unresolved, bootstrap **fails closed** rather than
+   launching with an unresolved RunPod placeholder as an API key.
+
+**Never paste or log secret values.** Changing the Secret's *name* does not
+rotate the authentication key. Changing its *value* is an intentional
+credential rotation requiring coordinated changes to API clients and proxies.
 
 ### Update the four existing RunPod templates without recreating them
 
@@ -129,6 +164,7 @@ sourcing `~/.config/qwen38/templates.env`, run:
 cd ~/.openclaw/workspace/documentation/qwen38-runpod-stack
 source ~/.config/qwen38/load-credentials.sh
 source ~/.config/qwen38/templates.env
+# Ensure RunPod LLM_API_KEY already exists with the matching value.
 # The existing RunPod Hugging Face Secret HF_TOKEN is used automatically.
 python3 scripts/sync-runpod-secrets.py \\
   --public-full "$QWEN38_TEMPLATE" \\

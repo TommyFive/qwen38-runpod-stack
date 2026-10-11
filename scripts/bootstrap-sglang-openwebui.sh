@@ -13,7 +13,7 @@
 #   MEM_FRAC        --mem-fraction-static
 #   MAMBA_RATIO     --mamba-full-memory-ratio
 #   HF_TOKEN        optional, only needed for gated repos
-#   SGLANG_API_KEY  optional, locks the public proxy endpoint down
+#   SGLANG_API_KEY  required, locks the public proxy endpoint down
 #   SERVE_WEBUI     1 (default) also runs OpenWebUI on :8080; 0 = SGLang only,
 #                   the lean path for a coding agent like pi that talks the API
 #   ENABLE_SSH      1 starts legacy OpenSSH; 0 disables it
@@ -38,6 +38,10 @@ NETWORK_MODE="${NETWORK_MODE:-runpod}"
 # Issue #7 initializes Tailscale later, before the SSH and model phases.
 # Validate its completed connection below rather than blocking startup here.
 [[ -n "${SGLANG_API_KEY:-}" ]] || { echo "ERROR: SGLANG_API_KEY required (no unauthenticated public API)" >&2; exit 64; }
+# Missing RunPod Secrets must never be accepted as a literal API key.
+if [[ "$SGLANG_API_KEY" == *'{{ RUNPOD_SECRET_'* || "$SGLANG_API_KEY" == *'\$\{'* ]]; then
+    echo "ERROR: SGLANG_API_KEY contains an unresolved secret reference" >&2; exit 64
+fi
 API_BIND_HOST=0.0.0.0
 WEBUI_BIND_HOST=0.0.0.0
 if [[ "$NETWORK_MODE" == tailnet ]]; then
