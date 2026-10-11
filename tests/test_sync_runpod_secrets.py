@@ -22,9 +22,22 @@ def stub(mode="tailnet"):
 class SyncTests(unittest.TestCase):
     def test_secrets_are_only_references(self):
         env = sync.make_env(stub()["env"], "tailnet", "MY_HF")
-        self.assertEqual(env["SGLANG_API_KEY"], "{{ RUNPOD_SECRET_LLAMA_API_KEY }}")
+        self.assertEqual(env["SGLANG_API_KEY"], "{{ RUNPOD_SECRET_LLM_API_KEY }}")
         self.assertEqual(env["TS_AUTHKEY"], "{{ RUNPOD_SECRET_TS_AUTHKEY }}")
         self.assertEqual(env["HF_TOKEN"], "{{ RUNPOD_SECRET_MY_HF }}")
+
+
+    def test_explicit_legacy_secret_is_supported_without_modifying_a40(self):
+        env = sync.make_env(stub()["env"], "tailnet", "HF_TOKEN",
+                            api_secret_name="LLAMA_API_KEY")
+        self.assertEqual(env["SGLANG_API_KEY"],
+                         "{{ RUNPOD_SECRET_LLAMA_API_KEY }}")
+
+    def test_reject_missing_or_invalid_api_secret_name(self):
+        for name in ("", "BAD }}", "bad space", "1leading", None):
+            with self.subTest(name=name), self.assertRaises(sync.ports.PortSafetyError):
+                sync.make_env(stub()["env"], "tailnet", "HF_TOKEN",
+                              api_secret_name=name)
 
     def test_public_omits_tailscale(self):
         env = sync.make_env(stub("runpod")["env"], "runpod", "")
@@ -55,6 +68,36 @@ class SyncTests(unittest.TestCase):
             self.assertEqual(sync.main(), 0)
         self.assertEqual(update.call_count, 4)
         self.assertTrue(all(call.args[2] == "HF_TOKEN" for call in update.call_args_list))
+        self.assertTrue(all(call.kwargs["api_secret_name"] == "LLM_API_KEY"
+                            for call in update.call_args_list))
+
+
+    def test_main_supports_legacy_api_secret_override(self):
+        import io
+        import os
+        import sys
+        with patch.dict(os.environ, {"QWEN38_API_SECRET_NAME": "LLAMA_API_KEY"}, clear=True), \
+             patch.object(sys, "argv", ["sync", "--public-full", "pubfull",
+                  "--public-lean", "publean", "--private-full", "privfull",
+                  "--private-lean", "privlean"]), \
+             patch.object(sync, "sync") as update, \
+             patch("sys.stdout", new=io.StringIO()):
+            self.assertEqual(sync.main(), 0)
+        self.assertTrue(all(call.kwargs["api_secret_name"] == "LLAMA_API_KEY"
+                            for call in update.call_args_list))
+
+    def test_main_refuses_invalid_secret_before_any_api_request(self):
+        import io
+        import os
+        import sys
+        with patch.dict(os.environ, {"QWEN38_API_SECRET_NAME": "x }} bad"}, clear=True), \
+             patch.object(sys, "argv", ["sync", "--public-full", "pubfull",
+                  "--public-lean", "publean", "--private-full", "privfull",
+                  "--private-lean", "privlean"]), \
+             patch.object(sync, "sync") as update, \
+             patch("sys.stderr", new=io.StringIO()):
+            self.assertEqual(sync.main(), 64)
+        update.assert_not_called()
 
     def test_explicit_empty_hf_name_skips_optional_secret(self):
         import io
