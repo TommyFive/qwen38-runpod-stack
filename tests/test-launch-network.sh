@@ -271,8 +271,10 @@ fi
 grep -Fq 'requires at least 50 GiB' "$TMP/undersized-template.out"
 
 echo "=== SSD checkpoint mode: Pod overrides disk to 150 GiB ==="
-QWEN38_MODEL_STORAGE=ssd bash "$ROOT/bin/qwen38fast" --pi --storage ssd --image official --network runpod > "$TMP/ssd-official.out"
-QWEN38_MODEL_STORAGE=ssd bash "$ROOT/bin/qwen38fast" --storage ssd --image custom --network runpod > "$TMP/ssd-custom.out"
+# Disk-focused tests supply an explicit mock API Secret reference; the
+# automatic template Secret reference is exercised separately above.
+QWEN38_MODEL_STORAGE=ssd QWEN38_API_SECRET_NAME=LLM_API_KEY bash "$ROOT/bin/qwen38fast" --pi --storage ssd --image official --network runpod > "$TMP/ssd-official.out"
+QWEN38_MODEL_STORAGE=ssd QWEN38_API_SECRET_NAME=LLM_API_KEY bash "$ROOT/bin/qwen38fast" --storage ssd --image custom --network runpod > "$TMP/ssd-custom.out"
 python3 - "$TEST_EVENTS" <<'PY_SSD'
 import json,sys
 rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
