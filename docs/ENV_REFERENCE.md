@@ -72,9 +72,9 @@ select/create the corresponding family instead.
 | `--image custom\|official` | `custom` | Command-line image selector for `create-templates.sh` and `qwen38fast`/`qwen38pi` |
 | `QWEN38_IMAGE_VARIANT` | `custom` | Shell-level selector, same behavior as `--image` |
 | `QWEN38_IMAGE_REF` | unset | Legacy explicit image reference: tested custom digest or exact upstream tag. Conflicting selectors rejected |
-| `QWEN38_FULL_DISK_GB` | `150` | Full/OpenWebUI writable SSD for either image |
-| `QWEN38_LEAN_DISK_GB` | `20` custom; `150` official | Only custom Lean RAM-first has passed a 20-GiB live test |
-| `QWEN38_MODEL_STORAGE` | `ram` | RAM-first weights; SSD checkpoint mode requires larger writable disk |
+| `QWEN38_FULL_DISK_GB` | `20` RAM-first; `150` SSD mode | Full/OpenWebUI writable Container Disk for either image; **20 GiB Full is not yet live-validated** |
+| `QWEN38_LEAN_DISK_GB` | `20` RAM-first; `150` SSD mode | Lean writable Container Disk for either image; **only Custom Lean at 20 GiB was GPU-tested** |
+| `QWEN38_MODEL_STORAGE` | `ram` | RAM-first weights; **if changed to `ssd`, also increase Container Disk or attached SSD storage** (150 GiB default, >=50 GiB enforced) |
 
 Custom is pinned to the immutable GPU-tested image:
 
@@ -102,6 +102,18 @@ remains a manual override; when combining one with an explicit image selector,
 the chosen image must match the template exactly or launch fails safely.
 Unset manual ID overrides for normal automatic `--image` switching.
 Private Tailnet templates always require zero public ports.
+
+**Container Disk policy (for newly generated templates and new Pods):**
+Full and Lean, both public/tailnet, both image variants use **20 GiB by
+default** when main+draft weights download into RAM-backed `/dev/shm`.
+Only Custom Lean has been live-tested with that 20-GiB setting so far.
+Switching to `QWEN38_MODEL_STORAGE=ssd` or `--storage ssd` selects
+**150 GiB** by default instead; an explicit disk override must be at least
+**50 GiB** but this lower limit is not a tested recommendation.
+In the RunPod UI changing an existing template's `MODEL_STORAGE` does
+**not** resize Container Disk automatically — increase its disk or a
+sufficiently sized mounted volume before starting a Pod. Pod storage
+configuration changes do not retroactively resize running Pods.
 
 ### Launcher: storage, observability, benchmarking and helpers
 
