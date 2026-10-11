@@ -20,7 +20,7 @@ PHASES=[
     ("network_probe",re.compile(r"network check|download probe",re.I)),
     ("model_fetch_start",re.compile(r"fetching weights|starting model download|model download start|MODEL_DOWNLOAD_START|HF.*download",re.I)),
     ("model_fetch_complete",re.compile(r"downloaded to|MODEL_DOWNLOAD_DONE|model downloaded",re.I)),
-    ("cuda_start",re.compile(r"starting SGLang|start.*sglang|CUDA.*graph|capturing CUDA",re.I)),
+    ("cuda_start",re.compile(r"^--- starting SGLang|CUDA.*graph|capturing CUDA",re.I)),
     ("api_ready",re.compile(r"Uvicorn running|Application startup complete|Server is ready|SGLang is ready",re.I)),
     ("first_inference",re.compile(r"QWEN38_AUTHENTICATED_INFERENCE_SUCCESS",re.I)),
 ]
@@ -43,12 +43,24 @@ def summarize(folder):
     logs=read_jsonl(folder/"pod-events.jsonl")
     statuses=read_jsonl(folder/"pod-status.jsonl")
     events={}
+    coldstart_events={}
     disk={}
     start=when(creation.get("before_api_utc") or plan.get("created_utc_start"))
     for log in logs:
         line=log.get("line") or ""
         at=when(log.get("ts") or log.get("captured_at_utc"))
         if not at:continue
+        if line.startswith("QWEN38_COLDSTART "):
+            try:
+                item=json.loads(line.split(" ",1)[1])
+                event_name=item.get("event")
+                if isinstance(event_name,str) and event_name not in coldstart_events:
+                    coldstart_events[event_name]={
+                        "at_utc":item.get("utc"),"monotonic_s":item.get("mono"),
+                        "since_pod_created_s":round((when(item.get("utc"))-start).total_seconds(),2) if start and when(item.get("utc")) else None
+                    }
+            except (json.JSONDecodeError,TypeError,ValueError):
+                pass
         for label,regex in PHASES:
             if label not in events and regex.search(line):
                 events[label]={"at_utc":at.isoformat(),"since_create_s":round((at-start).total_seconds(),1) if start else None,
@@ -73,7 +85,7 @@ def summarize(folder):
             "cloud":plan.get("cloud"),"gpu":plan.get("gpu"),
             "region_requested":plan.get("region"),"container_disk_gb":plan.get("container_disk_gb"),
             "cost_per_hour_usd":plan.get("rate_usd_hr"),"events":events,
-            "disk_mount_usage":disk,"log_events":len(logs),"status_samples":len(statuses),
+            "native_coldstart_events":coldstart_events,"disk_mount_usage":disk,"log_events":len(logs),"status_samples":len(statuses),
             "note":"No timing assumes image cache cold; download and extract logs must be interpreted. Actual GPU readiness requires authenticated inference marker."}
 
 def main():
