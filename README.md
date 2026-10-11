@@ -342,8 +342,28 @@ to be exported for the normal automatic selection. Export
 `QWEN38_TAILNET_DOMAIN=your-tailnet.ts.net` only when Tailscale discovery
 cannot determine it. **Manual** `QWEN38_TEMPLATE*` ID overrides are for
 advanced use or rollback; unset them before switching image families.
-Repeated template creation can create duplicate names, which the launcher
-deliberately rejects, so create each family **once**. If updating existing
+**Recover an interrupted creation safely:** use `--resume` to find exact-name,
+user-owned templates and reuse them **only** if their image, 20/100-GiB
+disk size, complete environment (including embedded helper versions) and
+public ports match. Tailnet templates have their RunPod ports explicitly
+cleared and independently verified before reuse. Missing templates are
+created; conflicting or duplicate names fail closed instead of being
+overwritten. Example after a partial custom run:
+
+```bash
+./create-templates.sh --image custom --resume
+```
+
+The generator performs a credential/permissions preflight **before creating
+any template**. If no `RUNPOD_API_KEY` environment variable is set, it reads
+`~/.runpod/config.toml`; a regular config owned by your current user with
+mode `0644` is automatically tightened to `0600` without exposing its API
+key. Symlinks, wrong ownership and malformed credentials are rejected. A
+fresh clone does not change credentials by itself: the permission hardening
+happens when you run the generator.
+
+Repeated creation **without `--resume`** can create duplicate names, which the launcher
+deliberately rejects, so create each family once or explicitly resume it. If updating existing
 templates, use the controlled `scripts/sync-runpod-secrets.py` helper and
 verify that private templates have **no published ports**. See [Security](docs/SECURITY.md).
 
