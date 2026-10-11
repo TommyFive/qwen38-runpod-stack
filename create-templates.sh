@@ -12,16 +12,19 @@ PORTS_HELPER="${QWEN38_PORTS_HELPER:-$HERE/scripts/private-template-ports.py}"
 # Use --image official (or QWEN38_IMAGE_VARIANT=official) to retain upstream.
 IMAGE_VARIANT="${QWEN38_IMAGE_VARIANT:-custom}"
 IMAGE_SWITCH_EXPLICIT=0
+RESUME=0
 [[ -z "${QWEN38_IMAGE_VARIANT+x}" ]] || IMAGE_SWITCH_EXPLICIT=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --resume) RESUME=1; shift ;;
     --image)
       [[ $# -ge 2 ]] || { echo "Usage: ./create-templates.sh --image custom|official" >&2; exit 64; }
       IMAGE_VARIANT="$2"; IMAGE_SWITCH_EXPLICIT=1; shift 2 ;;
     --help|-h)
-      echo "Usage: ./create-templates.sh [--image custom|official]"
+      echo "Usage: ./create-templates.sh [--image custom|official] [--resume]"
       echo "Default: custom (immutable, GPU-tested GHCR minimal-v1)."
       echo "official: upstream lmsysorg/sglang:dev-qwen38-27b-dflash2."
+      echo "--resume safely reuses matching templates, repairs tailnet ports, and creates missing ones."
       echo "Also supports QWEN38_IMAGE_VARIANT and legacy QWEN38_IMAGE_REF."
       exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 64 ;;
@@ -97,6 +100,13 @@ if [[ "$IMAGE_VARIANT" == custom ]]; then
   }
 fi
 
+# Fail before any remote mutation. An owned native config with mode 0644 is
+# safely tightened to 0600; owner/type/symlink mismatches fail closed.
+python3 "$PORTS_HELPER" preflight >&2 || {
+  echo "RunPod port-hardening preflight failed; no templates created." >&2
+  exit 1
+}
+
 mk() { # name ports labels serve_webui network_mode disk_gib
   local BS TS SH BENCH ENV
   BS=$(base64 -i "$BOOTSTRAP" | tr -d '\n')
@@ -120,6 +130,63 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     **({"TS_AUTHKEY":"{{ RUNPOD_SECRET_TS_AUTHKEY }}"} if sys.argv[5]=="tailnet" else {}),
     **({"HF_TOKEN":"{{ RUNPOD_SECRET_"+sys.argv[11]+" }}"} if sys.argv[11] else {})
   }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME" "$API_SECRET_NAME")
+
+  if [[ "$RESUME" == 1 ]]; then
+    # List only user-owned templates. Never silently adopt a name collision or
+    # overwrite stale/modified templates. Credentials were checked above.
+    local existing_id existing_details
+    existing_id=$(runpodctl template list --type user --all -o json 2>/dev/null | python3 -c 'import sys,json,re
+name=sys.argv[1]
+items=json.load(sys.stdin)
+if not isinstance(items,list):
+    sys.exit("Unexpected RunPod template list shape")
+ids=[x.get("id") for x in items if isinstance(x,dict) and x.get("name")==name]
+if len(ids)>1 or (ids and (not isinstance(ids[0],str) or not re.fullmatch(r"[A-Za-z0-9_-]{5,64}",ids[0]))):
+    sys.exit("Duplicate/invalid existing template IDs; resolve manually: "+name)
+print(ids[0] if ids else "")
+' "$1") || {
+      echo "Could not safely list existing templates; stopped without creating $1." >&2
+      return 1
+    }
+    if [[ -n "$existing_id" ]]; then
+      existing_details=$(runpodctl template get "$existing_id" -o json 2>/dev/null) || {
+        echo "Could not read existing template $existing_id; stopped." >&2
+        return 1
+      }
+      # A stale template cannot be reused as a new configuration. Exact env
+      # comparison includes embedded helper versions without printing secrets.
+      if ! printf '%s' "$existing_details" | python3 -c 'import json,sys
+tid,name,image,disk,env,mode,public_ports=sys.argv[1:]
+try:
+    d=json.load(sys.stdin)
+    ports=d.get("ports",[])
+    valid=(isinstance(d,dict) and d.get("id")==tid and d.get("name")==name
+       and d.get("imageName")==image and d.get("containerDiskInGb")==int(disk)
+       and d.get("env")==json.loads(env)
+       and isinstance(ports,list))
+    if mode=="runpod":
+        valid=valid and ports==public_ports.split(",")
+    if not valid:
+        raise ValueError()
+except (ValueError,TypeError,KeyError):
+    sys.exit(1)
+' "$existing_id" "$1" "$IMAGE" "$6" "$ENV" "$5" "$2"; then
+        echo "Existing template $existing_id differs from requested image/disk/env/ports." >&2
+        echo "Refusing to reuse or overwrite it. Inspect RunPod or use a different template name." >&2
+        return 1
+      fi
+      if [[ "$5" == tailnet ]]; then
+        # Also completes the previously interrupted repair, if needed.
+        python3 "$PORTS_HELPER" repair "$existing_id" >&2 || {
+          echo "Existing tailnet template $existing_id is NOT verified portless." >&2
+          return 1
+        }
+      fi
+      echo "Reusing verified template $existing_id ($1)" >&2
+      printf '%s\n' "$existing_id"
+      return 0
+    fi
+  fi
 
   # CLI/backend may reject large --env on CREATE (observed HTTP 500).
   # Provision no-secret skeleton then UPDATE only that new template.
