@@ -54,11 +54,12 @@ jobs:
           ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes \
             -o ServerAliveInterval=30 -o ServerAliveCountMax=20 root@8.211.52.85 \
             'bash /opt/qwen38-v2-build/publish-ghcr-checkpoint.sh'
-      - name: Confirm both remote tags through GHCR API
+      - name: Confirm both remote tags through authenticated GHCR API
         env:
           GHCR_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          printf %s "$GHCR_TOKEN" | docker login ghcr.io --username TommyFive --password-stdin
           for tag in cpu-rust-20261012-4fb0b652 cpu-rust-cuda-20261012-4fb0b652; do
             echo "Checking remote tag $tag"
             docker manifest inspect "ghcr.io/tommyfive/qwen38-minimal-v2-cpu:$tag" > /dev/null
