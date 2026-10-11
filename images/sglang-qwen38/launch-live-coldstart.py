@@ -69,7 +69,7 @@ def main():
         raise ValueError("Target DC no longer available")
     ROOT.mkdir(mode=0o700,parents=True,exist_ok=True)
     os.chmod(ROOT,0o700)
-    folder=ROOT/NAME
+    folder=ROOT/(NAME+"-"+dt.datetime.now(dt.timezone.utc).strftime("%H%M%S"))
     folder.mkdir(mode=0o700,exist_ok=False)
     os.chmod(folder,0o700)
     pre=now()
