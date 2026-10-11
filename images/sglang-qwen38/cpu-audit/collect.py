@@ -69,7 +69,6 @@ def python_distributions():
             "version": dist.version,
             "requires": list(dist.requires or []),
             "reported_files": len(files) if files is not None else None,
-            "direct_url": (dist.read_text("direct_url.json") or "")[:2048],
         })
 
 
