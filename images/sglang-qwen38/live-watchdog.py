@@ -26,7 +26,7 @@ def utc():
     return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds")
 
 def safe(line):
-    return LONG_B64.sub("[REDACTED_BASE64]",BEARER.sub("Bearer [REDACTED]",SENSITIVE.sub(lambda m:m.group(1)+"=[REDACTED]",str(line)))[:5000]
+    return LONG_B64.sub("[REDACTED_BASE64]",BEARER.sub("Bearer [REDACTED]",SENSITIVE.sub(lambda m:m.group(1)+"=[REDACTED]",str(line))))[:5000]
 
 def call(*args,timeout=12):
     try:
