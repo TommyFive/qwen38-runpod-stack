@@ -244,25 +244,30 @@ Provision RunPod Secrets via its console (never commit or echo real values):
 
 | RunPod Secret | Purpose |
 |---|---|
-| `LLM_API_KEY` | **Required for new templates/CLI launches**; engine-neutral RunPod Secret with the SGLang Bearer key, mapped to `SGLANG_API_KEY` |
+| `LLM_API_KEY` **or existing** `LLAMA_API_KEY` | Required SGLang Bearer key stored in a RunPod Secret; select an existing name via `QWEN38_API_SECRET_NAME` when creating templates |
 | `TS_AUTHKEY` | **Required for private mode**; tagged/ephemeral Tailscale enrollment |
 | `HF_TOKEN` | Optional for Hugging Face downloads; omit if the model is public and not needed |
 
-**API key naming (this Qwen38 repository only):** New templates and `qwen38fast` now reference `SGLANG_API_KEY={{ RUNPOD_SECRET_LLM_API_KEY }}`. The actual HTTP request still uses `Authorization: Bearer <key>`; no API protocol, model engine, or A40 repository change is involved. **Before using the new default, create the RunPod Secret `LLM_API_KEY` with the *same secret value* as the previously used `LLAMA_API_KEY`** if you want existing clients/proxies to continue working. A Secret is never copied or renamed automatically. During migration, set `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` for the Qwen38 CLI/template helper to keep using the existing key name. See the [safe migration procedure](docs/SECURITY.md#api-secret-name-migration).
+**API key naming (only this Qwen38 repository):** The engine still expects `SGLANG_API_KEY` and the HTTP API still requires `Authorization: Bearer <key>`. Newly created templates default to a RunPod Secret called `LLM_API_KEY`, **but you do not need to create or duplicate it** if you already use `LLAMA_API_KEY`: select your existing name with `QWEN38_API_SECRET_NAME=LLAMA_API_KEY ./create-templates.sh --image official` (or `custom`). For automatically selected templates, `qwen38fast` reads the already configured **Secret reference name**, not the secret value, and forwards the same reference. The four deployed v0.2.0 custom templates already reference `LLAMA_API_KEY`. Your local proxy must still have the matching Bearer key; no engine or A40 project changes are involved. See [Secret name migration](docs/SECURITY.md#api-secret-name-migration).
 
-Create four templates **once**, or refresh existing IDs with the helper documented in [Security](docs/SECURITY.md). **Merging this code does not modify existing RunPod templates or running Pods**; refresh saved templates only after the `LLM_API_KEY` Secret has been provisioned and verified:
+Create the **four templates for your chosen image** once. New templates never overwrite old ones, and creating them does not start a paid GPU. The already deployed custom v0.2.0 templates need not be recreated. For a new official-upstream family using your existing API Secret:
 
 ```bash
-./create-templates.sh    # creates FOUR templates; record the returned IDs
-
-export QWEN38_TEMPLATE="public-full-id"
-export QWEN38_TEMPLATE_PI="public-lean-id"
-export QWEN38_TEMPLATE_TAILNET="private-full-id"
-export QWEN38_TEMPLATE_TAILNET_PI="private-lean-id"
-export QWEN38_TAILNET_DOMAIN="your-tailnet.ts.net"
+QWEN38_API_SECRET_NAME=LLAMA_API_KEY ./create-templates.sh --image official
+qwen38pi --image official
+# Optional Tailnet mode: qwen38pi --image official --network tailnet
 ```
 
-Do not literally use the placeholder IDs above. Creating templates again creates **new IDs**, not automatic updates of existing ones. When reusing templates, refresh bundled helpers explicitly with `scripts/sync-runpod-secrets.py --refresh-helpers` and all four template-ID arguments; see [Security](docs/SECURITY.md). Verify private templates have **no published ports** before use.
+For the already created custom family, simply use `qwen38pi` or
+`qwen38fast`, or pass `--image custom` explicitly. No template IDs need
+to be exported for the normal automatic selection. Export
+`QWEN38_TAILNET_DOMAIN=your-tailnet.ts.net` only when Tailscale discovery
+cannot determine it. **Manual** `QWEN38_TEMPLATE*` ID overrides are for
+advanced use or rollback; unset them before switching image families.
+Repeated template creation can create duplicate names, which the launcher
+deliberately rejects, so create each family **once**. If updating existing
+templates, use the controlled `scripts/sync-runpod-secrets.py` helper and
+verify that private templates have **no published ports**. See [Security](docs/SECURITY.md).
 
 **Direct RunPod console launches:** Provide `SGLANG_API_KEY`, plus `TS_AUTHKEY` for private mode, and `WEBUI_ADMIN_EMAIL` / `WEBUI_ADMIN_PASSWORD` (at least 16 characters) for Full mode. Template defaults hold references to the API/Tailscale/HF secrets, **not** a default admin password. Missing required credentials must fail closed.
 
