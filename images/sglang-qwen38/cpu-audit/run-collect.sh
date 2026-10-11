@@ -20,6 +20,20 @@ for mode in files python dpkg; do
 done
 echo "=== INVENTORY ANALYZE ==="
 python3 "$ROOT/analyze.py" --folder "$ROOT"
+echo "=== LARGE ELF DYNAMIC DEPENDENCIES ==="
+docker run --rm --pull never --read-only --network none \
+  --cap-drop ALL --security-opt no-new-privileges --pids-limit=256 \
+  --mount "type=bind,src=$ROOT/native-deps.py,dst=/tmp/qwen38-native-deps.py,readonly" \
+  --entrypoint /opt/sglang/bin/python3 "$IMAGE" \
+  -I -S /tmp/qwen38-native-deps.py --min-mb 10 > "$ROOT/native-deps.jsonl"
+wc -cl "$ROOT/native-deps.jsonl"
+echo "=== FLASHINFER ARCH-TOKEN INVENTORY ==="
+docker run --rm --pull never --read-only --network none \
+  --cap-drop ALL --security-opt no-new-privileges --pids-limit=256 \
+  --mount "type=bind,src=$ROOT/inspect-flashinfer-artifacts.py,dst=/tmp/inspect-flashinfer-artifacts.py,readonly" \
+  --entrypoint /opt/sglang/bin/python3 "$IMAGE" \
+  -I -S /tmp/inspect-flashinfer-artifacts.py --json > "$ROOT/flashinfer-arch.json"
+wc -cl "$ROOT/flashinfer-arch.json"
 echo "=== BASIC RUNTIME PROBES ==="
 docker run --rm --pull never --read-only --network none \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit=256 \
