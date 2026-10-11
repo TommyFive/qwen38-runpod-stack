@@ -4,7 +4,7 @@ Date: **2026-10-12 China time**. This is a **pre-GPU** CPU-only checkpoint. The 
 
 ## 1. Project and acceptance requirements
 
-- GitHub: `TommyFive/qwen38-runpod-stack`; work branch `research/minimal-v2-kernel-audit`, draft PR [#42](https://github.com/TommyFive/qwen38-runpod-stack/pull/42).
+- GitHub: `TommyFive/qwen38-runpod-stack`; work branch `research/minimal-v2-kernel-audit`, research PR [#42](https://github.com/TommyFive/qwen38-runpod-stack/pull/42).
 - Scope: reduce OCI compressed image size from the validated public `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` **without** hurting RTX PRO 6000 Blackwell SM120, SGLang, NVFP4 Qwen3.8 model, DFlash2, cold start, throughput, 20-GiB RAM-first Lean, optional OpenWebUI/Tailscale or API authentication.
 - Baseline immutable image digest: `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`; compressed manifest layer bytes **12,907,436,335** (~12.907 GB). This tag/digest and live templates were **not changed**.
 - Current optimization is CPU-only; full GPU acceptance/benchmarks remain outstanding. No production VPS was used as a build host.
