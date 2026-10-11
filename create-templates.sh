@@ -24,7 +24,8 @@ MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
 case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
 # v0.2.0 / minimal-v1 GPU-tested image; original upstream is opt-in rollback.
 # The immutable digest is documented in images/sglang-qwen38/release.json.
-IMAGE="${QWEN38_IMAGE_REF:-ghcr.io/tommyfive/qwen38-sglang:v0.2.0}"
+# Deploy the EXACT GPU-tested manifest; the human v0.2.0 tag is a release alias.
+IMAGE="${QWEN38_IMAGE_REF:-ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd}"
 MODEL="${QWEN38_MODEL:-sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4}"
 FULL_DISK_GB="${QWEN38_FULL_DISK_GB:-150}"  # Full OpenWebUI not yet GPU validated at reduced disk
 LEAN_DISK_GB="${QWEN38_LEAN_DISK_GB:-20}"   # RAM-first lean validated at 20 GiB
@@ -41,7 +42,7 @@ if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$LEAN_DISK_GB < 50)); then
 fi
 
 REGISTRY_AUTH_ID=""
-if [[ "$IMAGE" == ghcr.io/tommyfive/qwen38-sglang:* ]]; then
+if [[ "$IMAGE" == "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd" ]]; then
   # Never expose GHCR credentials. Only the existing registry-auth ID is read.
   REGISTRY_AUTH_ID=$(runpodctl registry list -o json | python3 -c 'import sys,json
 found=[x.get("id") for x in json.load(sys.stdin) if x.get("name")=="ghcr.io"]
