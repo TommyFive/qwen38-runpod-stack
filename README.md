@@ -42,6 +42,8 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **Optional RAM reclaim** | Experimental post-inference checkpoint-blob release after authenticated model use; **off by default** and only allowed with RAM storage. |
 | **Correct tokens/s measurement** | Both the in-Pod benchmark and external `qwen38bench` count **actual generated tokens** via SGLang `usage.completion_tokens`, not Server-Sent Events (SSE) chunks. An SSE chunk can contain multiple tokens or none. Standardized in-Pod workloads run only with `BENCHMARK=1`. |
 | **Cold-start evidence** | Host/Pod UTC + monotonic events, `qwen38cold` reports and per-Pod datasets covering image pull, model download, GPU load/graphs, health readiness, cloud class and missing region/cache metadata. |
+| **Port labels in RunPod templates** | **Public template ports now have descriptive labels in the RunPod Control UI**: `8000 → SGLang API`, `8080 → OpenWebUI` (Full), and `22 → SSH`. Both private Tailnet templates have **no published ports**, so port labels do not apply to them. |
+| **RunPod CLI compatibility** | Detect whether the installed `runpodctl` actually supports a server-side termination flag instead of failing Pod creation on CLI versions that removed it. **No hard TTL guarantee** if the flag is absent; the old reaper remains account-wide. |
 | **Four deployment templates** | Public Full/Lean and Private Full/Lean; helper scripts for safely repairing private port mappings and updating existing template helpers/secret references in place. |
 | **Validation** | Real RTX PRO 6000 GPU tests for RAM/SSD, native SSH, positive/negative API auth, positive WebUI login, private HTTPS and DFlash2; offline GitHub Actions for integrity and benchmark regressions. |
 
@@ -63,22 +65,24 @@ This is **one GPU/test configuration**, not a guarantee of achievable speed acro
 
 ## Changes from upstream
 
-These distinctions matter if you already used the upstream setup:
+These distinctions matter if you used the original stack. Relevant changes were also proposed to the [upstream repository](https://github.com/nicremo/qwen38-runpod-stack/pulls). The linked PRs are **proposals to upstream**, not evidence that upstream already includes our fixes.
 
-| Topic | Upstream baseline | Behavior in this fork |
-|---|---|---|
-| Templates | Public API / Full variants | **Four** separate Public/Private × Full/Lean templates. Private templates must have **zero published ports**; changing `NETWORK_MODE` alone does not make a public template private. |
-| Secrets | Locally generated/forwarded key workflow | RunPod Secret references are the **default**; the local proxy must use the **matching** API key, not an unrelated generated one. |
-| **SSH access** | The SGLang image has no active `sshd`, so connecting to exposed SSH is unreliable/nonfunctional by default. | **Verified native Tailscale SSH** without a tun device; optional early OpenSSH provisioning for debugging (`ENABLE_SSH=1`). |
-| **Full Pod startup / NCCL** | Direct `pip install open-webui` can modify or replace GPU dependencies in SGLang's Python environment, triggering a `deep_ep.check_nccl_so()` / NCCL incompatibility at startup. | **Isolated OpenWebUI venv**; avoids changing the live SGLang/PyTorch/NCCL environment and starts UI after authenticated SGLang readiness. |
-| **Tokens/s accounting** | Historical SSE-chunk estimates are not actual generated-token counts. | Both benchmark paths use server-reported **`usage.completion_tokens`**; missing usage is reported as unavailable, never replaced by chunk counts. |
-| WebUI start | Older SSH-assisted restart workflow | OpenWebUI starts **inside the Pod** after authenticated SGLang readiness; a client-side SSH restart is unnecessary. |
-| Storage / disk sizing | Model downloads/cache consume container or volume disk. | Main and draft weights **download directly into `/dev/shm` RAM**, removing ~22.7 GiB of model weights from SSD requirements; smaller Pod container disk is **possible**, but the current template still allocates 150 GB. |
-| Privacy | Public RunPod service model | Authenticated public mode **or** Tailnet-only mode, protected runtime artifacts and deliberate diagnostic flags. |
-| Testing | Basic throughput tooling | Repeatable in-Pod benchmark, cold-start tracing, security/storage regression tests. |
-| Rental duration | Automatic-shutdown assumptions in historical documentation | **A `1h` / `4h` argument is a requested window, NOT a guaranteed TTL or cost cap.** Existing stop/reaper are account-wide; see below. |
+| Topic | Upstream baseline | Behavior in this fork | Upstream PR / status |
+|---|---|---|---|
+| Templates | Public API / Full variants | **Four** separate Public/Private × Full/Lean templates. Private templates publish **no ports**; changing `NETWORK_MODE` alone does not make a public template private. | — |
+| **Port labels** | Template ports do not have explicit human-readable service labels. | Public templates supply **`--port-labels`**: **8000 = SGLang API**, **8080 = OpenWebUI** (Full only), **22 = SSH**. Labels make published services recognizable in the RunPod Control UI. Private templates publish no ports and need no labels. | [nicremo #1](https://github.com/nicremo/qwen38-runpod-stack/pull/1) · **open** |
+| Secrets | Locally generated/forwarded key workflow | RunPod Secret references are the **default**; the local proxy must use the **matching** API key, not an unrelated generated one. | — |
+| **SSH access** | The SGLang image has no active `sshd`, so exposing SSH alone does not provide working login. | **Verified native Tailscale SSH** without a tun device; optional early OpenSSH provisioning for debugging (`ENABLE_SSH=1`). The upstream PR covers **debug OpenSSH**, not the fork's separate native Tailscale SSH integration. | [nicremo #5](https://github.com/nicremo/qwen38-runpod-stack/pull/5) · **closed, not merged** |
+| **Full Pod startup / NCCL crash** | Installing OpenWebUI into the serving SGLang environment can mutate GPU dependencies while SGLang starts, triggering a `deep_ep.check_nccl_so()` / NCCL crash. | **Isolated OpenWebUI virtualenv** avoids replacing SGLang/PyTorch/NCCL dependencies; Full mode starts UI only after authenticated SGLang readiness. | [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open**; related [upstream issue #3](https://github.com/nicremo/qwen38-runpod-stack/issues/3) |
+| **Tokens/s accounting** | Historical benchmark estimated generated tokens from SSE chunk counts, which may contain multiple tokens or none. | External and in-Pod benchmarks now use **`usage.completion_tokens`**; missing server usage is reported as unavailable instead of inventing numbers. | — *No matching upstream PR identified* |
+| WebUI start | Older SSH-assisted restart workflow. | WebUI is started on the Pod after authenticated SGLang readiness; no client-side SSH restart. | Related to [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open** |
+| Storage / disk sizing | Model downloads/cache occupy disk. | Main and draft weights **download directly into `/dev/shm` RAM**, removing ~22.7 GiB of model weights from SSD requirements in the tested configuration; smaller container disk is possible, but the current template still allocates 150 GB. | — |
+| Privacy | Public RunPod service model | Authenticated public mode **or** Tailnet-only mode, with protected ephemeral runtime state and explicit logging switches. | — |
+| Testing | Basic throughput tooling | Repeatable in-Pod benchmark, cold-start tracing, security/storage regression tests. | — |
+| **RunPod CLI timer compatibility** | A wrapper can pass `--terminate-after` even on CLI versions that no longer support it, preventing Pod creation. | Detect supported timer flags before use; start commands remain compatible with newer CLI versions. **If unsupported, this is not a guaranteed auto-shutdown.** | [nicremo #2](https://github.com/nicremo/qwen38-runpod-stack/pull/2) · **open** |
+| Rental duration / cleanup | Historical automatic-shutdown assumptions | A `1h` / `4h` argument is **not** a guaranteed TTL or cost cap. Existing stop/reaper remain account-wide; terminate the **exact Pod ID** instead. | Related to [nicremo #2](https://github.com/nicremo/qwen38-runpod-stack/pull/2) · **open**; project-scoped cleanup remains separate follow-up |
 
-This fork **does not automatically inherit upstream changes**. Normal GitHub fork behavior preserves attribution and history; changes from upstream should be reviewed and merged selectively. There is no requirement to copy upstream's README verbatim.
+**Upstream PR status checked 2026-10-11:** #1, #2 and #4 were open; #5 was closed **without merging**. These are not the fork's integration PR numbers. Their status may change independently. The fork **does not automatically inherit upstream changes**, and attribution/history do not require copying the upstream README verbatim.
 
 ## Architecture and deployment modes
 
