@@ -51,7 +51,7 @@ values={
 print(json.dumps(values,separators=(",",":")))
 PY
 )"
-echo "Creating isolated private-image RunPod template $NAME (no paid Pod)..."
+echo "Creating isolated public-image RunPod template $NAME (no paid Pod)..."
 runpodctl template create \
   --name "$NAME" \
   --image "$IMAGE" \
