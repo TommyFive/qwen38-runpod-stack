@@ -24,7 +24,15 @@ TIMEOUT_SEC=3300
 
 def run(*args,timeout=45):
     v=subprocess.run([RP,*args],capture_output=True,text=True,timeout=timeout)
-    if v.returncode: raise RuntimeError("RunPod operation failed: "+ " ".join(args[:2]))
+    if v.returncode:
+        import re
+        raw=(v.stderr or v.stdout).strip().splitlines()
+        first=(raw[0] if raw else "No response")[:450]
+        if any(k in first.lower() for k in ("api_key","authkey","hf_token","bootstrap_b64","authorization","--env")):
+            first="[redacted env/credential diagnostic]"
+        first=re.sub(r"[A-Za-z0-9_+./=-]{48,}","[REDACTED]",first)
+        print("RUNPOD_API_FAILURE",first,file=sys.stderr)
+        raise RuntimeError("RunPod operation failed: "+ " ".join(args[:2]))
     return json.loads(v.stdout)
 
 def now():return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds")
