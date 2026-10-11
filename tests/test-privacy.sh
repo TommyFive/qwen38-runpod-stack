@@ -241,6 +241,10 @@ assert all(d["mode"]=="tailnet" for d in data[2:])
 PY
 
 echo '=== launcher local credential fallback and password provision ==='
+# These tests focus on credential safety and inject fixed template IDs.
+# Release-template discovery is independently covered in deployment tests.
+export QWEN38_TEMPLATE=template-ci-qwen38-v0.2.0-full-public
+export QWEN38_TEMPLATE_PI=template-ci-qwen38-v0.2.0-lean-public
 export QWEN38_CREDENTIAL_MODE=local
 export QWEN38_DEBUG=1
 export TEST_EXPECTED_LAUNCH_HF="$HF_TOKEN"
