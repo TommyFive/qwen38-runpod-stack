@@ -52,7 +52,7 @@ paid-GPU approval.
 - Use a single **RTX PRO 6000 Blackwell 96-GB** GPU and the same cloud tier, region/data center, network volume and container disk size for both baseline/candidate when feasible.
 - Use the **existing tested Qwen38 bootstrap** from `scripts/bootstrap-sglang-openwebui.sh` without changing the model startup flags. Minimal test initially: `SERVE_WEBUI=0`; do not install OpenWebUI or update Python runtime dependencies in the serving environment.
 - Model: `sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4`; DFlash2 draft: `incoai/Qwen3.8-27B-DFlash2`; context 262144; CUDA 13.0.3, FlashInfer 0.6.17.
-- Preserve Bearer authentication with `SGLANG_API_KEY`; never use unauthenticated public SGLang APIs. Keep SSH disabled unless an approved debug investigation explicitly needs it. Default 150 GB container disk capacity unless model storage requirements demonstrate otherwise.
+- Preserve Bearer authentication with `SGLANG_API_KEY`; never use unauthenticated public SGLang APIs. Keep SSH disabled unless an approved debug investigation explicitly needs it. For RAM-first Custom Lean tests use 20 GiB Container Disk; unvalidated Full/official paths need separate validation. SSD-mode templates default to 100 GiB (50 GiB explicit minimum). Keep baseline and candidate disk sizes equal for controlled A/B tests.
 - The RunPod CLI reference accepts `--registry-auth-id` for private pulls. It also documents `--terminate-after`. Require an independent cost time limit and verify it applies to the actual Pod created; avoid treating a local reaper on a sleeping Mac as the sole protection.
 - Existing production RunPod templates and launchers **must not** be edited or overwritten to perform this experiment.
 

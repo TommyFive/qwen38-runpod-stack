@@ -13,7 +13,7 @@ if [[ "$(printenv QWEN38_CREATE_CANDIDATE_TEMPLATE 2>/dev/null || echo NO)" != Y
   echo 'DRY RUN ONLY. No RunPod API change or paid GPU Pod.'
   echo "Candidate image: $IMAGE"
   echo "Isolated template: $NAME"
-  echo 'Needs RunPod private GHCR registry auth and a supplied API key when deployed.'
+  echo 'Uses public GHCR and 20 GiB RAM-first disk; SGLang API key is required when deployed.'
   echo 'To create only the template: QWEN38_CREATE_CANDIDATE_TEMPLATE=YES bash images/sglang-qwen38/create-candidate-template.sh'
   exit 0
 fi
@@ -21,14 +21,11 @@ fi
 command -v runpodctl >/dev/null || { echo "Missing runpodctl" >&2; exit 1; }
 command -v python3 >/dev/null || { echo "Missing python3" >&2; exit 1; }
 
-# Resolve *identifier* of existing GHCR registry auth, never the secret.
-REGISTRY_ID="$(runpodctl registry list | python3 -c '
-import json,sys
-found=[x.get("id") for x in json.load(sys.stdin) if x.get("name")=="ghcr.io"]
-if len(found)!=1 or not isinstance(found[0],str): sys.exit("Expected one ghcr.io registry ID")
-print(found[0])
-')"
-[[ "$REGISTRY_ID" =~ ^[a-zA-Z0-9_-]+$ ]] || exit 1
+# The pinned production GHCR digest is public: verify anonymous access.
+python3 "$HERE/check-public.py" --quiet || {
+  echo "Pinned GHCR digest is not anonymously pullable; refusing candidate template." >&2
+  exit 1
+}
 
 # Default template cannot start an unauthenticated API: key is required.
 # Actual launch via existing qwen38fast passes bootstrap+key in env override.
@@ -54,15 +51,14 @@ values={
 print(json.dumps(values,separators=(",",":")))
 PY
 )"
-echo "Creating isolated private-image RunPod template $NAME (no paid Pod)..."
+echo "Creating isolated public-image RunPod template $NAME (no paid Pod)..."
 runpodctl template create \
   --name "$NAME" \
   --image "$IMAGE" \
-  --registry-auth-id "$REGISTRY_ID" \
-  --container-disk-in-gb 150 \
+  --container-disk-in-gb 20 \
   --ports '8000/http' \
   --port-labels '8000=SGLang API' \
   --docker-start-cmd 'bash,-c,echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh' \
   --env "$ENV_JSON" -o json
-echo 'Template created if API returned success; no paid GPU Pod started.'
+echo 'RAM-first candidate template submitted (20 GiB); no paid GPU Pod started.'
 echo 'After separate paid-Pod approval: QWEN38_TEMPLATE_PI=<new-template-id> qwen38fast --pi'

@@ -19,12 +19,13 @@ class CandidateTemplateTests(unittest.TestCase):
         self.assertIn("sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
                       run.stdout)
 
-    def test_pinned_image_and_registry_auth(self):
+    def test_pinned_public_image_and_ram_first_disk(self):
         text = SRC.read_text()
-        self.assertIn("--registry-auth-id", text)
+        self.assertNotIn("--registry-auth-id", text)
         self.assertIn("ghcr.io", text)
         self.assertIn("SGLANG_API_KEY", text)
-        self.assertIn("--container-disk-in-gb 150", text)
+        self.assertIn("--container-disk-in-gb 20", text)
+        self.assertIn("check-public.py", text)
         self.assertNotIn("pod create", text)
         self.assertNotIn("pod delete", text)
 

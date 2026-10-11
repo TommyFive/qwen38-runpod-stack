@@ -72,12 +72,12 @@ elif args[:2] == ["template", "create"]:
     if official:
         assert image=="lmsysorg/sglang:dev-qwen38-27b-dflash2"
         assert "--registry-auth-id" not in args
-        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 20
+        expected=int(os.getenv("QWEN38_FULL_DISK_GB" if "-full-" in name else "QWEN38_LEAN_DISK_GB", "100" if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else "20"))
         assert int(args[args.index("--container-disk-in-gb")+1])==expected
     else:
         assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
         assert "--registry-auth-id" not in args, "PUBLIC custom must not attach private GHCR credentials"
-        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 20
+        expected=int(os.getenv("QWEN38_FULL_DISK_GB" if "-full-" in name else "QWEN38_LEAN_DISK_GB", "100" if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else "20"))
         assert int(args[args.index("--container-disk-in-gb")+1])==expected
     assert "--env" not in args, "large template env must be UPDATEd after creation"
     if "tailnet" in name:
@@ -261,7 +261,7 @@ assert rows[-1]["template"]=="template-qwen38-official-lean-public"
 print("Official launcher resolves distinct official Lean template")
 PY_SELECTION
 
-echo "=== SSD checkpoint mode: both template families use 150 GiB by default ==="
+echo "=== SSD checkpoint mode: both template families use 100 GiB by default ==="
 QWEN38_MODEL_STORAGE=ssd QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image custom > "$TMP/custom-ssd-templates.out"
 QWEN38_MODEL_STORAGE=ssd QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image official > "$TMP/official-ssd-templates.out"
 if QWEN38_MODEL_STORAGE=ssd QWEN38_FULL_DISK_GB=20    QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/undersized-template.out" 2>&1; then
@@ -270,7 +270,11 @@ if QWEN38_MODEL_STORAGE=ssd QWEN38_FULL_DISK_GB=20    QWEN38_PORTS_HELPER="$TMP/
 fi
 grep -Fq 'requires at least 50 GiB' "$TMP/undersized-template.out"
 
-echo "=== SSD checkpoint mode: Pod overrides disk to 150 GiB ==="
+# The safety minimum stays 50 GiB: explicit 50-GiB SSD templates must pass.
+QWEN38_MODEL_STORAGE=ssd QWEN38_FULL_DISK_GB=50 QWEN38_LEAN_DISK_GB=50 \
+  QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image official > "$TMP/minimum-ssd-templates.out"
+
+echo "=== SSD checkpoint mode: Pod overrides disk to 100 GiB ==="
 # Disk-focused tests supply an explicit mock API Secret reference; the
 # automatic template Secret reference is exercised separately above.
 QWEN38_MODEL_STORAGE=ssd QWEN38_API_SECRET_NAME=LLM_API_KEY bash "$ROOT/bin/qwen38fast" --pi --storage ssd --image official --network runpod > "$TMP/ssd-official.out"
@@ -279,13 +283,24 @@ python3 - "$TEST_EVENTS" <<'PY_SSD'
 import json,sys
 rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 pods=[r for r in rows if r.get("kind")=="pod"]
-assert pods[-2]["disk_gib"]==150 and pods[-2]["template"]=="template-qwen38-official-lean-public"
-assert pods[-1]["disk_gib"]==150 and pods[-1]["template"]=="template-qwen38-v0.2.0-full-public"
-print("SSD model downloads correctly use 150 GiB for official Lean and Custom Full")
+assert pods[-2]["disk_gib"]==100 and pods[-2]["template"]=="template-qwen38-official-lean-public"
+assert pods[-1]["disk_gib"]==100 and pods[-1]["template"]=="template-qwen38-v0.2.0-full-public"
+print("SSD model downloads correctly use 100 GiB for official Lean and Custom Full")
 PY_SSD
 if QWEN38_FULL_DISK_GB=20 bash "$ROOT/bin/qwen38fast" --storage ssd --image custom > "$TMP/undersized-pod.out" 2>&1; then
   echo 'FAIL: accepted 20 GiB SSD Pod override' >&2
   exit 1
 fi
 grep -Fq 'SSD model downloads require >=50 GiB' "$TMP/undersized-pod.out"
+
+# Preserve an explicit 50-GiB SSD Pod override, without changing the default.
+QWEN38_LEAN_DISK_GB=50 QWEN38_MODEL_STORAGE=ssd QWEN38_API_SECRET_NAME=LLM_API_KEY \
+  bash "$ROOT/bin/qwen38fast" --pi --storage ssd --image official --network runpod > "$TMP/minimum-ssd-pod.out"
+python3 - "$TEST_EVENTS" <<'PY_SSD_MIN'
+import json,sys
+rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+pod=[r for r in rows if r.get("kind")=="pod"][-1]
+assert pod["disk_gib"]==50 and pod["template"]=="template-qwen38-official-lean-public"
+print("SSD explicit 50 GiB minimum remains accepted")
+PY_SSD_MIN
 

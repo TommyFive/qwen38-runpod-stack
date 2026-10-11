@@ -68,8 +68,8 @@ MODEL="${QWEN38_MODEL:-sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4}"
 DEFAULT_DISK_GB=20
 if [[ "$MODEL_STORAGE" == ssd ]]; then
   # Main/draft weights (~24 GiB) and caches need significantly more disk.
-  # Switching to SSD at template creation automatically chooses 150 GiB.
-  DEFAULT_DISK_GB=150
+  # Switching to SSD at template creation automatically chooses 100 GiB.
+  DEFAULT_DISK_GB=100
 fi
 FULL_DISK_GB="${QWEN38_FULL_DISK_GB:-$DEFAULT_DISK_GB}"
 LEAN_DISK_GB="${QWEN38_LEAN_DISK_GB:-$DEFAULT_DISK_GB}"
@@ -78,7 +78,7 @@ for disk in "$FULL_DISK_GB" "$LEAN_DISK_GB"; do
     echo "Container disk must be between 20 and 500 GiB" >&2; exit 64;
   }
   if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$disk < 50)); then
-    echo "MODEL_STORAGE=ssd requires at least 50 GiB for BOTH Full and Lean; set QWEN38_FULL_DISK_GB and QWEN38_LEAN_DISK_GB (150 GiB recommended)." >&2
+    echo "MODEL_STORAGE=ssd requires at least 50 GiB for BOTH Full and Lean; set QWEN38_FULL_DISK_GB and QWEN38_LEAN_DISK_GB (100 GiB default)." >&2
     exit 64
   fi
 done
@@ -187,6 +187,6 @@ echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environmen
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
 echo "Image variant: $IMAGE_VARIANT; image: $IMAGE; disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
 echo "No private GHCR registry credentials attached to new templates; public images pull anonymously."
-echo "NOTE: 20 GiB defaults require MODEL_STORAGE=ram; SSD downloads need >=50 GiB, recommended 150 GiB."
+echo "NOTE: 20 GiB defaults require MODEL_STORAGE=ram; SSD downloads need >=50 GiB, default 100 GiB."
 echo "Switch source: ./create-templates.sh --image official|custom (creates distinct templates)."
 echo "Recreate all four templates after each bootstrap/helper change."
