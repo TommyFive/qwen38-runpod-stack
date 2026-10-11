@@ -62,7 +62,7 @@ def main():
         raise ValueError("Insufficient balance or other Pod currently spending")
     items=run("gpu","list","-o","json")
     gpu=[x for x in items if x.get("gpuId")==GPU]
-    if len(gpu)!=1 or gpu[0].get("communityPricePerHr",1e9)>1.69 or not gpu[0].get("communityCloud"):
+    if len(gpu)!=1 or gpu[0].get("securePricePerHr",1e9)>2.49 or not gpu[0].get("secureCloud"):
         raise ValueError("Target GPU cost/availability unexpected")
     stock={x["dataCenterId"]:x.get("stockStatus") for x in gpu[0].get("dataCenterAvailability",[])}
     if not any(status in ("Medium","High","Low") for status in stock.values()):
@@ -75,16 +75,16 @@ def main():
     pre=now()
     (folder/"plan.json").write_text(json.dumps({
       "created_utc_start":pre,"target":"coldstart_new_image","region":REGION,
-      "gpu":GPU,"cloud":"COMMUNITY","rate_usd_hr":gpu[0]["communityPricePerHr"],
+      "gpu":GPU,"cloud":"SECURE","rate_usd_hr":gpu[0]["securePricePerHr"],
       "container_disk_gb":150,"model_storage":"ram","template_id":TEMPLATE,
       "image_tag":t["imageName"],"manifest_digest":"sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
       "coldstart_trace":True,"disk_probe_period_s":15,
       "watchdog_max_seconds":TIMEOUT_SEC,
       "source_baseline_template_id":"g6ey6ire16"
     },indent=2)+"\n")
-    print("POD_CREATE_BEGIN",pre,"region",REGION,"price_hour",gpu[0]["communityPricePerHr"],flush=True)
+    print("POD_CREATE_BEGIN",pre,"region",REGION,"price_hour",gpu[0]["securePricePerHr"],flush=True)
     argv=["pod","create","--name",NAME,"--template-id",TEMPLATE,
-      "--gpu-id",GPU,"--gpu-count","1","--cloud-type","COMMUNITY",
+      "--gpu-id",GPU,"--gpu-count","1","--cloud-type","SECURE",
       "--container-disk-in-gb","150","-o","json"]
     response=run(*argv,timeout=90)
     pod_id=response.get("id")
