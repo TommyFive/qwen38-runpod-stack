@@ -95,6 +95,44 @@ class PortsTests(unittest.TestCase):
         self.assertTrue(observed[0][1].startswith("Mozilla/5.0"))
         self.assertNotIn("Python-urllib", observed[0][1])
 
+    def test_native_runpodctl_lowercase_key_python311_and_mac_python39(self):
+        # This is the actual Viper TOML schema: 'apikey', not 'apiKey'.
+        for toml_available in (True, False):
+            with self.subTest(toml_available=toml_available):
+                with tempfile.TemporaryDirectory() as directory:
+                    cfg = Path(directory) / "config.toml"
+                    cfg.write_text("apikey = 'native-runpod-test-only'\\n"
+                                   "apiurl = 'https://api.runpod.io/graphql'\\n")
+                    cfg.chmod(0o600)
+                    with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+                         patch.object(ports, "tomllib",
+                                      ports.tomllib if toml_available else None):
+                        self.assertEqual(ports.runpod_api_key(cfg),
+                                         "native-runpod-test-only")
+
+    def test_preflight_repairs_lowercase_key_file_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = Path(directory) / "config.toml"
+            cfg.write_text('apikey = "native-runpod-test-only"\\n')
+            cfg.chmod(0o644)
+            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+                 patch("sys.stderr", new=io.StringIO()):
+                ports.preflight(cfg)
+                self.assertEqual(ports.runpod_api_key(cfg),
+                                 "native-runpod-test-only")
+            self.assertEqual(cfg.stat().st_mode & 0o777, 0o600)
+
+    def test_preflight_missing_lowercase_key_fails_before_api(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = Path(directory) / "config.toml"
+            cfg.write_text('unrelated = "nothing"\\n')
+            cfg.chmod(0o600)
+            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+                 patch.object(ports.urllib.request, "urlopen") as request:
+                with self.assertRaises(ports.PortSafetyError):
+                    ports.preflight(cfg)
+                request.assert_not_called()
+
     def test_native_config_fallback_and_permissions(self):
         with tempfile.TemporaryDirectory() as directory:
             cfg = Path(directory) / "config.toml"
