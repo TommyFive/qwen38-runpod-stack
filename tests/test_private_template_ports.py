@@ -101,10 +101,10 @@ class PortsTests(unittest.TestCase):
             with self.subTest(toml_available=toml_available):
                 with tempfile.TemporaryDirectory() as directory:
                     cfg = Path(directory) / "config.toml"
-                    cfg.write_text("apikey = 'native-runpod-test-only'\\n"
-                                   "apiurl = 'https://api.runpod.io/graphql'\\n")
+                    cfg.write_text("apikey = 'native-runpod-test-only'\n"
+                                   "apiurl = 'https://api.runpod.io/graphql'\n")
                     cfg.chmod(0o600)
-                    with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+                    with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \
                          patch.object(ports, "tomllib",
                                       ports.tomllib if toml_available else None):
                         self.assertEqual(ports.runpod_api_key(cfg),
@@ -113,9 +113,9 @@ class PortsTests(unittest.TestCase):
     def test_preflight_repairs_lowercase_key_file_permissions(self):
         with tempfile.TemporaryDirectory() as directory:
             cfg = Path(directory) / "config.toml"
-            cfg.write_text('apikey = "native-runpod-test-only"\\n')
+            cfg.write_text('apikey = "native-runpod-test-only"\n')
             cfg.chmod(0o644)
-            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \
                  patch("sys.stderr", new=io.StringIO()):
                 ports.preflight(cfg)
                 self.assertEqual(ports.runpod_api_key(cfg),
@@ -125,9 +125,9 @@ class PortsTests(unittest.TestCase):
     def test_preflight_missing_lowercase_key_fails_before_api(self):
         with tempfile.TemporaryDirectory() as directory:
             cfg = Path(directory) / "config.toml"
-            cfg.write_text('unrelated = "nothing"\\n')
+            cfg.write_text('unrelated = "nothing"\n')
             cfg.chmod(0o600)
-            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \\
+            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \
                  patch.object(ports.urllib.request, "urlopen") as request:
                 with self.assertRaises(ports.PortSafetyError):
                     ports.preflight(cfg)
