@@ -39,8 +39,20 @@ SENSITIVE_PATHS = re.compile(
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args):
-        raise ValueError("GHCR unexpected redirect")
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        # OCI blob reads are usually 307-redirected to GitHub's CDN. Never
+        # forward the GitHub Actions Authorization header to a CDN host.
+        parsed = urllib.parse.urlparse(newurl)
+        host = (parsed.hostname or "").lower()
+        trusted_cdn = (
+            host == "ghcr.io"
+            or host == "pkg-containers.githubusercontent.com"
+            or host.endswith(".githubusercontent.com")
+            or host.endswith(".blob.core.windows.net")
+        )
+        if parsed.scheme != "https" or not trusted_cdn:
+            raise ValueError("GHCR untrusted registry redirect")
+        return urllib.request.Request(newurl, headers={"Accept": "application/octet-stream"})
 
 
 def fetch(path, headers=None):
