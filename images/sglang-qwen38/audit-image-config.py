@@ -111,8 +111,21 @@ def main():
         return 0
     except (ValueError, RuntimeError, OSError, urllib.error.URLError, KeyError,
             json.JSONDecodeError) as exc:
+        reason = "other"
+        if isinstance(exc, ValueError):
+            message = str(exc)
+            if message.startswith("Potential embedded secrets"):
+                # Key names and counts only; never print ENV values or commands.
+                reason = message
+            elif "manifest" in message.lower():
+                reason = "manifest verification mismatch"
+            elif "config" in message.lower():
+                reason = "OCI config retrieval or validation mismatch"
+            elif "redirect" in message.lower():
+                reason = "unhandled registry redirect"
         print("IMAGE_METADATA_AUDIT_FAILED (" + type(exc).__name__ +
-              "); do not treat image as fully audited", file=sys.stderr)
+              ", reason=" + reason + "); do not treat image as fully audited",
+              file=sys.stderr)
         return 1
 
 
