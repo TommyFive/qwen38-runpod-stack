@@ -229,7 +229,7 @@ try:
     x=hits[0]
     assert x.get("imageName")==image
     # Public custom images do NOT require credentials. Older private-registry
-    # templates may still contain the owner's registry-auth ID; they remain
+    # templates may still contain a legacy account registry-auth ID; they remain
     # valid but should not be shared with other RunPod accounts.
     assert variant in ("custom","official")
     if variant=="official":
