@@ -98,8 +98,16 @@ import json, os, sys
 args = sys.argv[1:]
 if args[:2] == ["pod", "list"]:
     print("[]")
+elif args[:2] == ["registry", "list"]:
+    print(json.dumps([{"name":"ghcr.io","id":"test-ghcr-registry"}]))
 elif args[:2] == ["template", "create"]:
-    env = json.loads(args[args.index("--env") + 1])
+    name=args[args.index("--name")+1]
+    assert "--env" not in args
+    assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
+    assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang:v0.2.0"
+    print(json.dumps({"id":"template-ci-"+name,"name":name}))
+elif args[:2] == ["template", "update"]:
+    env=json.loads(args[args.index("--env")+1])
     assert env["DEBUG"] == "0"
     assert env["RUNTIME_LOG_DIR"] == "/dev/shm/qwen38-runtime"
     assert env["ENABLE_SSH"] == "0"
@@ -110,9 +118,10 @@ elif args[:2] == ["template", "create"]:
     else:
         assert "TS_AUTHKEY" not in env
     assert "WEBUI_ADMIN_PASSWORD" not in env
+    tid=args[2]
     with open(os.environ["TEST_TEMPLATE_FLAGS"], "a") as out:
-        out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":args[args.index("--ports")+1] if "--ports" in args else "", "mode":env["NETWORK_MODE"]})+"\n")
-    print(json.dumps({"id":"template-ci-"+env["SERVE_WEBUI"]}))
+        out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":"8000/http" if env["NETWORK_MODE"]=="runpod" and env["SERVE_WEBUI"]=="0" else ("8000/http,8080/http" if env["NETWORK_MODE"]=="runpod" else ""), "mode":env["NETWORK_MODE"]})+"\n")
+    print(json.dumps({"id":tid,"env":env}))
 else:
     raise SystemExit("unexpected mock runpodctl invocation")
 MOCK
