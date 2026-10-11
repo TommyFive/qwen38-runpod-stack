@@ -13,9 +13,9 @@ for mode in files python dpkg; do
   echo "=== INVENTORY $mode: $(date -u +%FT%TZ) ==="
   docker run --rm --pull never --read-only --network none \
     --cap-drop ALL --security-opt no-new-privileges --pids-limit=256 \
-    --mount "type=bind,src=$ROOT/collect.py,dst=/audit-script/collect.py,readonly" \
+    --mount "type=bind,src=$ROOT/collect.py,dst=/tmp/qwen38-collect.py,readonly" \
     --entrypoint /opt/sglang/bin/python3 "$IMAGE" \
-    -I -S /audit-script/collect.py --mode "$mode" > "$ROOT/$mode.jsonl"
+    -I -S /tmp/qwen38-collect.py --mode "$mode" > "$ROOT/$mode.jsonl"
   wc -cl "$ROOT/$mode.jsonl"
 done
 echo "=== INVENTORY ANALYZE ==="
