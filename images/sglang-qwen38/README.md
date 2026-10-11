@@ -16,6 +16,22 @@ templates without overwriting previous templates. No private GHCR credentials ar
 Full OpenWebUI on this custom image, standardized throughput and fully uncached
 cold-start remain validation gaps, **not** completed guarantees.
 
+### Separate, experimental minimal-v2 CPU checkpoint (not deployed)
+
+On 2026-10-12 two additional CPU-only candidates were **successfully archived**
+in a separate, nonproduction GHCR package and in **all 25 SHA256-verified
+GitHub Release backup blocks**. Compared with minimal-v1, the measured
+pre-GPU scratch OCI payload reductions are **7.637% (A: Rust pruning)**
+and **16.498% (B: Rust pruning + hash-confirmed CUDA deduplication)**.
+These are **not verified GPU runtime or startup improvements**.
+Both GHCR manifests were remotely inspected; the **final B-image CPU smoke**
+and all GPU acceptance tests are **still pending**, so RunPod templates and
+the GPU-tested public minimal-v1 image remain unchanged.
+
+- [Evidence and immutable GHCR digests](MINIMAL_V2_CHECKPOINT_2026-10-12.md)
+- [Post-VPS recovery runbook](MINIMAL_V2_RECOVERY.md)
+- [Remaining CPU/GPU acceptance work, issue #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46)
+
 To switch back to the public upstream Docker Hub image, use
 `./create-templates.sh --image official` (creates a distinct template family)
 and `qwen38pi --image official` or `qwen38fast --image official`.
