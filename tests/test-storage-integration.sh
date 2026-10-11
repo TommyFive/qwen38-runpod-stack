@@ -59,6 +59,9 @@ MOCK
 cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
 #!/usr/bin/env python3
 import sys
+if sys.argv[1] == "preflight":
+    assert len(sys.argv) == 2
+    sys.exit(0)
 assert len(sys.argv) == 4
 assert sys.argv[1] == "repair"
 assert sys.argv[2]

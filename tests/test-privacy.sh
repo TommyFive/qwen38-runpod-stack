@@ -94,6 +94,9 @@ MOCK
 cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
 #!/usr/bin/env python3
 import sys
+if sys.argv[1] == "preflight":
+    assert sys.argv[2:] == []
+    sys.exit(0)
 assert sys.argv[1:3] == ["repair", sys.argv[2]]
 assert sys.argv[3:] == ["--delete-on-failure"]
 print("PASS: mocked port hardening", file=sys.stderr)

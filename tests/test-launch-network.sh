@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/bin" "$TMP/home"
+mkdir -p "$TMP/bin" "$TMP/home" "$TMP/templates-store"
+export QWEN38_TEST_TEMPLATE_STORE="$TMP/templates-store"
 export HOME="$TMP/home"
 # Offline fixture: simulate a verified PUBLIC image without contacting GHCR.
 # Production script always executes the real anonymous-manifest verifier.
@@ -23,20 +24,28 @@ export TEST_EVENTS="$TMP/events.jsonl"
 cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
 #!/usr/bin/env python3
 import sys
+if sys.argv[1] == "preflight":
+    assert sys.argv[2:] == []
+    sys.exit(0)
 assert sys.argv[1:3] == ["repair", sys.argv[2]]
-assert sys.argv[3:] == ["--delete-on-failure"]
+assert sys.argv[3:] == ["--delete-on-failure"] if len(sys.argv) > 3 else True
 print("PASS: mocked port hardening", file=sys.stderr)
 MOCK_PORTS
 chmod +x "$TMP/bin/ports-helper"
 cat > "$TMP/bin/runpodctl" <<'PY'
 #!/usr/bin/env python3
 import json, os, sys
+from pathlib import Path
 args = sys.argv[1:]
+store = Path(os.environ["QWEN38_TEST_TEMPLATE_STORE"])
 if args[:2] == ["pod", "list"]:
     print("[]")
 elif args[:2] == ["registry", "list"]:
     print(json.dumps([{"id":"test-ghcr-registry","name":"ghcr.io"}]))
 elif args[:2] == ["template", "list"]:
+    if os.getenv("QWEN38_MOCK_EXISTING"):
+        print(json.dumps([json.loads(p.read_text()) for p in store.glob("*.json")]))
+        sys.exit(0)
     # Minimal offline fixtures: custom + upstream names both resolve.
     res=[]
     for flavor,prefix,image,auth in (
@@ -56,6 +65,12 @@ elif args[:2] == ["template", "list"]:
     print(json.dumps(res))
 elif args[:2] == ["template", "get"]:
     tid = args[2]
+    if os.getenv("QWEN38_MOCK_EXISTING"):
+        path = store / (tid + ".json")
+        if not path.exists():
+            sys.exit(1)
+        print(path.read_text())
+        sys.exit(0)
     if tid.startswith("template-qwen38-official-"):
         print(json.dumps({"id":tid,"imageName":"lmsysorg/sglang:dev-qwen38-27b-dflash2",
            "ports":[],"portsConfig":[],
@@ -85,7 +100,13 @@ elif args[:2] == ["template", "create"]:
         assert "--port-labels" not in args
     else:
         assert public and "8000/http" in args[args.index("--ports") + 1]
-    print(json.dumps({"id":"template-"+name,"name":name}))
+    ident="template-"+name
+    disk=int(args[args.index("--container-disk-in-gb")+1])
+    ports=[] if not public else args[args.index("--ports")+1].split(",")
+    (store / (ident+".json")).write_text(json.dumps({
+        "id":ident,"name":name,"imageName":image,"containerDiskInGb":disk,
+        "ports":ports,"env":{}}))
+    print(json.dumps({"id":ident,"name":name}))
 elif args[:2] == ["template", "update"]:
     tid = args[2]
     name=tid.removeprefix("template-") if hasattr(tid,"removeprefix") else tid[len("template-"):]
@@ -99,6 +120,10 @@ elif args[:2] == ["template", "update"]:
     assert env["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
     assert ("TS_AUTHKEY" in env) == (env["NETWORK_MODE"] == "tailnet")
     assert (env["NETWORK_MODE"] == "runpod") == public
+    path=store / (tid+".json")
+    state=json.loads(path.read_text())
+    state["env"]=env
+    path.write_text(json.dumps(state))
     with open(os.environ["TEST_EVENTS"], "a") as f:
         f.write(json.dumps({"kind":"template","name":name,"mode":env["NETWORK_MODE"],
                             "has_ports":public,"serve_webui":env["SERVE_WEBUI"],
@@ -145,6 +170,18 @@ chmod +x "$TMP/bin/"*
 echo "=== create templates ==="
 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/templates.output"
 grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=' "$TMP/templates.output"
+
+echo "=== resume must reuse four exact matching templates without duplicate creates ==="
+QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
+  bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume.output"
+grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=template-qwen38-v0.2.0-lean-tailnet' "$TMP/resume.output"
+python3 - "$TEST_EVENTS" <<'PY_RESUME'
+import json,sys
+rows=[json.loads(s) for s in open(sys.argv[1])]
+assert len([r for r in rows if r["kind"]=="template"])==4, "resume created duplicates"
+print("Resume reused all four templates without creating duplicates")
+PY_RESUME
+cp -R "$TMP/templates-store" "$TMP/custom-first"
 
 echo "=== tailnet CLI launch mock ==="
 export QWEN38_TEMPLATE_TAILNET=private-full
@@ -304,3 +341,30 @@ assert pod["disk_gib"]==50 and pod["template"]=="template-qwen38-official-lean-p
 print("SSD explicit 50 GiB minimum remains accepted")
 PY_SSD_MIN
 
+
+echo "=== resume incomplete run (only missing tailnet lean should be created) ==="
+rm -rf "$TMP/templates-store"
+cp -R "$TMP/custom-first" "$TMP/templates-store"
+rm "$TMP/templates-store/template-qwen38-v0.2.0-lean-tailnet.json"
+before=$(grep -c '"kind": "template"' "$TEST_EVENTS")
+QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
+  bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume-partial.output"
+after=$(grep -c '"kind": "template"' "$TEST_EVENTS")
+[[ $((after - before)) -eq 1 ]] || { echo "resume did not create exactly one missing template" >&2; exit 1; }
+grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=template-qwen38-v0.2.0-lean-tailnet' "$TMP/resume-partial.output"
+
+echo "=== resume must refuse modified existing template ==="
+python3 - "$TMP/templates-store/template-qwen38-v0.2.0-full-public.json" <<'PY_STALE'
+import json,sys
+path=sys.argv[1]
+d=json.load(open(path))
+d["imageName"]="unapproved-image"
+with open(path,"w") as f: json.dump(d,f)
+PY_STALE
+if QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
+    bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume-stale.output" 2>&1; then
+  echo "FAIL: --resume reused a modified template" >&2
+  exit 1
+fi
+grep -Fq 'differs from requested' "$TMP/resume-stale.output"
+echo "resume partial and stale-template guards: ok"

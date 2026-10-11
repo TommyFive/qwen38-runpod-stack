@@ -63,6 +63,36 @@ def runpod_api_key(config_path=None):
     raise PortSafetyError("RunPod API credential unavailable in environment/native config")
 
 
+def preflight(config_path=None):
+    """Check credentials before provisioning; secure an owned native config in place.
+
+    Only strips group/other access on a regular, current-user-owned file.
+    Never follows symlinks, changes ownership or prints the credential.
+    An explicit RUNPOD_API_KEY needs no native-file permissions.
+    """
+    if os.environ.get("RUNPOD_API_KEY"):
+        runpod_api_key()
+        return
+    path = Path(config_path) if config_path is not None else Path.home() / ".runpod/config.toml"
+    fd = None
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        meta = os.fstat(fd)
+        if not stat.S_ISREG(meta.st_mode) or meta.st_uid != os.getuid():
+            raise PortSafetyError("RunPod config ownership/type unsafe; not modifying it")
+        mode = stat.S_IMODE(meta.st_mode)
+        if mode & 0o077:
+            os.fchmod(fd, mode & ~0o077)
+            print("Secured RunPod config permissions (group/other access removed).",
+                  file=sys.stderr)
+    except OSError:
+        raise PortSafetyError("RunPod config unavailable/unsafe; not modifying it") from None
+    finally:
+        if fd is not None:
+            os.close(fd)
+    runpod_api_key(config_path)
+
+
 def request(method, template_id, payload=None):
     key = runpod_api_key()
     if not re.fullmatch(r"[A-Za-z0-9_-]{5,64}", template_id):
@@ -130,12 +160,24 @@ def repair(template_id):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("action", choices=("verify", "repair"))
-    p.add_argument("template_id")
+    p.add_argument("action", choices=("verify", "repair", "preflight"))
+    p.add_argument("template_id", nargs="?")
     p.add_argument("--delete-on-failure", action="store_true")
     a = p.parse_args()
     if a.delete_on_failure and a.action != "repair":
         p.error("--delete-on-failure only for repair")
+    if a.action == "preflight":
+        if a.template_id:
+            p.error("preflight does not accept a template ID")
+        try:
+            preflight()
+            print("PASS: RunPod template hardening credentials ready")
+            return 0
+        except PortSafetyError as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 1
+    if not a.template_id:
+        p.error("template ID required for repair/verify")
     try:
         (repair if a.action == "repair" else verify)(a.template_id)
         return 0

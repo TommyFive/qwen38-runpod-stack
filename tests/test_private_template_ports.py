@@ -106,6 +106,35 @@ class PortsTests(unittest.TestCase):
                 with self.assertRaisesRegex(ports.PortSafetyError, "permissions unsafe"):
                     ports.runpod_api_key(cfg)
 
+    def test_preflight_secures_owned_native_config(self):
+        import stat
+        with tempfile.TemporaryDirectory() as directory:
+            cfg = Path(directory) / "config.toml"
+            cfg.write_text('apiKey = "runpod-ci-test-only"\n')
+            cfg.chmod(0o644)
+            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}), \
+                 patch("sys.stderr", new=io.StringIO()):
+                ports.preflight(cfg)
+                self.assertEqual(ports.runpod_api_key(cfg), "runpod-ci-test-only")
+            self.assertEqual(stat.S_IMODE(cfg.stat().st_mode), 0o600)
+
+    def test_preflight_refuses_symlink_and_preserves_target(self):
+        import stat
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "target.toml"
+            target.write_text('apiKey = "runpod-ci-test-only"\n')
+            target.chmod(0o644)
+            cfg = Path(directory) / "config.toml"
+            cfg.symlink_to(target)
+            with patch.dict(os.environ, {"RUNPOD_API_KEY": ""}):
+                with self.assertRaises(ports.PortSafetyError):
+                    ports.preflight(cfg)
+            self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o644)
+
+    def test_preflight_explicit_environment_skips_native_config(self):
+        with patch.dict(os.environ, {"RUNPOD_API_KEY": "runpod-env-ci"}):
+            ports.preflight(Path("/nonexistent/config.toml"))
+
     def test_environment_key_takes_precedence(self):
         with patch.dict(os.environ, {"RUNPOD_API_KEY": "runpod-env-ci"}):
             self.assertEqual(ports.runpod_api_key(Path("/nonexistent")), "runpod-env-ci")
