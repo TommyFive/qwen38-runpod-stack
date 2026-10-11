@@ -34,6 +34,14 @@ docker run --rm --pull never --read-only --network none \
   --entrypoint /opt/sglang/bin/python3 "$IMAGE" \
   -I -S /tmp/inspect-flashinfer-artifacts.py --json > "$ROOT/flashinfer-arch.json"
 wc -cl "$ROOT/flashinfer-arch.json"
+echo "=== VERIFIED NATIVE DUPLICATE SHA256 (BOUNDED) ==="
+docker run --rm --pull never --read-only --network none \
+  --cap-drop ALL --security-opt no-new-privileges --pids-limit=256 \
+  --mount "type=bind,src=$ROOT/verify-duplicates.py,dst=/tmp/qwen38-verify-duplicates.py,readonly" \
+  --mount "type=bind,src=$ROOT/summary.json,dst=/tmp/qwen38-summary.json,readonly" \
+  --entrypoint /opt/sglang/bin/python3 "$IMAGE" \
+  -I -S /tmp/qwen38-verify-duplicates.py > "$ROOT/duplicates-sha256.jsonl"
+wc -cl "$ROOT/duplicates-sha256.jsonl"
 echo "=== BASIC RUNTIME PROBES ==="
 docker run --rm --pull never --read-only --network none \
   --cap-drop ALL --security-opt no-new-privileges --pids-limit=256 \
