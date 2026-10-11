@@ -1,6 +1,6 @@
 # Advanced environment variables — Qwen38 RunPod Stack
 
-> **Advanced reference for this fork, based on `v0.1.0`.** For the short list of everyday settings, go back to the [README](../README.md#environment-variables).
+> **Advanced reference for this fork, based on `v0.2.0`.** For the short list of everyday settings, go back to the [README](../README.md#environment-variables).
 
 ## Where to configure variables
 
@@ -12,7 +12,7 @@ Credentials should normally be supplied using RunPod Secret references (e.g. `{{
 
 ## Complete environment variable reference
 
-This is the **configuration reference for external/user-configurable ENV switches implemented at `v0.1.0`**. There are two distinct layers:
+This is the **configuration reference for external/user-configurable ENV switches implemented at `v0.2.0`**. There are two distinct layers:
 
 - **Launcher ENV** is set on the local machine before `qwen38fast` / `qwen38pi`, typically with the `QWEN38_` prefix. The launcher assembles the entire RunPod ENV object; merely adding an arbitrary Pod variable to your local shell does **not** mean it is forwarded.
 - **Pod ENV** is supplied directly through RunPod template/console or forwarded by the launcher. Variables with the same concept may have different names at these layers (for example `QWEN38_NETWORK_MODE` → `NETWORK_MODE`).
@@ -23,10 +23,10 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `QWEN38_TEMPLATE` | legacy built-in public Full ID | Override public Full template ID; use your own current template |
-| `QWEN38_TEMPLATE_PI` | legacy built-in public Lean ID | Override public Lean template ID |
-| `QWEN38_TEMPLATE_TAILNET` | unset | **Required** private Full template ID in `tailnet` mode |
-| `QWEN38_TEMPLATE_TAILNET_PI` | unset | **Required** private Lean template ID in `tailnet` mode |
+| `QWEN38_TEMPLATE` | Discover `qwen38-v0.2.0-full-public` | Explicit override to a different public Full template ID (rollback) |
+| `QWEN38_TEMPLATE_PI` | Discover `qwen38-v0.2.0-lean-public` | Explicit override to a different public Lean template ID |
+| `QWEN38_TEMPLATE_TAILNET` | Discover `qwen38-v0.2.0-full-tailnet` | Override private Full ID, still subject to live portless verification |
+| `QWEN38_TEMPLATE_TAILNET_PI` | Discover `qwen38-v0.2.0-lean-tailnet` | Override private Lean ID, still subject to live portless verification |
 | `QWEN38_NETWORK_MODE` | `runpod` | `runpod` = public RunPod proxy; `tailnet` = private portless template |
 | `QWEN38_TAILNET_DOMAIN` | detect from local Tailscale | Your `*.ts.net` tailnet DNS suffix; required if detection fails |
 | `TS_HOSTNAME` | generated random label | Optional explicit Tailnet/MagicDNS Pod hostname |
@@ -40,6 +40,27 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `QWEN38_WEBUI_ADMIN_PASSWORD` | generated protected file | Full WebUI admin password override; must be at least 16 characters |
 | `HF_TOKEN` | unset (local mode) | Optional local Hugging Face token in `local` credential mode; file fallback `~/.cache/huggingface/token` |
 | `RUNPOD_CLOUD` | `COMMUNITY` | First attempt to launch on Community; launcher tries Secure if Community creation fails |
+
+### Image and container disk (v0.2.0)
+
+`./create-templates.sh` uses the **private**
+`ghcr.io/tommyfive/qwen38-sglang:v0.2.0` image and resolves the RunPod
+`ghcr.io` registry credential by ID. Image integrity is anchored to the
+immutable `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`
+digest recorded in `images/sglang-qwen38/release.json`.
+A GitHub Release alone does not publish the GHCR image alias; verify the
+`qwen38-image-release` workflow passed.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `QWEN38_IMAGE_REF` | `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` | Template creation image, with explicit original-upstream rollback |
+| `QWEN38_FULL_DISK_GB` | `150` | Full/OpenWebUI writable SSD (conservative pending new-image Full test) |
+| `QWEN38_LEAN_DISK_GB` | `20` | Lean writable SSD in RAM-first mode; auto-raises to 150 when selecting SSD model storage with the default |
+| `QWEN38_MODEL_STORAGE` | `ram` | Checkpoint storage mode; RAM-first lean 20-GiB validated |
+
+No existing RunPod templates are overwritten. Explicit template IDs preserve
+legacy rollback. A new default launch refuses to proceed if the matching
+v0.2.0 template is missing or has mismatched image/auth/network metadata.
 
 ### Launcher: storage, observability, benchmarking and helpers
 
