@@ -13,20 +13,38 @@ if [[ "${1:-}" == pod && "${2:-}" == list ]]; then echo '[]'; exit; fi
 if [[ "${1:-}" == pod && "${2:-}" == create && "${3:-}" == --help ]]; then
   echo '      --name string'; exit
 fi
-if [[ "${1:-}" == template && "${2:-}" == create ]] ||
-   [[ "${1:-}" == pod && "${2:-}" == create ]]; then
-  action=$1; shift 2
+if [[ "${1:-}" == registry && "${2:-}" == list ]]; then
+  echo '[{"id":"mock-ghcr","name":"ghcr.io"}]'; exit
+fi
+if [[ "${1:-}" == template && "${2:-}" == create ]]; then
+  shift 2
   while [[ $# -gt 0 ]]; do
-    if [[ "$1" == --env ]]; then
-      printf '%s\n' "$2" >> "$MOCK_OUTPUT_FILE"
-      break
+    if [[ "$1" == --name ]]; then
+      echo "{\"id\":\"mock-template\",\"name\":\"$2\"}"
+      exit
     fi
     shift
   done
-  if [[ "$action" == template ]]; then echo '{"id":"mock-template"}'; else
-    echo '{"error":"test deliberately blocks deployment"}'
-  fi
-  exit
+  exit 1
+fi
+if [[ "${1:-}" == template && "${2:-}" == update ]] ||
+   [[ "${1:-}" == pod && "${2:-}" == create ]]; then
+  action=$1; shift 2
+  id="mock-template"
+  if [[ "$action" == template ]]; then id="$1"; shift; fi
+  while [[ $# -gt 0 ]]; do
+    if [[ "$1" == --env ]]; then
+      printf '%s\n' "$2" >> "$MOCK_OUTPUT_FILE"
+      if [[ "$action" == template ]]; then
+        printf '{"id":"%s","env":%s}\n' "$id" "$2"
+      else
+        echo '{"error":"test deliberately blocks deployment"}'
+      fi
+      exit
+    fi
+    shift
+  done
+  exit 1
 fi
 echo "unexpected runpodctl operation: $*" >&2
 exit 1
@@ -52,6 +70,8 @@ export HOME="$TMP/home" PATH="$ROOT/bin:$TMP/bin:$PATH" \
        QWEN38_COLDSTART_TRACE=0
 
 bash "$ROOT/create-templates.sh" > "$TMP/templates.out"
+# Test benchmark/storage ENV independently of RunPod template-discovery code.
+export QWEN38_TEMPLATE=mock-template QWEN38_TEMPLATE_PI=mock-template
 if QWEN38_MODEL_STORAGE=ram QWEN38_RAM_PEAK_FACTOR=1.75 qwen38fast --pi > "$TMP/pi.out" 2>&1; then
   echo 'ERROR: mock pod should never be deployed (pi)' >&2; exit 1
 fi

@@ -11,7 +11,37 @@
 
 </div>
 
-> **Project origin:** This is the [TommyFive fork](https://github.com/TommyFive/qwen38-runpod-stack) of [nicremo/qwen38-runpod-stack](https://github.com/nicremo/qwen38-runpod-stack). Credit for the original GPU/agent workflow goes to the upstream project. This README describes **this fork's actual behavior**, including incompatible changes and security limitations; refer to [upstream's README](https://github.com/nicremo/qwen38-runpod-stack#readme) for the original design. Both use the repository's [MIT license](LICENSE). The fork is versioned independently; [v0.1.0](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.1.0) is the first integrated release.
+> **Project origin:** This is the [TommyFive fork](https://github.com/TommyFive/qwen38-runpod-stack) of [nicremo/qwen38-runpod-stack](https://github.com/nicremo/qwen38-runpod-stack). Credit for the original GPU/agent workflow goes to the upstream project. This README describes **this fork's actual behavior**, including incompatible changes and security limitations; refer to [upstream's README](https://github.com/nicremo/qwen38-runpod-stack#readme) for the original design. Both use the repository's [MIT license](LICENSE). The fork is versioned independently; [v0.1.0](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.1.0) was the first integrated release, followed by the optimized image v0.2.0.
+
+## Optimized SGLang image — v0.2.0 / minimal-v1
+
+The tested custom SGLang image is shipped through a private GHCR repository,
+with a separately versioned release reference:
+
+- Version: `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` (verify that the
+  [release promotion workflow](.github/workflows/qwen38-image-release.yml)
+  has completed successfully).
+- Immutable image:
+  `ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`.
+- **12.907 GB** compressed (31 layers), **12.1% smaller** than the original
+  upstream SGLang image. RTX PRO 6000 Blackwell NVFP4 + DFlash2 serving
+  and a **20-GiB RAM-first lean container disk** were live-tested.
+- Full OpenWebUI and private Tailnet modes **on this specific image**, as well
+  as standardized steady-state throughput and unbiased cold-start A/B,
+  remain separate validation tasks. Do not infer a performance gain
+  from compressed image size alone.
+
+Re-run `./setup.sh` and then `./create-templates.sh` to create four
+**new v0.2.0 public/private Full/Lean templates**. The existing templates
+are left unchanged for rollback. RunPod needs a private `ghcr.io` registry
+credential with read permission. The launcher resolves only exact release
+template names by default and refuses to deploy if those are missing.
+
+**Lean RAM-first:** 20 GiB writable SSD. **Full OpenWebUI:** 150 GiB until
+its additional dependencies are revalidated. Explicit `QWEN38_TEMPLATE*`
+environment overrides select older templates deliberately for rollback.
+
+[Release notes, limitations and image provenance](docs/releases/v0.2.0.md).
 
 ## Contents
 

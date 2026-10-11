@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "upstream_repository": "https://github.com/sgl-project/sglang.git",
+  "upstream_commit": "5f55db35e926d50676f75b812640ea2410b0fe0e",
+  "upstream_pyproject_blob": "0829eac029f7de9b5727ff21526d54996e042bfd",
+  "upstream_dockerfile_blob": "19633581a93a5b18b8513cac71c43ee9454c478f",
+  "baseline_image": "lmsysorg/sglang:dev-qwen38-27b-dflash2",
+  "baseline_index_digest": "sha256:616a3e97f45191af975896cfa644279096cb31bd408a071c2e99ca7209c3cafe",
+  "baseline_amd64_manifest": "sha256:b91d664a8e4825afc16ab831c6035a6c88ac20ef8bd26da4fe2b9813a9f44376",
+  "target": "runtime",
+  "build_type": "qwen38-minimal",
+  "platform": "linux/amd64",
+  "cuda_version": "13.0.3",
+  "flashinfer_version": "0.6.17",
+  "flashinfer_jit_cache": true,
+  "branch_type": "local",
+  "baseline_amd64_compressed_gb_rounded": 14.676
+}

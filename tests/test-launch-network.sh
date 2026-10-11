@@ -23,14 +23,31 @@ import json, os, sys
 args = sys.argv[1:]
 if args[:2] == ["pod", "list"]:
     print("[]")
+elif args[:2] == ["registry", "list"]:
+    print(json.dumps([{"id":"test-ghcr-registry","name":"ghcr.io"}]))
 elif args[:2] == ["template", "get"]:
     tid = args[2]
     print(json.dumps({"id": tid, "ports": [], "portsConfig": [],
                       "env": {"NETWORK_MODE": "tailnet"}}))
 elif args[:2] == ["template", "create"]:
     name = args[args.index("--name") + 1]
-    env = json.loads(args[args.index("--env") + 1])
     public = "--ports" in args
+    image = args[args.index("--image") + 1]
+    assert image == "ghcr.io/tommyfive/qwen38-sglang:v0.2.0"
+    assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
+    assert int(args[args.index("--container-disk-in-gb")+1]) == (20 if "-lean-" in name else 150)
+    assert "--env" not in args, "large template env must be UPDATEd after creation"
+    if "tailnet" in name:
+        assert not public, "private template must not publish ports"
+        assert "--port-labels" not in args
+    else:
+        assert public and "8000/http" in args[args.index("--ports") + 1]
+    print(json.dumps({"id":"template-"+name,"name":name}))
+elif args[:2] == ["template", "update"]:
+    tid = args[2]
+    name=tid.removeprefix("template-") if hasattr(tid,"removeprefix") else tid[len("template-"):]
+    env = json.loads(args[args.index("--env") + 1])
+    public = "-public" in name
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
@@ -38,16 +55,12 @@ elif args[:2] == ["template", "create"]:
     assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_" + secret + " }}"
     assert env["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
     assert ("TS_AUTHKEY" in env) == (env["NETWORK_MODE"] == "tailnet")
-    if env["NETWORK_MODE"] == "tailnet":
-        assert not public, "private template must not publish ports"
-        assert "--port-labels" not in args
-    else:
-        assert public and "8000/http" in args[args.index("--ports") + 1]
+    assert (env["NETWORK_MODE"] == "runpod") == public
     with open(os.environ["TEST_EVENTS"], "a") as f:
         f.write(json.dumps({"kind":"template","name":name,"mode":env["NETWORK_MODE"],
                             "has_ports":public,"serve_webui":env["SERVE_WEBUI"],
                             "api_secret_ref":env["SGLANG_API_KEY"]})+"\n")
-    print(json.dumps({"id":"template-"+name}))
+    print(json.dumps({"id":tid,"env":env}))
 else:
     raise SystemExit(f"Unexpected runpodctl arguments: {args[:3]}")
 PY

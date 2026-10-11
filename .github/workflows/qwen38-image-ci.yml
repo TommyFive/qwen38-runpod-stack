@@ -1,0 +1,57 @@
+name: Qwen38 image source checks
+
+on:
+  push:
+    paths:
+      - 'images/sglang-qwen38/**'
+      - '.github/workflows/qwen38-image-*.yml'
+  pull_request:
+    paths:
+      - 'images/sglang-qwen38/**'
+      - '.github/workflows/qwen38-image-*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  image-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0 (Node 24)
+      - name: Inspect hosted runner capacity (read-only, no image build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== RUNNER ==="
+          uname -a
+          echo "=== FILESYSTEMS ==="
+          df -hT / "$RUNNER_TEMP" /var/lib/docker || true
+          echo "=== BLOCK DEVICES ==="
+          lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS || true
+          echo "=== MEMORY ==="
+          free -h
+          echo "=== DOCKER ROOT ==="
+          docker info --format 'DockerRootDir={{.DockerRootDir}}' || true
+          echo "=== AVAILABLE SPACE ==="
+          df -B1 --output=target,size,avail / | tail -n 1
+      - name: Lint build entrypoint and Python syntax
+        run: |
+          set -euo pipefail
+          bash -n images/sglang-qwen38/build-image.sh
+          bash -n images/sglang-qwen38/create-candidate-template.sh
+          bash -n images/sglang-qwen38/cloudzy/bootstrap-and-start.sh
+          bash -n images/sglang-qwen38/cloudzy/start-from-mac.sh
+          bash -n images/sglang-qwen38/cloudzy/monitor-from-mac.sh
+          bash -n images/sglang-qwen38/cloudzy/run-build.sh
+          python3 -m py_compile images/sglang-qwen38/manifest-size.py
+          python3 -m py_compile images/sglang-qwen38/inspect-ghcr-size.py
+          python3 -m py_compile images/sglang-qwen38/inspect-site-packages.py
+          python3 -m py_compile images/sglang-qwen38/cloudzy/observer.py
+          python3 -m py_compile images/sglang-qwen38/prepare-source.py
+          python3 -m py_compile images/sglang-qwen38/tests/test_prepare_source.py
+      - name: Verify pinned build overlay (offline, no Docker/GPU)
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -v \
+            -s images/sglang-qwen38/tests -p 'test_*.py'

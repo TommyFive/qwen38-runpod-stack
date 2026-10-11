@@ -23,12 +23,14 @@ umask 077
 
 # Account-specific RunPod template IDs. Override via env, or recreate them with
 # create-templates.sh and export QWEN38_TEMPLATE / QWEN38_TEMPLATE_PI.
-TEMPLATE_ID="${QWEN38_TEMPLATE:-bxwo0swnm9}"        # full stack: SGLang + OpenWebUI (8080)
-TEMPLATE_ID_PI="${QWEN38_TEMPLATE_PI:-f7gudhalzm}"  # lean: SGLang API only, for pi
+# By default resolve exact v0.2.0 release templates from RunPod at launch.
+# Existing IDs can be used explicitly via QWEN38_TEMPLATE* as rollback.
+TEMPLATE_ID="${QWEN38_TEMPLATE:-}"
+TEMPLATE_ID_PI="${QWEN38_TEMPLATE_PI:-}"
 TEMPLATE_ID_TAILNET="${QWEN38_TEMPLATE_TAILNET:-}"
 TEMPLATE_ID_TAILNET_PI="${QWEN38_TEMPLATE_TAILNET_PI:-}"
 POD_NAME="qwen38fast"
-DISK_GB=150
+DISK_GB="${QWEN38_FULL_DISK_GB:-150}"
 HOURS=4
 SPEC="dflash2"
 GPU_KEY="pro6000"
@@ -123,6 +125,16 @@ for v in COLDSTART_TRACE DEBUG BENCHMARK RAM_RELEASE; do
     [[ "${!v}" == 0 || "${!v}" == 1 ]] || { echo "$v must be 0 or 1" >&2; exit 64; }
 done
 case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
+if [[ "$PI_MODE" == 1 ]]; then
+    DISK_GB="${QWEN38_LEAN_DISK_GB:-20}"  # GPU-tested in RAM-first lean mode
+    if [[ "$MODEL_STORAGE" == ssd && "$DISK_GB" == 20 ]]; then DISK_GB=150; fi
+fi
+[[ "$DISK_GB" =~ ^[0-9]+$ ]] && ((10#$DISK_GB >= 20 && 10#$DISK_GB <= 500)) || {
+    echo "QWEN38_FULL_DISK_GB / QWEN38_LEAN_DISK_GB must be 20..500 GiB" >&2; exit 64;
+}
+if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$DISK_GB < 50)); then
+    echo "SSD checkpoint mode requires >=50 GiB container disk" >&2; exit 64
+fi
 if [[ "$RAM_RELEASE" == 1 && "$MODEL_STORAGE" != ram ]]; then echo "RAM weight release requires --storage ram" >&2; exit 64; fi
 if [[ -n "$RAM_PEAK_FACTOR" ]]; then
     if ! python3 - "$RAM_PEAK_FACTOR" <<'PY_FACTOR'
@@ -167,6 +179,44 @@ if [[ "$CREDENTIAL_MODE" == runpod_secrets && -n "$HF_SECRET_NAME" &&
       ! "$HF_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
     echo "QWEN38_HF_SECRET_NAME must be a RunPod secret identifier" >&2; exit 64
 fi
+# Select a versioned template only when the user did not explicitly
+# override the template ID. Lookup fails closed if the image, auth or mode drift.
+resolve_v020_template() {
+    local expected_name="$1" expected_mode="$2"
+    runpodctl template list --type user -o json | python3 -c '
+import sys,json
+name,mode=sys.argv[1:3]
+try:
+    items=json.load(sys.stdin)
+    hits=[x for x in items if x.get("name")==name]
+    assert len(hits)==1
+    x=hits[0]
+    assert x.get("imageName")=="ghcr.io/tommyfive/qwen38-sglang:v0.2.0"
+    assert x.get("containerRegistryAuthId")
+    assert x.get("env",{}).get("NETWORK_MODE")==mode
+    assert x.get("env",{}).get("SGLANG_API_KEY","").startswith("{{ RUNPOD_SECRET_")
+    if mode=="tailnet":
+        assert not x.get("ports",[]) and not x.get("portsConfig")
+    print(x["id"])
+except (ValueError,TypeError,KeyError,AssertionError):
+    sys.exit("Release v0.2.0 template missing or unsafe; rerun ./create-templates.sh")
+' "$expected_name" "$expected_mode"
+}
+
+if [[ "$NETWORK_MODE" == tailnet ]]; then
+    if [[ "$PI_MODE" == 1 && -z "$TEMPLATE_ID_TAILNET_PI" ]]; then
+        TEMPLATE_ID_TAILNET_PI="$(resolve_v020_template qwen38-v0.2.0-lean-tailnet tailnet)" || exit 1
+    elif [[ "$PI_MODE" == 0 && -z "$TEMPLATE_ID_TAILNET" ]]; then
+        TEMPLATE_ID_TAILNET="$(resolve_v020_template qwen38-v0.2.0-full-tailnet tailnet)" || exit 1
+    fi
+else
+    if [[ "$PI_MODE" == 1 && -z "$TEMPLATE_ID_PI" ]]; then
+        TEMPLATE_ID_PI="$(resolve_v020_template qwen38-v0.2.0-lean-public runpod)" || exit 1
+    elif [[ "$PI_MODE" == 0 && -z "$TEMPLATE_ID" ]]; then
+        TEMPLATE_ID="$(resolve_v020_template qwen38-v0.2.0-full-public runpod)" || exit 1
+    fi
+fi
+
 if [[ "$NETWORK_MODE" == tailnet ]]; then
     if [[ "$CREDENTIAL_MODE" == local && -z "$TS_AUTHKEY" ]]; then
         echo "NETWORK_MODE=tailnet requires TS_AUTHKEY in local credential mode" >&2; exit 1

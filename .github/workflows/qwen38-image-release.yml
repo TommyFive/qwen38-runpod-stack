@@ -1,0 +1,77 @@
+name: Publish pinned SGLang image release tag
+
+# Release promotion only: no image rebuild, no GPU/cloud spend.
+# Explicit v0.2.0 release triggers one read-only manifest comparison and
+# writes an additional GHCR tag pointing to the *existing* tested image.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  promote:
+    if: ${{ github.event.release.tag_name == 'v0.2.0' && !github.event.release.prerelease }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Verify release contract and GHCR tag invariants
+        shell: bash
+        env:
+          EXPECTED_TAG: v0.2.0
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          x=json.load(open("images/sglang-qwen38/release.json",encoding="utf-8"))
+          assert x["project_release"] == os.environ["EXPECTED_TAG"]
+          assert x["image_tag"] == os.environ["EXPECTED_TAG"]
+          assert x["image_repository"] == "ghcr.io/tommyfive/qwen38-sglang"
+          assert x["image_digest"] == "sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+          print("Release manifest pin validated; no GPU image rebuild needed.")
+          PY
+      - name: Authenticate GHCR with short-lived repository package token
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Alias existing tested image manifest as v0.2.0
+        shell: bash
+        env:
+          GH_REPOSITORY: ghcr.io/tommyfive/qwen38-sglang
+          CANDIDATE_DIGEST: sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd
+          RELEASE_TAG: v0.2.0
+        run: |
+          set -euo pipefail
+          source="$GH_REPOSITORY@$CANDIDATE_DIGEST"
+          target="$GH_REPOSITORY:$RELEASE_TAG"
+          # Copy manifest and registry references only; does not rebuild layers.
+          docker buildx imagetools inspect --raw "$source" > "$RUNNER_TEMP/source-manifest.json"
+          docker buildx imagetools create --prefer-index=false --tag "$target" "$source"
+          docker buildx imagetools inspect --raw "$target" > "$RUNNER_TEMP/tag-manifest.json"
+          python3 - "$RUNNER_TEMP/source-manifest.json" "$RUNNER_TEMP/tag-manifest.json" <<'PY'
+          import json,sys,hashlib
+          a,b=[json.load(open(x,encoding="utf-8")) for x in sys.argv[1:]]
+          if a.get("mediaType")!=b.get("mediaType"):
+              raise SystemExit("Release tag has unexpected mediaType")
+          if a.get("config",{}).get("digest")!=b.get("config",{}).get("digest"):
+              raise SystemExit("Release tag config differs from tested candidate")
+          layers=lambda d:[(v["digest"],v["size"]) for v in d.get("layers",[])]
+          if not layers(a) or layers(a)!=layers(b):
+              raise SystemExit("Release layer digest/size list differs from tested candidate")
+          print(f"Verified {len(layers(a))} identical image layers; no rebuild.")
+          PY
+          {
+            echo "## GHCR release image: $target"
+            echo "Original tested immutable digest: $CANDIDATE_DIGEST"
+            echo "Pinned linux/amd64 layer content was verified identical."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Logout
+        if: always()
+        run: docker logout ghcr.io || true
