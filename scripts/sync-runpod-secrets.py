@@ -35,11 +35,11 @@ def read_bundled_helpers():
         result[key] = base64.b64encode(source.read_bytes()).decode("ascii")
     return result
 
-API_REFERENCE = "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+DEFAULT_API_SECRET_NAME = "LLM_API_KEY"
 TS_REFERENCE = "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
 
 
-def make_env(existing, mode, hf_secret, helpers=None):
+def make_env(existing, mode, hf_secret, helpers=None, api_secret_name=DEFAULT_API_SECRET_NAME):
     if not isinstance(existing, dict):
         raise ports.PortSafetyError("template env is missing or malformed")
     if mode not in ("runpod", "tailnet") or existing.get("NETWORK_MODE") != mode:
@@ -48,6 +48,9 @@ def make_env(existing, mode, hf_secret, helpers=None):
         raise ports.PortSafetyError("missing bootstrap or Tailscale runtime")
     if hf_secret and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", hf_secret):
         raise ports.PortSafetyError("invalid Hugging Face secret name")
+    if not isinstance(api_secret_name, str) or not re.fullmatch(
+            r"[A-Za-z][A-Za-z0-9_]*", api_secret_name):
+        raise ports.PortSafetyError("invalid or missing API secret name")
     if "WEBUI_ADMIN_PASSWORD" in existing:
         raise ports.PortSafetyError("pre-existing WEBUI_ADMIN_PASSWORD; refuses to copy it")
     new = dict(existing)
@@ -58,7 +61,7 @@ def make_env(existing, mode, hf_secret, helpers=None):
         if any(not existing.get(key) for key in BUNDLED_HELPERS):
             raise ports.PortSafetyError("template is missing an embedded helper")
         new.update(helpers)
-    new["SGLANG_API_KEY"] = API_REFERENCE
+    new["SGLANG_API_KEY"] = "{{ RUNPOD_SECRET_" + api_secret_name + " }}"
     if mode == "tailnet":
         new["TS_AUTHKEY"] = TS_REFERENCE
     else:
@@ -70,12 +73,13 @@ def make_env(existing, mode, hf_secret, helpers=None):
     return new
 
 
-def sync(template_id, mode, hf_secret, helpers=None):
+def sync(template_id, mode, hf_secret, helpers=None, api_secret_name=DEFAULT_API_SECRET_NAME):
     before = ports.request("GET", template_id)
     if before.get("id") != template_id:
         raise ports.PortSafetyError("template ID mismatch")
     old_env = before.get("env")
-    new_env = make_env(old_env, mode, hf_secret, helpers)
+    new_env = make_env(old_env, mode, hf_secret, helpers,
+                       api_secret_name=api_secret_name)
     old_ports = before.get("ports", [])
     if not isinstance(old_ports, list):
         raise ports.PortSafetyError("unexpected ports format")
@@ -103,6 +107,10 @@ def main():
                         help="refresh four embedded helper scripts from this git checkout")
     args = parser.parse_args()
     hf_secret = os.environ.get("QWEN38_HF_SECRET_NAME", "HF_TOKEN")
+    api_secret_name = os.environ.get("QWEN38_API_SECRET_NAME", DEFAULT_API_SECRET_NAME)
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", api_secret_name):
+        print("FAIL: invalid or missing QWEN38_API_SECRET_NAME", file=sys.stderr)
+        return 64
     if hf_secret and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", hf_secret):
         print("FAIL: invalid QWEN38_HF_SECRET_NAME", file=sys.stderr)
         return 64
@@ -114,7 +122,8 @@ def main():
         (args.private_lean, "tailnet"),
     ):
         try:
-            sync(template_id, mode, hf_secret, helpers)
+            sync(template_id, mode, hf_secret, helpers,
+                 api_secret_name=api_secret_name)
         except ports.PortSafetyError as exc:
             print("FAIL: " + mode + " template " + template_id + ": " + str(exc),
                   file=sys.stderr)
