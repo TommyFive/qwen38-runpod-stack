@@ -17,12 +17,16 @@ python3 "$ROOT/inspect-local-oci.py" "$TAR" > "$ROOT/$MODE-oci-result.json"
 echo "OCI layer bytes, baseline delta:"
 python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["compressed_layer_bytes"],d["delta_bytes"],round(d["saving_percent"],3))' "$ROOT/$MODE-oci-result.json"
 echo "=== LOADING LOCAL ONLY $(date -u +%FT%TZ) ==="
-docker load --input "$TAR" > "$ROOT/$MODE-load.log"
-cat "$ROOT/$MODE-load.log"
-CONFIG="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["config"])' "$ROOT/$MODE-oci-result.json")"
-docker image inspect "$CONFIG" > /dev/null
+MANIFEST="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["manifest"])' "$ROOT/$MODE-oci-result.json")"
+if ! docker image inspect "$MANIFEST" >/dev/null 2>&1; then
+  docker load --input "$TAR" > "$ROOT/$MODE-load.log"
+  cat "$ROOT/$MODE-load.log"
+else
+  echo "OCI manifest already loaded: $MANIFEST"
+fi
+docker image inspect "$MANIFEST" > /dev/null
 NAME="local/qwen38-repacked:$MODE"
-docker tag "$CONFIG" "$NAME"
+docker tag "$MANIFEST" "$NAME"
 python3 "$ROOT/verify-repack.py" --image "$NAME" --mode "$MODE" > "$ROOT/$MODE-verify.log"
 echo "=== CPU IMPORT $MODE ==="
 timeout 180 docker run --rm --pull never --read-only --network none \
