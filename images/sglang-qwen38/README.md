@@ -6,10 +6,15 @@ candidate at immutable
 `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`.
 The human-readable `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` tag
 **was successfully published** by the release workflow, verifying all 31
-layer digests match the tested candidate. **The package is still private**:
-GitHub Actions package permission is not public pull access. Repository
+layer digests match the tested candidate. **Anonymous public image access requires a separate Package visibility setting**:
+GitHub Actions package permission is not public pull access. The owner has
+authorized public distribution. Set **Package settings → Danger Zone →
+Change visibility → Public**, then verify the exact digest using
+`python3 images/sglang-qwen38/check-public.py`. New templates omit
+personal RunPod GHCR registry-auth IDs. The immutable image, Docker build
+context, and model/runtime secret handling are unchanged. Repository
 configuration integrates this custom image with four separate public/tailnet
-templates without overwriting previous templates.
+templates without overwriting previous templates. No private GHCR credentials are needed after public visibility is verified.
 Full OpenWebUI on this custom image, standardized throughput and fully uncached
 cold-start remain validation gaps, **not** completed guarantees.
 
