@@ -25,17 +25,47 @@ if args[:2] == ["pod", "list"]:
     print("[]")
 elif args[:2] == ["registry", "list"]:
     print(json.dumps([{"id":"test-ghcr-registry","name":"ghcr.io"}]))
+elif args[:2] == ["template", "list"]:
+    # Minimal offline fixtures: custom + upstream names both resolve.
+    res=[]
+    for flavor,prefix,image,auth in (
+        ("custom","qwen38-v0.2.0",
+         "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
+         "test-ghcr-registry"),
+        ("official","qwen38-official","lmsysorg/sglang:dev-qwen38-27b-dflash2",None),
+    ):
+        for profile in ("lean-public","full-public","lean-tailnet","full-tailnet"):
+            name=prefix+"-"+profile
+            mode="tailnet" if "tailnet" in profile else "runpod"
+            item={"id":"template-"+name,"name":name,"imageName":image,
+                  "env":{"NETWORK_MODE":mode,"SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLM_API_KEY }}"},
+                  "ports":[] if mode=="tailnet" else ["8000/http"]}
+            if auth:item["containerRegistryAuthId"]=auth
+            res.append(item)
+    print(json.dumps(res))
 elif args[:2] == ["template", "get"]:
     tid = args[2]
-    print(json.dumps({"id": tid, "ports": [], "portsConfig": [],
-                      "env": {"NETWORK_MODE": "tailnet"}}))
+    if tid.startswith("template-qwen38-official-"):
+        print(json.dumps({"id":tid,"imageName":"lmsysorg/sglang:dev-qwen38-27b-dflash2",
+           "ports":[],"portsConfig":[],
+           "env":{"NETWORK_MODE":"tailnet" if "tailnet" in tid else "runpod",
+                  "SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLM_API_KEY }}"}}))
+    else:
+        print(json.dumps({"id": tid, "ports": [], "portsConfig": [],
+                          "env": {"NETWORK_MODE": "tailnet"}}))
 elif args[:2] == ["template", "create"]:
     name = args[args.index("--name") + 1]
     public = "--ports" in args
     image = args[args.index("--image") + 1]
-    assert image == "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
-    assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
-    assert int(args[args.index("--container-disk-in-gb")+1]) == (20 if "-lean-" in name else 150)
+    official=name.startswith("qwen38-official-")
+    if official:
+        assert image=="lmsysorg/sglang:dev-qwen38-27b-dflash2"
+        assert "--registry-auth-id" not in args
+        assert int(args[args.index("--container-disk-in-gb")+1])==150
+    else:
+        assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+        assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
+        assert int(args[args.index("--container-disk-in-gb")+1])==(20 if "-lean-" in name else 150)
     assert "--env" not in args, "large template env must be UPDATEd after creation"
     if "tailnet" in name:
         assert not public, "private template must not publish ports"
@@ -192,3 +222,26 @@ if QWEN38_API_SECRET_NAME='BAD }}' QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
     exit 1
 fi
 grep -Fq 'QWEN38_API_SECRET_NAME must be a nonempty RunPod secret identifier' "$TMP/bad-api-name.out"
+
+echo "=== official image choice: distinct safe templates with conservative storage ==="
+QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image official > "$TMP/official-templates.out"
+grep -Fq 'Image variant: official' "$TMP/official-templates.out"
+python3 - "$TEST_EVENTS" <<'PY_OFFICIAL'
+import json,sys
+items=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+official=[x for x in items if x.get("kind")=="template" and x.get("name","").startswith("qwen38-official-")]
+assert len(official)==4, official
+assert sum(x["mode"]=="tailnet" and not x["has_ports"] for x in official)==2
+assert sum(x["mode"]=="runpod" and x["has_ports"] for x in official)==2
+print("official templates: 4 distinct modes with 150 GiB disk")
+PY_OFFICIAL
+echo "=== official image selection: auto-resolve correct upstream template without actual pod ==="
+unset QWEN38_TEMPLATE QWEN38_TEMPLATE_PI QWEN38_TEMPLATE_TAILNET QWEN38_TEMPLATE_TAILNET_PI
+bash "$ROOT/bin/qwen38fast" --pi --image official --network runpod > "$TMP/official-launch.out"
+python3 - "$TEST_EVENTS" <<'PY_SELECTION'
+import json,sys
+rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+assert rows[-1]["kind"]=="pod", rows[-1]
+assert rows[-1]["template"]=="template-qwen38-official-lean-public"
+print("Official launcher resolves distinct official Lean template")
+PY_SELECTION
