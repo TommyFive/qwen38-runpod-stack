@@ -62,7 +62,7 @@ jobs:
           printf %s "$GHCR_TOKEN" | docker login ghcr.io --username TommyFive --password-stdin
           for tag in cpu-rust-20261012-4fb0b652 cpu-rust-cuda-20261012-4fb0b652; do
             echo "Checking remote tag $tag"
-            docker manifest inspect "ghcr.io/tommyfive/qwen38-minimal-v2-cpu:$tag" > /dev/null
+            docker manifest inspect "ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint:$tag" > /dev/null
           done
       - name: Clean up temporary registry credentials on ECS
         if: always()
