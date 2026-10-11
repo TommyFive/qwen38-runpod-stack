@@ -33,7 +33,7 @@ elif args[:2] == ["template", "create"]:
     name = args[args.index("--name") + 1]
     public = "--ports" in args
     image = args[args.index("--image") + 1]
-    assert image == "ghcr.io/tommyfive/qwen38-sglang:v0.2.0"
+    assert image == "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
     assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
     assert int(args[args.index("--container-disk-in-gb")+1]) == (20 if "-lean-" in name else 150)
     assert "--env" not in args, "large template env must be UPDATEd after creation"

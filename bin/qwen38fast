@@ -191,7 +191,7 @@ try:
     hits=[x for x in items if x.get("name")==name]
     assert len(hits)==1
     x=hits[0]
-    assert x.get("imageName")=="ghcr.io/tommyfive/qwen38-sglang:v0.2.0"
+    assert x.get("imageName")=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
     assert x.get("containerRegistryAuthId")
     assert x.get("env",{}).get("NETWORK_MODE")==mode
     assert x.get("env",{}).get("SGLANG_API_KEY","").startswith("{{ RUNPOD_SECRET_")

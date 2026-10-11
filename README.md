@@ -36,6 +36,10 @@ Re-run `./setup.sh` and then `./create-templates.sh` to create four
 are left unchanged for rollback. RunPod needs a private `ghcr.io` registry
 credential with read permission. The launcher resolves only exact release
 template names by default and refuses to deploy if those are missing.
+**The runtime templates pin the tested SHA-256 digest**, so deployment works
+before the separate GHCR human-readable `v0.2.0` alias is published. The
+alias is currently blocked by the package's GitHub Actions access setting;
+this does not invalidate the image or the GitHub release.
 
 **Lean RAM-first:** 20 GiB writable SSD. **Full OpenWebUI:** 150 GiB until
 its additional dependencies are revalidated. Explicit `QWEN38_TEMPLATE*`

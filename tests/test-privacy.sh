@@ -104,7 +104,7 @@ elif args[:2] == ["template", "create"]:
     name=args[args.index("--name")+1]
     assert "--env" not in args
     assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
-    assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang:v0.2.0"
+    assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
     print(json.dumps({"id":"template-ci-"+name,"name":name}))
 elif args[:2] == ["template", "update"]:
     env=json.loads(args[args.index("--env")+1])
