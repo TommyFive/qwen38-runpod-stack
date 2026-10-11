@@ -6,7 +6,14 @@ TMP="$(mktemp -d)"
 RAM="$(mktemp -d /dev/shm/qwen38-privacy-ci.XXXXXXXX)"
 trap 'rm -rf "$TMP" "$RAM"' EXIT
 mkdir -p "$TMP"/{bin,home,mocks/sglang} "$RAM/workspace"
+export QWEN38_TEST_REAL_PYTHON="$(command -v python3)"
 export HOME="$TMP/home" PATH="$TMP/bin:$PATH" PYTHONPATH="$TMP/mocks"
+cat > "$TMP/bin/python3" <<'PY_WRAPPER'
+#!/usr/bin/env bash
+if [[ "${1:-}" == */images/sglang-qwen38/check-public.py ]]; then exit 0; fi
+exec "$QWEN38_TEST_REAL_PYTHON" "$@"
+PY_WRAPPER
+chmod +x "$TMP/bin/python3"
 export QWEN38_WORKSPACE="$RAM/workspace" RUNTIME_LOG_DIR="$RAM/runtime"
 export WEBUI_DATA_DIR="$RAM/data" TEST_WEBUI_FLAGS="$TMP/webui-flags.json"
 export TEST_LAUNCH_FLAGS="$TMP/launch-flags.json"
@@ -103,7 +110,7 @@ elif args[:2] == ["registry", "list"]:
 elif args[:2] == ["template", "create"]:
     name=args[args.index("--name")+1]
     assert "--env" not in args
-    assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
+    assert "--registry-auth-id" not in args
     assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
     print(json.dumps({"id":"template-ci-"+name,"name":name}))
 elif args[:2] == ["template", "update"]:
