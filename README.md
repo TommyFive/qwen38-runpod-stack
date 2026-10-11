@@ -23,7 +23,7 @@ Docker build pin, release notes and measured GPU evidence are in this repository
 | SGLang Docker image | Compressed linux/amd64 size | Registry layers | Availability |
 |---|---:|---:|---|
 | [Official upstream](https://hub.docker.com/r/lmsysorg/sglang) — `lmsysorg/sglang:dev-qwen38-27b-dflash2` | **14.676 GB** | **68** | Public Docker Hub |
-| **Our optimized minimal-v1** — `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` | **12.907 GB** | **31** | **Private GHCR**; authorized RunPod registry access required |
+| **Our optimized minimal-v1** — `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` | **12.907 GB** | **31** | **Public GHCR (once package visibility is changed)**; anonymous pull, no GHCR login |
 | **Difference** | **−1.769 GB (−12.1%)** | **−37 layers** | Same Qwen38 NVFP4 + DFlash2 serving goal |
 
 *These are compressed registry-layer sizes, not host-disk usage. The original
@@ -40,11 +40,43 @@ identified FlashInfer cubins/JIT caches as investigation targets, **not yet
 safe-to-remove dependencies**. No additional performance or size gain is
 claimed until measured.
 
-**Image access:** GitHub Releases and the `ghcr.io` `v0.2.0` tag are published,
-but the custom GHCR **package remains private**. GitHub Actions has been granted
-package access so CI can tag it; this does **not** make it anonymously pullable.
-The existing RunPod private registry credential is configured for this fork.
-The Docker Hub upstream image does not require it.
+**Public image rollout:** The `v0.2.0` tag and GitHub Release already exist.
+To allow **anyone** to pull the custom image, the package owner must additionally
+change the GHCR package visibility to **Public** under
+**Package settings → Danger Zone → Change visibility**. A published tag and
+GitHub Actions permission alone do **not** grant public access. Once the
+[anonymous manifest check](images/sglang-qwen38/check-public.py) passes, anyone
+can pull the custom image without a GitHub account or PAT. The template helper
+verifies this access and attaches **no private GHCR credentials**. Existing
+owner templates with private registry auth still work, but should **not be
+shared** as portable templates; new public-image templates carry no such ID.
+
+### Publish once, run without GHCR credentials
+
+The **repository code is public**, but GHCR container-package visibility is a
+separate GitHub setting. The owner must enable **Public** once for
+`qwen38-sglang`. **GitHub documents this as irreversible**: an exposed public
+container package cannot be returned to Private.
+
+After that change, verify the exact image without downloading its 12.9 GB of
+layers:
+
+```bash
+python3 images/sglang-qwen38/check-public.py
+# PUBLIC_IMAGE_VERIFIED: ... (31 layers); no login required.
+```
+
+Then **any RunPod user** can create their own public-image templates with
+`./create-templates.sh --image custom`. No personal `ghcr.io` registry
+credential is needed. **Your application secrets remain separate**: each user
+must configure their own RunPod API/SGLang credentials, and any required
+Hugging Face / Tailnet secrets. Public Docker image access does **not**
+publish or grant access to those credentials.
+
+`create-templates.sh` checks the anonymous GHCR manifest first and fails
+without creating templates if GitHub has not yet made the package Public.
+Previously created templates in the owner's account remain unchanged and
+may retain account-specific registry-auth IDs.
 
 ### One switch for the official upstream image
 
@@ -75,8 +107,10 @@ qwen38pi
 **Separate templates avoid surprises:** Custom names start with
 `qwen38-v0.2.0-`; upstream names start with `qwen38-official-`, each having
 Full/Lean × Public/Tailnet variants. **No existing template is overwritten**.
-The launcher verifies the selected template's image, registry access, secret
-reference and network mode before creating a chargeable Pod. Explicit
+The launcher verifies the selected template's immutable image reference,
+secret reference and network mode before creating a chargeable Pod. Public
+Custom image templates do **not** require private registry auth; legacy
+owner templates with a registry-auth ID remain usable for backward compatibility. Explicit
 `QWEN38_TEMPLATE*` IDs remain a manual override; unset those variables
 to use automatic `--image` selection.
 
@@ -84,7 +118,7 @@ In the RunPod UI, **yes, the Docker image reference itself can be changed**,
 but for CLI launches that is *not sufficient*: the launcher deliberately checks
 the template's name/image combination and requires the matching variant.
 Using the commands above is the supported, safer approach. For manual edits,
-also check the image's private-registry auth, disk size, port exposure,
+also check the image's public/private visibility, disk size, port exposure,
 environment variables and entrypoint; changes affect only **new Pods**.
 
 The custom templates pin the **immutable, GPU-tested digest** rather than
