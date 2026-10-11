@@ -120,11 +120,11 @@ if d.get("id")!=sys.argv[1] or d.get("env",{}).get("COLDSTART_TRACE")!="1" or d.
   printf '%s\n' "$template_id"
 }
 
-echo "Full legacy template (SGLang + OpenWebUI, PUBLIC RunPod ports):"
+echo "Full v0.2.0 template (SGLang + OpenWebUI, PUBLIC RunPod ports):"
 id=$(mk qwen38-v0.2.0-full-public \
   '8000/http,8080/http,22/tcp' '8000=SGLang API,8080=OpenWebUI,22=SSH' 1 runpod "$FULL_DISK_GB")
 echo "  QWEN38_TEMPLATE=$id"
-echo "Lean legacy template (SGLang API, PUBLIC RunPod ports):"
+echo "Lean v0.2.0 template (SGLang API, PUBLIC RunPod ports):"
 id=$(mk qwen38-v0.2.0-lean-public \
   '8000/http,22/tcp' '8000=SGLang API,22=SSH' 0 runpod "$LEAN_DISK_GB")
 echo "  QWEN38_TEMPLATE_PI=$id"
@@ -142,4 +142,6 @@ echo "All templates reference RunPod Secret HF_TOKEN by default (override QWEN38
 echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenWebUI,"
 echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
-echo "Pinned image: $IMAGE. Disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."\necho "Original upstream rollback remains opt-in via QWEN38_IMAGE_REF=lmsysorg/sglang:dev-qwen38-27b-dflash2."\necho "Recreate all four templates after each bootstrap/helper change."
+echo "Pinned image: $IMAGE. Disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
+echo "Original upstream rollback remains opt-in via QWEN38_IMAGE_REF=lmsysorg/sglang:dev-qwen38-27b-dflash2."
+echo "Recreate all four templates after each bootstrap/helper change."
