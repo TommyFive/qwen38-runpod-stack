@@ -203,17 +203,22 @@ except (ValueError,TypeError,KeyError,AssertionError):
 ' "$expected_name" "$expected_mode"
 }
 
+TEMPLATE_AUTO_RESOLVED=0
 if [[ "$NETWORK_MODE" == tailnet ]]; then
     if [[ "$PI_MODE" == 1 && -z "$TEMPLATE_ID_TAILNET_PI" ]]; then
         TEMPLATE_ID_TAILNET_PI="$(resolve_v020_template qwen38-v0.2.0-lean-tailnet tailnet)" || exit 1
+        TEMPLATE_AUTO_RESOLVED=1
     elif [[ "$PI_MODE" == 0 && -z "$TEMPLATE_ID_TAILNET" ]]; then
         TEMPLATE_ID_TAILNET="$(resolve_v020_template qwen38-v0.2.0-full-tailnet tailnet)" || exit 1
+        TEMPLATE_AUTO_RESOLVED=1
     fi
 else
     if [[ "$PI_MODE" == 1 && -z "$TEMPLATE_ID_PI" ]]; then
         TEMPLATE_ID_PI="$(resolve_v020_template qwen38-v0.2.0-lean-public runpod)" || exit 1
+        TEMPLATE_AUTO_RESOLVED=1
     elif [[ "$PI_MODE" == 0 && -z "$TEMPLATE_ID" ]]; then
         TEMPLATE_ID="$(resolve_v020_template qwen38-v0.2.0-full-public runpod)" || exit 1
+        TEMPLATE_AUTO_RESOLVED=1
     fi
 fi
 
@@ -256,6 +261,24 @@ except (AssertionError,AttributeError,ValueError,TypeError):
     fi
 else
     [[ $PI_MODE -eq 1 ]] && TEMPLATE_ID="$TEMPLATE_ID_PI"
+fi
+# Auto-resolved release templates may reuse a legacy RunPod Secret name.
+# --env replaces all template ENV: inherit the template's *reference name*
+# rather than silently swapping LLAMA_API_KEY for the different LLM_API_KEY.
+# Never request, print or store the secret value itself.
+if [[ "$CREDENTIAL_MODE" == runpod_secrets && "$TEMPLATE_AUTO_RESOLVED" == 1 &&
+      -z "${QWEN38_API_SECRET_NAME+x}" ]]; then
+    API_SECRET_NAME="$(runpodctl template get "$TEMPLATE_ID" -o json | python3 -c '
+import json,re,sys
+try:
+    d=json.load(sys.stdin)
+    ref=d.get("env",{}).get("SGLANG_API_KEY","")
+    m=re.fullmatch(r"\{\{ RUNPOD_SECRET_([A-Za-z][A-Za-z0-9_]*) \}\}",ref)
+    if not m:raise ValueError("unexpected reference")
+    print(m.group(1))
+except (ValueError,TypeError,AttributeError):
+    sys.exit("Template has no valid SGLang RunPod Secret reference")
+')" || { echo "Unable to resolve API secret reference from selected template" >&2; exit 1; }
 fi
 if [[ "$ENABLE_SSH" != "0" && "$ENABLE_SSH" != "1" ]]; then
     echo "QWEN38_ENABLE_SSH must be 0 or 1" >&2
