@@ -256,6 +256,7 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `QWEN38_PORTS_HELPER` | `scripts/private-template-ports.py` | **Template creation only** port repair/verification helper |
 | `QWEN38_PROXY_PORT` | `8388` | Local proxy listen port (loopback only) |
 | `QWEN38_PROXY_VERBOSE` | unset / `0` | `1` emits redacted exchange diagnostics |
+| `RUNPOD_API_KEY` | unset → secure native `~/.runpod/config.toml` | Optional RunPod API credential override used by private-template port repair; avoid placing it in shell history or logs | 
 | `RUNPODCTL_BIN` | `/opt/homebrew/bin/runpodctl` | `rp` wrapper and legacy reaper CLI path |
 | `RUNPOD_MAX_AGE_HOURS` | `1` | `rp` requested duration when no explicit `Nh` argument; **not** guaranteed TTL |
 | `RUNPOD_MAX_AGE` | `1h` | Legacy account-wide reaper age threshold (when explicitly installed/enabled) |
@@ -292,7 +293,7 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | `DEBUG`, `COLDSTART_TRACE` | `0`, `1` | Runtime logging and timing switches |
 | `TS_VERSION` | `1.102.3` (pinned) | Alternative versions are **rejected** without code + test updates |
 | `TS_SECRET_DIR` | `/dev/shm/qwen38-secrets` | Temporary Tailnet enrollment key file location (must stay on tmpfs) |
-| `TS_RUNTIME_DIR` | `/dev/shm/qwen38-tailscale` | Tailscale certificate/state/socket root (must stay on tmpfs) |
+| `TS_RUNTIME_DIR` | helper fallback `/dev/shm/qwen38-tailscale` | Tailscale certificate/state/socket root; **bootstrap sets this under `RUNTIME_LOG_DIR/tailscale`** (must stay on tmpfs) |
 | `TS_BIN_DIR` | `/tmp/qwen38-tailscale-bin` | Staging for **public, checksum-verified executable binaries**, not private credentials |
 
 **Internal/generated variables are not configuration switches:** for example `BOOTSTRAP_B64`, `TAILSCALE_RUNTIME_B64`, `STORAGE_HELPER_B64`, `BENCHMARK_B64`, `QWEN38_STATE_DIR`, `MODEL_PATH`, `DRAFT_PATH` and the auto-populated `HF_*_CACHE` variables are passed/derived by the launcher or storage helper. Do not set them manually to bypass guardrails.
