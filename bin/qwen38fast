@@ -205,12 +205,15 @@ except (ValueError,TypeError,KeyError,AssertionError):
 
 TEMPLATE_AUTO_RESOLVED=0
 if [[ "$NETWORK_MODE" == tailnet ]]; then
-    if [[ "$PI_MODE" == 1 && -z "$TEMPLATE_ID_TAILNET_PI" ]]; then
+    # The launcher's private-network guard requires both template IDs.
+    # Discover each missing ID while preserving any explicit rollback overrides.
+    if [[ -z "$TEMPLATE_ID_TAILNET_PI" ]]; then
         TEMPLATE_ID_TAILNET_PI="$(resolve_v020_template qwen38-v0.2.0-lean-tailnet tailnet)" || exit 1
-        TEMPLATE_AUTO_RESOLVED=1
-    elif [[ "$PI_MODE" == 0 && -z "$TEMPLATE_ID_TAILNET" ]]; then
+        [[ "$PI_MODE" == 1 ]] && TEMPLATE_AUTO_RESOLVED=1
+    fi
+    if [[ -z "$TEMPLATE_ID_TAILNET" ]]; then
         TEMPLATE_ID_TAILNET="$(resolve_v020_template qwen38-v0.2.0-full-tailnet tailnet)" || exit 1
-        TEMPLATE_AUTO_RESOLVED=1
+        [[ "$PI_MODE" == 0 ]] && TEMPLATE_AUTO_RESOLVED=1
     fi
 else
     if [[ "$PI_MODE" == 1 && -z "$TEMPLATE_ID_PI" ]]; then
