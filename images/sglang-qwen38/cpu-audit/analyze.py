@@ -108,8 +108,9 @@ def report(data):
         ("Largest individual files", data["largest_files"], 100),
     ]:
         out.extend([f"## {label}", "", "| Logical GB | Path |", "|---:|---|"])
-        for size, path in rows[:limit]:
-            out.append(f"| {fmt(size)} | \\x60{path}\\x60 |".replace("\\x60", "`"))
+        for first, second in rows[:limit]:
+            path, size = (first, second) if isinstance(first, str) else (second, first)
+            out.append(f"| {fmt(size)} | `{path}` |")
         out.append("")
     out.extend(["## Largest installed Ubuntu packages (reported installed-size)", "",
                 "| MiB (dpkg) | Package |", "|---:|---|"])
