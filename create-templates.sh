@@ -10,6 +10,12 @@ BENCH_SCRIPT="$HERE/scripts/benchmark_sglang.py"
 PORTS_HELPER="${QWEN38_PORTS_HELPER:-$HERE/scripts/private-template-ports.py}"
 MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
 HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME-HF_TOKEN}"
+# Engine-neutral RunPod Secret name. Reuse the old Secret during migration with
+# QWEN38_API_SECRET_NAME=LLAMA_API_KEY (does NOT alter the A40 project).
+API_SECRET_NAME="${QWEN38_API_SECRET_NAME:-LLM_API_KEY}"
+if [[ ! "$API_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
+  echo "QWEN38_API_SECRET_NAME must be a nonempty RunPod secret identifier" >&2; exit 64
+fi
 if [[ -n "$HF_SECRET_NAME" && ! "$HF_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
   echo "QWEN38_HF_SECRET_NAME must be a valid RunPod secret name" >&2; exit 64
 fi
@@ -38,10 +44,10 @@ mk() { # name ports labels serve_webui network_mode
     "MODEL_RAM_RELEASE_AFTER_LOAD":"0",
     "DEBUG":"0", "COLDSTART_TRACE":"1",
     "RUNTIME_LOG_DIR":"/dev/shm/qwen38-runtime",
-    "SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLAMA_API_KEY }}",
+    "SGLANG_API_KEY":"{{ RUNPOD_SECRET_"+sys.argv[12]+" }}",
     **({"TS_AUTHKEY":"{{ RUNPOD_SECRET_TS_AUTHKEY }}"} if sys.argv[5]=="tailnet" else {}),
     **({"HF_TOKEN":"{{ RUNPOD_SECRET_"+sys.argv[11]+" }}"} if sys.argv[11] else {})
-  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME")
+  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME" "$API_SECRET_NAME")
 
   local args=(template create --name "$1" --image "$IMAGE" --container-disk-in-gb 150)
   # Tailnet-only: never publish container ports through the RunPod proxy.
@@ -85,7 +91,7 @@ id=$(mk qwen38-uncensored-tailnet-pi \
   '' '' 0 tailnet)
 echo "  QWEN38_TEMPLATE_TAILNET_PI=$id"
 echo "For tailnet-only templates, verify 'runpodctl template get <id>' has NO public ports."
-echo "Private templates reference existing RunPod Secret TS_AUTHKEY; all templates reference LLAMA_API_KEY."
+echo "Private templates reference existing RunPod Secret TS_AUTHKEY; all templates reference $API_SECRET_NAME for SGLang."
 echo "All templates reference RunPod Secret HF_TOKEN by default (override QWEN38_HF_SECRET_NAME)."
 echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenWebUI,"
 echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
