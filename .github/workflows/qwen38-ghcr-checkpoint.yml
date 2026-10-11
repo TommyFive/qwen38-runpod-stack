@@ -1,0 +1,70 @@
+name: Emergency minimal-v2 GHCR checkpoint
+on:
+  push:
+    branches:
+      - research/minimal-v2-kernel-audit
+    paths:
+      - .github/workflows/qwen38-ghcr-checkpoint.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  backup:
+    if: github.repository == 'TommyFive/qwen38-runpod-stack'
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    steps:
+      - name: Checkout trusted checkpoint scripts
+        uses: actions/checkout@v4
+      - name: Provision short-lived SSH identity and pinned host key
+        env:
+          SSH_KEY: ${{ secrets.GHCR_BACKUP_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.GHCR_BACKUP_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Preflight pinned SSH connection and both OCI archives
+        run: |
+          set -euo pipefail
+          ssh -T -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=5 root@8.211.52.85 \
+            'date -u +%FT%TZ; test -s /opt/qwen38-v2-build/minimal-v2-rust.oci.tar; test -s /opt/qwen38-v2-build/minimal-v2-rust-cuda.oci.tar; skopeo --version'
+      - name: Upload fixed-script publisher to temporary ECS
+        run: |
+          set -euo pipefail
+          scp -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            images/sglang-qwen38/cpu-audit/publish-ghcr-checkpoint.sh \
+            root@8.211.52.85:/opt/qwen38-v2-build/publish-ghcr-checkpoint.sh
+      - name: Authenticate GHCR using scoped ephemeral Actions token
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes root@8.211.52.85 \
+            'skopeo login --authfile /opt/qwen38-v2-build/.ghcr-backup-auth.json --username TommyFive --password-stdin ghcr.io'
+      - name: Publish both OCI archives and verify remote manifests
+        run: |
+          set -euo pipefail
+          ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 root@8.211.52.85 \
+            'bash /opt/qwen38-v2-build/publish-ghcr-checkpoint.sh'
+      - name: Confirm both remote tags through GHCR API
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for tag in cpu-rust-20261012-4fb0b652 cpu-rust-cuda-20261012-4fb0b652; do
+            echo "Checking remote tag $tag"
+            docker manifest inspect "ghcr.io/tommyfive/qwen38-minimal-v2-cpu:$tag" > /dev/null
+          done
+      - name: Clean up temporary registry credentials on ECS
+        if: always()
+        run: |
+          ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15 \
+            root@8.211.52.85 'rm -f /opt/qwen38-v2-build/.ghcr-backup-auth.json' || true
