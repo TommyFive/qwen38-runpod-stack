@@ -1,6 +1,6 @@
 # Emergency checkpoint — Qwen38 SGLang minimal-v2 CPU candidates
 
-Date: **2026-10-12 China time**. This is a **pre-GPU** CPU-only checkpoint. The temporary Alibaba ECS `root@8.211.52.85` is scheduled to be **released around 03:25 China time**. Do not rely on local ECS files past that deadline.
+Date: **2026-10-12 China time**. This is a **pre-GPU** CPU-only checkpoint. The original temporary Alibaba ECS `root@8.211.52.85` has now been shut down; no further access or local build artefacts are assumed. The GHCR images and separate GitHub release backup were independently verified after upload. **Storage validation does not imply the final B-image CPU smoke test or any GPU-runtime validation passed.**
 
 ## 1. Project and acceptance requirements
 
@@ -26,7 +26,7 @@ The following original single-large-layer OCI archives were generated and retain
 
 - The original v1 and B *prune builder stage* successfully imported `torch==2.13.0+cu130`, `flashinfer==0.6.17`, `sglang` and `transformers==5.12.1` in no-network CPU-only test containers with ephemeral cache tmpfs. The original image needed writable JIT caches even to import.
 - The **final, scratch-repacked A OCI** was imported into Docker and checked: original ENV, ENTRYPOINT, CMD, working directory, labels etc. preserved; targeted Rust intermediates absent; all four Python imports successful. Final validation exit status **0**.
-- **B final OCI load/CPU validation** remains to be completed if disk/time allow. Existing builder-stage successful imports do not prove a repacked artifact or GPU runtime correctness.
+- **B final OCI load/CPU validation remains NOT VERIFIED**, and now requires another explicitly approved disposable host. Successful builder-stage imports do not prove final-image correctness or GPU runtime compatibility. Follow [issue #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46).
 - Existing `pip check` noted `nixl 1.5.0` refers to nixl-cu12 and Torch 2.13.0 expects NCCL 2.29.7 where stack uses 2.30.7; these are **pre-existing conditions**, not candidate changes.
 
 ## 4. GHCR layer-size emergency workaround
@@ -38,9 +38,9 @@ GitHub official documentation: https://docs.github.com/en/packages/working-with-
 We therefore created `cpu-audit/split-large-oci-layers.py` to stream existing original OCI `tar.gz` filesystem entries in exactly their original order into multiple new bounded OCI gzip layers. It preserves file content, permissions, ownership, hardlink/symlink paths and OCI runtime config fields, while necessarily rewriting OCI `rootfs.diff_ids`, history and manifest digests. No compilation and no changes to the original OCI files.
 
 - A GHCR-safe OCI layout: `/opt/qwen38-v2-build/oci-split-rust/`; successful split into **8 layers** (7 data + unchanged final empty layer), compressed descriptor sum **11,842,557,123** bytes, local manifest `sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e`.
-- B GHCR-safe OCI layout: `/opt/qwen38-v2-build/oci-split-rust-cuda/`; splitting in progress at time of initial checkpoint.
-- New isolated checkpoint GHCR package, separate from v1 production package: `ghcr.io/tommyfive/qwen38-minimal-v2-cpu`. Intended **new tags**: `cpu-rust-20261012-4fb0b652` and `cpu-rust-cuda-20261012-4fb0b652`. **These are target names, not proof of successful publication**; remote digests must be checked and added to this document after successful push.
-- Upload via dedicated GitHub Actions `qwen38-ghcr-checkpoint.yml`, repository-scoped `GITHUB_TOKEN` with `packages: write`, pinned SSH host key and temporary GitHub Actions SSH secret. Do not reuse/leave temporary SSH credentials after the backup.
+- B GHCR-safe OCI layout: `/opt/qwen38-v2-build/oci-split-rust-cuda/`; split finished before backup. Its complete archive has 12 SHA256-verified release blocks. The immutable published GHCR manifest digest is recorded below.
+- New isolated checkpoint GHCR package, separate from v1 production package: **`ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint`**. Both distinct tags `cpu-rust-20261012-4fb0b652` and `cpu-rust-cuda-20261012-4fb0b652` were **successfully uploaded, remote-manifest-inspected and rechecked** in [successful Actions run #38159273066](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38159273066) (completed 2026-10-12 01:43:59 China time). Package access still requires checking/authentication as appropriate; visibility was not changed.
+- Initial upload via dedicated GitHub Actions `qwen38-ghcr-checkpoint.yml`, repository-scoped `GITHUB_TOKEN` with `packages: write`, pinned SSH host key and temporary GitHub Actions SSH secret. The successful run also completed its on-ECS temporary registry-credential cleanup. This is historical evidence only: the original ECS is now gone; do not rerun emergency workflows.
 
 ## 5. Full logs and inventory: durable private-encrypted GitHub release asset
 
@@ -52,36 +52,54 @@ Release: https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/minimal-v
 - GitHub re-downloaded encrypted asset SHA256: `1b871fa4c2822fbf9a163ea8eb7378b7d594845fac6ded04649866ff85b18f1b`
 - Original unencrypted `qwen38-checkpoint-logs.tar.gz` SHA256: `8941363c7612e5f25a8d207f5a1f07af4894e5fb1a8059637e1fe40f248a5bf3`
 - **Decrypt ONLY on a trusted host** with the Mac mini's matching `~/.ssh/id_ed25519` private key and the `age` CLI: `age -d -i ~/.ssh/id_ed25519 -o qwen38-checkpoint-logs.tar.gz qwen38-checkpoint-logs.tar.gz.age`. Verify the tar SHA256 above, then extract. Do **not** commit or reveal the private SSH key or upload plaintext logs to public GitHub.
-- Separate original first v1-build forensic archive and initial CPU inventory remain on the Mac mini at `~/.local/share/qwen38-cloudzy-builder-archives/` and `~/.local/share/qwen38-cpu-image-audits/`.
+- Separate original first v1-build forensic archive and initial CPU inventory were stored on the Mac mini at `~/.local/share/qwen38-cloudzy-builder-archives/` and `~/.local/share/qwen38-cpu-image-audits/`; the v1 raw build logs were **also encrypted and uploaded** as a separate release asset. No assumption about current Mac mini storage is required for the GitHub copies.
+- Further post-split logs were backed up as **`qwen38-checkpoint-after-split.tar.gz.age`**, SHA256 `f4417ae54b429706f52cd85b8905cd76c845e2adfc4bd635870a5833b987edd0`. The release contains **three encrypted forensic assets** in total.
 - All scripts to reproduce the CPU analysis, pruning, image generation, local OCI manifest inspection, runtime metadata validation, cryptographic CUDA dedup and GHCR-safe repacking are committed in this PR under `images/sglang-qwen38/cpu-audit/`; no 10+GB OCI tar files committed into Git.
 
 ## 6. Recovery and next steps
 
-Once both GHCR uploads are **actually remote-verified**:
-1. Record the new remote manifest SHA256 digests and matching config/layer digests below, do not confuse original scratch OCI digests with new split OCI digests.
+Both GHCR uploads were **remote-verified in Actions #38159273066**. On a fresh, approved host:
+1. Use the **verified immutable GHCR manifest digests below** (rather than mutable tags) and, if needed, authenticate to GHCR with minimum `read:packages` access. Distinguish original scratch OCI archive checksums from the new split-layout registry manifest digests.
 2. On a new authorized host, use `docker pull ghcr.io/tommyfive/qwen38-minimal-v2-cpu@sha256:<REMOTE_DIGEST>` with `read:packages` authentication if the checkpoint package is private. Never change checkpoint package visibility without approval.
 3. Run `docker image inspect`, `cpu-audit/verify-repack.py` (adapt reference/labels to split OCI when appropriate), and no-network Python imports for A and B. Preserve exact OCI config and symlinks.
 4. Run matched disposable RTX PRO 6000 SM120 tests: actual NVFP4 Qwen3.8 + DFlash2 main/draft, first request/TTFT, 256/512+ tokens, long context, JIT cold/warm/cache, GPU VRAM, API authenticated 200 vs 401, tokens/sec, Tailnet/Lean/SSD/optional Full OpenWebUI.
 5. Only promote a **new immutable release tag**, never overwrite v1, after full GPU acceptance.
 
-### Published GHCR results (must fill only after remote inspection)
+### Published GHCR results — **verified, not pending**
 
-- Candidate A remote registry manifest digest: **PENDING**
-- Candidate B remote registry manifest digest: **PENDING**
-- Registry visibility: default GHCR package setting; **no changes requested or made**.
+| CPU candidate | GHCR tag | Immutable remote manifest SHA256 | Remote validation |
+|---|---|---|---|
+| A — Rust | `cpu-rust-20261012-4fb0b652` | `sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e` | PASS 2026-10-12 01:31:51 CST |
+| B — Rust + CUDA dedup | `cpu-rust-cuda-20261012-4fb0b652` | `sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7` | PASS 2026-10-12 01:43:53 CST |
+
+Registry: `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint`.
+
+**Independent checks in the same successful GitHub-hosted job:** `skopeo inspect --raw` of each remote tag yielded the above SHA256 manifest digests, followed by authenticated `docker manifest inspect` of *both* tags. [Full immutable run evidence](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38159273066). The two new image manifests differ from the original single-layer OCI tar archives by design: layers were split to comply with registry blob limits; **do not compare them with original tar SHA256**.
+
+Registry visibility was not changed. A full cold pull / Docker runtime inspection on a **new disposable host** is still an open acceptance step, not something evidenced by registry inspection alone.
+
+### Storage checkpoint completion criteria — met
+
+- [x] A and B distinct GHCR tags/manifest digests verified remotely.
+- [x] Original v1 build, CPU audit and later post-split logs encrypted and stored as 3 release assets.
+- [x] A release fallback: 13 of 13 OCI block assets individually SHA256 verified.
+- [x] B release fallback: 12 of 12 OCI block assets individually SHA256 verified.
+- [x] Both release block checksum manifests present, 30 total release assets, [backup workflow success](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38158692348) on 2026-10-12 02:15:08 CST.
+- [ ] Independently cold-reconstruct/re-pull and validate both **runtime** images on a future approved host ([#46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46)).
+
 
 
 ## 7. Emergency persistent GitHub Release fallback (GHCR returned 403)
 
-The first GHCR attempts using a temporary repository-scoped Actions token with `packages: write` authenticated successfully but subsequently received **HTTP 403 Forbidden on blob upload**. No successful remote image manifest should be claimed from that attempt. The reason may be package/repository access linkage; it must be diagnosed before retrying with additional credential scope. Visibility of existing/private GitHub packages was **not changed**.
+The **initial** GHCR attempts using a temporary repository-scoped Actions token with `packages: write` authenticated successfully but received **HTTP 403 Forbidden on blob upload**. Those earlier runs did *not* publish an image. A later source-linked, newly named checkpoint package passed a separate write-capability probe and **both full images were successfully published and remote verified** in [run #38159273066](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38159273066). Do not mistake the initial 403 for the final state; existing production package visibility and tags were not changed.
 
 Because the ECS will be released automatically, the full **GHCR-safe split OCI layouts** are also archived with all OCI blobs, config, manifest, index and `oci-layout` metadata as ordinary TAR files, cut into `900MiB` independent blocks for GitHub Release Assets. This avoids GHCR package write permissions and the 2-GiB GitHub individual release-asset limit.
 
 - A: **13 sequential blocks** `release-rust.part-aa` through `release-rust.part-am`; checksum manifest `release-rust.parts.sha256`.
 - B: **12 sequential blocks** `release-rust-cuda.part-aa` through `release-rust-cuda.part-al`; checksum manifest `release-rust-cuda.parts.sha256`.
-- Each block is uploaded from the ECS by a short-lived GitHub-hosted runner and checked against the **server-provided `sha256:` release-asset digest**. The workflow additionally rejects incomplete part sets.
+- Each block **was uploaded** from the ECS by a short-lived GitHub-hosted runner and checked against the **server-provided `sha256:` release-asset digest**. The workflow also rejected incomplete part sets. [Run #38158692348](https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38158692348) finished **successfully**, with **13/13 A and 12/12 B**, all SHA256-verified.
 - Workflow: `.github/workflows/qwen38-release-backup.yml`; Actions run `38158692348` and later runs if retry is required.
-- These blocks contain **complete OCI layouts**, NOT flattened payload-only tarballs. When all blocks are verified, they are sufficient to restore independently of the ECS. Until all 25 blocks and both manifest files are present, publication is **incomplete**.
+- These blocks contain **complete GHCR-safe OCI layouts**, NOT flattened payload-only tarballs. **All 25 blocks plus both manifest files are present and release-digest-verified.** Reassembling them from GitHub and revalidating the resulting images on a new host is still pending.
 
 ### Restore after the original VPS disappears
 
