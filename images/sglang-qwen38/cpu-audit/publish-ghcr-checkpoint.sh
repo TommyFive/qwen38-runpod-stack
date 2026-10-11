@@ -6,7 +6,7 @@ set -Eeuo pipefail
 umask 077
 ROOT=/opt/qwen38-v2-build
 AUTH="$ROOT/.ghcr-backup-auth.json"
-REPO="ghcr.io/tommyfive/qwen38-minimal-v2-cpu"
+REPO="ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint"
 test -s "$AUTH" || { echo "Missing temporary GHCR authentication"; exit 8; }
 skopeo --version
 for mode in rust rust-cuda; do
