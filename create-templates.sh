@@ -141,7 +141,7 @@ items=json.load(sys.stdin)
 if not isinstance(items,list):
     sys.exit("Unexpected RunPod template list shape")
 ids=[x.get("id") for x in items if isinstance(x,dict) and x.get("name")==name]
-if len(ids)>1 or (ids and (not isinstance(ids[0],str) or not re.fullmatch(r"[A-Za-z0-9_-]{5,64}",ids[0]))):
+if len(ids)>1 or (ids and (not isinstance(ids[0],str) or not re.fullmatch(r"[A-Za-z0-9_.-]{5,100}",ids[0]))):
     sys.exit("Duplicate/invalid existing template IDs; resolve manually: "+name)
 print(ids[0] if ids else "")
 ' "$1") || {
