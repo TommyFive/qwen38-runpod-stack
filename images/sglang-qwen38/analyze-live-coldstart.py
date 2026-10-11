@@ -27,6 +27,9 @@ PHASES=[
 def when(s):
     if not s:return None
     if s.endswith("Z"):s=s[:-1]+"+00:00"
+    # RunPod container log timestamps have nanoseconds; Python 3.9 fromisoformat
+    # accepts at most microsecond precision in some environments.
+    s=re.sub(r"(\.\d{6})\d+(?=[+-]\d{2}:\d{2}$)",r"\1",s)
     try:return dt.datetime.fromisoformat(s)
     except ValueError:return None
 def read_jsonl(path):
