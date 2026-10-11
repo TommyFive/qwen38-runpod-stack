@@ -18,6 +18,9 @@ PACKAGES = ("flashinfer_cubin", "flashinfer_jit_cache")
 
 
 def classify(relative_path):
+    # Documentation and Python source references to SM120 are not kernel assets.
+    if not relative_path.lower().endswith((".cubin", ".fatbin", ".so", ".bin", ".ptx")):
+        return "unknown", []
     arches = sorted(set(m.group(1).lower() for m in ARCH.finditer(relative_path)))
     if not arches:
         return "unknown", arches
