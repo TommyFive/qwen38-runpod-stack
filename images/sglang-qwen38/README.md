@@ -4,12 +4,25 @@
 serving and 20-GiB Lean RAM-first startup, published as a private GHCR
 candidate at immutable
 `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`.
-Release promotion aliases it as `ghcr.io/tommyfive/qwen38-sglang:v0.2.0`
-when the GitHub Release workflow passes; the alias itself is independently
-verified. Repository configuration now integrates the custom image with four
-separate public/tailnet templates without overwriting previous templates.
+The human-readable `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` tag
+**was successfully published** by the release workflow, verifying all 31
+layer digests match the tested candidate. **The package is still private**:
+GitHub Actions package permission is not public pull access. Repository
+configuration integrates this custom image with four separate public/tailnet
+templates without overwriting previous templates.
 Full OpenWebUI on this custom image, standardized throughput and fully uncached
 cold-start remain validation gaps, **not** completed guarantees.
+
+To switch back to the public upstream Docker Hub image, use
+`./create-templates.sh --image official` (creates a distinct template family)
+and `qwen38pi --image official` or `qwen38fast --image official`.
+`QWEN38_IMAGE_VARIANT=official` is an equivalent environment switch.
+The official image defaults to 150 GiB writable disk for both Full and Lean;
+the custom Lean 20-GiB configuration is the one actually live-tested.
+See [main README](../../README.md#choose-your-sglang-image-optimized-custom-or-official-upstream)
+for comparison and selection details. Future optimizations target size-heavy
+FlashInfer cubin/JIT assets **only after** validating the necessary Blackwell
+kernels; no additional shrinkage or cold-start improvement is claimed yet.
 
 See [release notes](../../docs/releases/v0.2.0.md),
 [measured build results](BUILD_RESULTS_2026-10-10.md),
@@ -177,8 +190,8 @@ validate the actual peak footprint rather than assuming 16 GiB is sufficient.
    VRAM usage, TTFT and steady-state tokens/s; reject meaningful regressions.
 5. Revalidate portless Tailscale and mandatory Bearer, Full/Lean OpenWebUI,
    RAM/SSD and optional RAM release against the ongoing integration PRs.
-6. Keep original upstream image as rollback. No template/launcher switch
-   without explicit approval.
+6. Keep original upstream image as rollback using the documented
+   `--image official` selector; do not alter existing deployed templates.
 7. Aim for >=5 comparable starts per cohort before interpreting median/p95.
 
 GPU function and startup times have been measured for minimal-v1, but **no controlled GPU-performance or cold-start speedup** against the upstream reference has been established.
