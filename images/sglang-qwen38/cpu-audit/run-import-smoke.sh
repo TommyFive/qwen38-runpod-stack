@@ -16,7 +16,8 @@ for item in baseline:$V1 modified:$B; do
 for mod in ("torch","flashinfer","sglang","transformers"):
   begin=time.monotonic()
   x=importlib.import_module(mod)
-  print(f"IMPORT {mod}: OK in {time.monotonic()-begin:.2f}s; version={getattr(x, chr(95)*2+chr(118)+chr(101)+chr(114)+chr(115)+chr(105)+chr(111)+chr(110)+chr(95)*2, "unknown")}",flush=True)
+  version=getattr(x,"__version__","unknown")
+  print(f"IMPORT {mod}: OK in {time.monotonic()-begin:.2f}s; version={version}",flush=True)
 print("PYTHON",sys.version.split()[0])' \
     > "$ROOT/smoke-$label.log" 2>&1 || {
       code="$?"
