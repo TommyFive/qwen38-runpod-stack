@@ -25,7 +25,10 @@ umask 077
 # create-templates.sh and export QWEN38_TEMPLATE / QWEN38_TEMPLATE_PI.
 # By default resolve exact v0.2.0 release templates from RunPod at launch.
 # Existing IDs can be used explicitly via QWEN38_TEMPLATE* as rollback.
-# Default to the pinned, GPU-tested Custom image. The official upstream is
+# Default to the PUBLIC, pinned, GPU-tested Custom image. Both image
+# variants work without GHCR registry secrets. Existing private-template
+# credential IDs are tolerated for backward compatibility.
+# The official upstream is
 # selectable with --image official or QWEN38_IMAGE_VARIANT=official.
 IMAGE_VARIANT="${QWEN38_IMAGE_VARIANT:-custom}"
 IMAGE_SWITCH_EXPLICIT=0
@@ -225,10 +228,12 @@ try:
     assert len(hits)==1
     x=hits[0]
     assert x.get("imageName")==image
-    if variant=="custom":
-        assert x.get("containerRegistryAuthId")
-    else:
-        assert variant=="official" and not x.get("containerRegistryAuthId")
+    # Public custom images do NOT require credentials. Older private-registry
+    # templates may still contain the owner's registry-auth ID; they remain
+    # valid but should not be shared with other RunPod accounts.
+    assert variant in ("custom","official")
+    if variant=="official":
+        assert not x.get("containerRegistryAuthId")
     assert x.get("env",{}).get("NETWORK_MODE")==mode
     assert x.get("env",{}).get("SGLANG_API_KEY","").startswith("{{ RUNPOD_SECRET_")
     if mode=="tailnet":
@@ -310,8 +315,8 @@ try:
     d=json.load(sys.stdin)
     assert d.get("id")==sys.argv[1]
     assert d.get("imageName")==sys.argv[2]
-    if sys.argv[3]=="custom": assert d.get("containerRegistryAuthId")
-    else: assert not d.get("containerRegistryAuthId")
+    assert sys.argv[3] in ("custom","official")
+    if sys.argv[3]=="official": assert not d.get("containerRegistryAuthId")
 except (ValueError,TypeError,AssertionError):
     sys.exit("Explicit template ID conflicts with selected image: unset QWEN38_TEMPLATE* or select the matching template")
 ' "$TEMPLATE_ID" "$EXPECTED_IMAGE" "$IMAGE_VARIANT" || exit 64
