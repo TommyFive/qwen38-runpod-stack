@@ -1,6 +1,6 @@
 # SGLang minimal-v2 — measured research and gated experiment plan (2026-10-11)
 
-> **Research branch, NOT a new image.** No v2 container has been built, published, benchmarked or deployed. The existing public v1 image and all RunPod templates remain unchanged. This branch adds a read-only profiler plus offline tests only.
+> **Historical research baseline (11 October); subsequently extended through 12 October.** After this research was written, two separate *CPU-only* minimal-v2 OCI candidates were built and published to a dedicated **nonproduction GHCR checkpoint package**. Both packages and all 25 backup parts were remotely verified. See [final emergency checkpoint](MINIMAL_V2_CHECKPOINT_2026-10-12.md), [recovery runbook](MINIMAL_V2_RECOVERY.md), and [CPU/GPU test issue #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46). **No GPU validation, runtime rollout or RunPod template changes** are claimed. The numbered research plan below is historical context, not the present status.
 
 ## Immutable reference
 
