@@ -20,8 +20,10 @@ To switch back to the public upstream Docker Hub image, use
 `./create-templates.sh --image official` (creates a distinct template family)
 and `qwen38pi --image official` or `qwen38fast --image official`.
 `QWEN38_IMAGE_VARIANT=official` is an equivalent environment switch.
-The official image defaults to 150 GiB writable disk for both Full and Lean;
-the custom Lean 20-GiB configuration is the one actually live-tested.
+For RAM-first model downloads both official and custom Full/Lean templates now
+default to 20 GiB; SSD-mode templates default to 100 GiB (50 GiB explicit
+minimum). Only custom Lean was live-tested with 20 GiB; Full and official
+20-GiB paths still require live validation.
 See [main README](../../README.md#choose-your-sglang-image-optimized-custom-or-official-upstream)
 for comparison and selection details. Future optimizations target size-heavy
 FlashInfer cubin/JIT assets **only after** validating the necessary Blackwell
