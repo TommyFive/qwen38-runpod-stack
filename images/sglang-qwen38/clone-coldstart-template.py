@@ -94,9 +94,16 @@ def main():
     ]
     response = subprocess.run(command, capture_output=True, text=True, timeout=45)
     if response.returncode != 0:
-        # stderr can contain env values; do not print it.
-        raise RuntimeError(f"RunPod template create failed with code {response.returncode};"
-                           " see local logs privately")
+        # stderr can contain env values. Emit only an error line when it has
+        # no payload/secret markers, and redact any long high-entropy spans.
+        import re
+        raw = (response.stderr or response.stdout).strip()
+        first = raw.splitlines()[0][:300] if raw else "No diagnostic provided"
+        if any(k in first.lower() for k in ("bootstrap_b64", "hf_token", "authkey", "api_key", "--env", "secret_", "storage_helper")):
+            first = "Redacted because CLI diagnostics referenced template environment"
+        first = re.sub(r"[a-zA-Z0-9/+_=-]{32,}", "[REDACTED]", first)
+        print("RUNPOD_CLI_ERROR:", first, file=sys.stderr)
+        raise RuntimeError(f"RunPod template create failed with code {response.returncode}")
     result = json.loads(response.stdout)
     template_id = result.get("id")
     if not isinstance(template_id, str) or not template_id:
