@@ -34,7 +34,8 @@ elif args[:2] == ["template", "create"]:
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
-    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLM_API_KEY }}"
+    secret = os.environ.get("QWEN38_API_SECRET_NAME", "LLM_API_KEY")
+    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_" + secret + " }}"
     assert env["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
     assert ("TS_AUTHKEY" in env) == (env["NETWORK_MODE"] == "tailnet")
     if env["NETWORK_MODE"] == "tailnet":
@@ -44,7 +45,8 @@ elif args[:2] == ["template", "create"]:
         assert public and "8000/http" in args[args.index("--ports") + 1]
     with open(os.environ["TEST_EVENTS"], "a") as f:
         f.write(json.dumps({"kind":"template","name":name,"mode":env["NETWORK_MODE"],
-                            "has_ports":public,"serve_webui":env["SERVE_WEBUI"]})+"\n")
+                            "has_ports":public,"serve_webui":env["SERVE_WEBUI"],
+                            "api_secret_ref":env["SGLANG_API_KEY"]})+"\n")
     print(json.dumps({"id":"template-"+name}))
 else:
     raise SystemExit(f"Unexpected runpodctl arguments: {args[:3]}")
@@ -153,3 +155,27 @@ assert public["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLM_API_KEY }}"
 assert public["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 print("test-launch-network: ok")
 PY
+
+echo "=== legacy LLAMA_API_KEY override remains supported in Qwen38 only ==="
+QWEN38_API_SECRET_NAME=LLAMA_API_KEY QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
+  bash "$ROOT/create-templates.sh" > "$TMP/legacy-templates.out"
+QWEN38_API_SECRET_NAME=LLAMA_API_KEY \
+  bash "$ROOT/bin/qwen38fast" --pi --network runpod > "$TMP/legacy-pod.out"
+python3 - "$TEST_EVENTS" <<'PY_LEGACY'
+import json,sys
+events=[json.loads(line) for line in open(sys.argv[1])]
+legacy_templates=[e for e in events if e["kind"]=="template"][4:]
+assert len(legacy_templates)==4, legacy_templates
+assert all(e["api_secret_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}" for e in legacy_templates)
+assert events[-1]["kind"]=="pod"
+assert events[-1]["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+print("legacy override test: ok")
+PY_LEGACY
+
+echo "=== malformed secret selector rejected before any RunPod call ==="
+if QWEN38_API_SECRET_NAME='BAD }}' QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
+     bash "$ROOT/create-templates.sh" > "$TMP/bad-api-name.out" 2>&1; then
+    echo 'FAIL: unsafe API Secret name was accepted' >&2
+    exit 1
+fi
+grep -Fq 'QWEN38_API_SECRET_NAME must be a nonempty RunPod secret identifier' "$TMP/bad-api-name.out"
