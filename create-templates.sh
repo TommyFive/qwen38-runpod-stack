@@ -61,21 +61,29 @@ case "$IMAGE_VARIANT" in
   *) echo "Image must be custom or official" >&2; exit 64 ;;
 esac
 MODEL="${QWEN38_MODEL:-sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4}"
-FULL_DISK_GB="${QWEN38_FULL_DISK_GB:-150}"  # Full OpenWebUI not yet GPU validated at reduced disk
-# Only the custom Lean image has completed a 20-GiB live test.
-LEAN_DISK_DEFAULT=20
-[[ "$IMAGE_VARIANT" != official ]] || LEAN_DISK_DEFAULT=150
-LEAN_DISK_GB="${QWEN38_LEAN_DISK_GB:-$LEAN_DISK_DEFAULT}"
-if [[ "$MODEL_STORAGE" == ssd && "$LEAN_DISK_GB" == 20 ]]; then
-  LEAN_DISK_GB=150  # SSD checkpoint fallback must not silently use RAM-mode disk limit
+# RAM-first models and the DFlash2 draft download to /dev/shm, not SSD.
+# User-requested default: ALL four templates (Full/Lean × Public/Tailnet) 20 GiB.
+# Only Custom Lean has been live-tested at 20 GiB so far; Full and official
+# at this smaller capacity still need validation.
+DEFAULT_DISK_GB=20
+if [[ "$MODEL_STORAGE" == ssd ]]; then
+  # Main/draft weights (~24 GiB) and caches need significantly more disk.
+  # Switching to SSD at template creation automatically chooses 150 GiB.
+  DEFAULT_DISK_GB=150
 fi
+FULL_DISK_GB="${QWEN38_FULL_DISK_GB:-$DEFAULT_DISK_GB}"
+LEAN_DISK_GB="${QWEN38_LEAN_DISK_GB:-$DEFAULT_DISK_GB}"
 for disk in "$FULL_DISK_GB" "$LEAN_DISK_GB"; do
   [[ "$disk" =~ ^[0-9]+$ ]] && ((10#$disk >= 20 && 10#$disk <= 500)) || {
     echo "Container disk must be between 20 and 500 GiB" >&2; exit 64;
   }
+  if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$disk < 50)); then
+    echo "MODEL_STORAGE=ssd requires at least 50 GiB for BOTH Full and Lean; set QWEN38_FULL_DISK_GB and QWEN38_LEAN_DISK_GB (150 GiB recommended)." >&2
+    exit 64
+  fi
 done
-if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$LEAN_DISK_GB < 50)); then
-  echo "SSD checkpoint mode needs at least 50 GiB container disk" >&2; exit 64
+if [[ "$MODEL_STORAGE" == ssd ]]; then
+  echo "SSD model download enabled: $FULL_DISK_GB GiB Full / $LEAN_DISK_GB GiB Lean (20 GiB is RAM-first only)." >&2
 fi
 
 # The released Custom image is intended for PUBLIC GHCR access.
@@ -178,6 +186,7 @@ echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenW
 echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
 echo "Image variant: $IMAGE_VARIANT; image: $IMAGE; disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
-echo "Custom GHCR is publicly pullable: no private registry credentials attached to new templates."
+echo "No private GHCR registry credentials attached to new templates; public images pull anonymously."
+echo "NOTE: 20 GiB defaults require MODEL_STORAGE=ram; SSD downloads need >=50 GiB, recommended 150 GiB."
 echo "Switch source: ./create-templates.sh --image official|custom (creates distinct templates)."
 echo "Recreate all four templates after each bootstrap/helper change."
