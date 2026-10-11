@@ -45,10 +45,16 @@ else
   echo "   skipped (not macOS). Start the proxy by hand: qwen38-proxy &"
 fi
 
-echo "== 3) create the RunPod templates"
-echo "   ./create-templates.sh   then export the ids:"
-echo "     export QWEN38_TEMPLATE=<id>  QWEN38_TEMPLATE_PI=<id>"
-echo "     export QWEN38_TEMPLATE_TAILNET=<id>  QWEN38_TEMPLATE_TAILNET_PI=<id>"
+echo "== 3) choose an SGLang Docker image and create the RunPod templates"
+echo "   Custom GPU-tested minimal-v1 (default, private GHCR):"
+echo "     ./create-templates.sh --image custom"
+echo "   Official upstream public SGLang image:"
+echo "     ./create-templates.sh --image official"
+echo "   Then launch with the same image selector:"
+echo "     qwen38pi --image custom       # or: qwen38pi --image official"
+echo "   QWEN38_IMAGE_VARIANT=official is an alternative to both --image flags."
+echo "   Distinct template names are auto-discovered; no IDs need exporting."
+echo "   Explicit QWEN38_TEMPLATE* IDs remain for advanced manual/rollback use."
 
 echo "== 4) wire up pi"
 echo "   copy the block from pi/models.runpod.json into ~/.pi/agent/models.json."
