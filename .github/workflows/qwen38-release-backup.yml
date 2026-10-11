@@ -1,0 +1,89 @@
+name: Emergency minimal-v2 OCI release-asset backup
+on:
+  push:
+    branches: [research/minimal-v2-kernel-audit]
+    paths: [.github/workflows/qwen38-release-backup.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  backup-oci:
+    if: github.repository == 'TommyFive/qwen38-runpod-stack'
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: TommyFive/qwen38-runpod-stack
+      RELEASE: minimal-v2-cpu-checkpoint-20261012
+      ECS: root@8.211.52.85
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure temporary pinned SSH
+        env:
+          SSH_KEY: ${{ secrets.GHCR_BACKUP_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.GHCR_BACKUP_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=yes "$ECS" 'hostname; date -u +%FT%TZ'
+      - name: Back up complete OCI layouts as individually verified release assets
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/qwen38-backup"
+          for mode in rust rust-cuda; do
+            echo "::group::Waiting for prepared complete OCI tar parts: $mode"
+            ssh -T -o BatchMode=yes -o ServerAliveInterval=30 -o StrictHostKeyChecking=yes "$ECS" \
+              "for i in \$(seq 1 360); do test -s /opt/qwen38-v2-build/release-$mode.parts.sha256 && exit 0; sleep 10; done; exit 124"
+            ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes "$ECS" \
+              "cd /opt/qwen38-v2-build && sha256sum -c release-$mode.parts.sha256"
+            scp -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              "$ECS:/opt/qwen38-v2-build/release-$mode.parts.sha256" "$RUNNER_TEMP/qwen38-backup/"
+            echo "::endgroup::"
+
+            MANIFEST="$RUNNER_TEMP/qwen38-backup/release-$mode.parts.sha256"
+            while read -r EXPECTED NAME; do
+              case "$NAME" in
+                release-"$mode".part-*) ;;
+                *) echo "Unsafe file name: $NAME" >&2; exit 1 ;;
+              esac
+              ASSET="$RUNNER_TEMP/qwen38-backup/$NAME"
+              echo "::group::Backup $NAME ($(date -u +%FT%TZ))"
+              scp -o BatchMode=yes -o StrictHostKeyChecking=yes \
+                "$ECS:/opt/qwen38-v2-build/$NAME" "$ASSET"
+              printf '%s  %s\n' "$EXPECTED" "$ASSET" | sha256sum --check --status
+
+              REMOTE_DIGEST="$(gh api "repos/$REPO/releases/tags/$RELEASE" \
+                | jq -r --arg n "$NAME" '.assets[] | select(.name == $n) | .digest // empty')"
+              if [[ -z "$REMOTE_DIGEST" ]]; then
+                gh release upload "$RELEASE" "$ASSET" --repo "$REPO"
+                REMOTE_DIGEST="$(gh api "repos/$REPO/releases/tags/$RELEASE" \
+                  | jq -r --arg n "$NAME" '.assets[] | select(.name == $n) | .digest // empty')"
+              fi
+
+              if [[ "$REMOTE_DIGEST" == "sha256:$EXPECTED" ]]; then
+                echo "REMOTE VERIFIED $NAME SHA256:$EXPECTED"
+              else
+                echo "GitHub API release digest unavailable/mismatched: $REMOTE_DIGEST; verifying by downloading"
+                mkdir -p "$RUNNER_TEMP/qwen38-remote-verify"
+                gh release download "$RELEASE" --repo "$REPO" --pattern "$NAME" \
+                  --dir "$RUNNER_TEMP/qwen38-remote-verify"
+                printf '%s  %s\n' "$EXPECTED" "$RUNNER_TEMP/qwen38-remote-verify/$NAME" | sha256sum --check --status
+                rm -f "$RUNNER_TEMP/qwen38-remote-verify/$NAME"
+                echo "REMOTE DOWNLOAD SHA256 VERIFIED $NAME"
+              fi
+              rm -f "$ASSET"
+              echo "::endgroup::"
+            done < "$MANIFEST"
+            gh release upload "$RELEASE" "$MANIFEST" --repo "$REPO"
+            echo "=== COMPLETE OCI BACKUP $mode ==="
+          done
+      - name: Final GitHub release artifact inventory
+        run: |
+          gh api "repos/$REPO/releases/tags/$RELEASE" --jq '.assets[] | [.name, (.size|tostring), (.digest // "none")] | @tsv'
+          echo 'Both complete OCI layouts were backed up via 900MiB blocks and each block SHA256 verified.'
