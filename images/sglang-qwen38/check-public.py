@@ -46,10 +46,10 @@ def verify_anonymous():
         {"Authorization": "Bearer " + token, "Accept": MANIFEST_TYPE}
     )
     actual = "sha256:" + hashlib.sha256(data).hexdigest()
-    if actual != PINN:
+    if actual != PINNED:
         raise RuntimeError("Public registry returned different manifest than the tested digest")
     declared = headers.get("Docker-Content-Digest")
-    if declared and declared != PINN:
+    if declared and declared != PINNED:
         raise RuntimeError("Public registry declared unexpected manifest digest")
     manifest = json.loads(data)
     layers = manifest.get("layers") or []
@@ -70,7 +70,7 @@ def main():
               type(exc).__name__ + ")", file=sys.stderr)
         return 1
     if not args.quiet:
-        print(f"PUBLIC_IMAGE_VERIFIED: {REPOSITORY}@{PINN} ({count} layers); no login required.")
+        print(f"PUBLIC_IMAGE_VERIFIED: {REPOSITORY}@{PINNED} ({count} layers); no login required.")
     return 0
 
 
