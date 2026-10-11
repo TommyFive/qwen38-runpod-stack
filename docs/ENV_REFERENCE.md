@@ -34,7 +34,7 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `TS_AUTHKEY` | unset | Used by the **opt-in local-credential** mode; default RunPod-secret mode references secret `TS_AUTHKEY` instead |
 | `QWEN38_CREDENTIAL_MODE` | `runpod_secrets` | `runpod_secrets` (default) or `local`; legacy local mode exposes credentials to the RunPod CLI ENV call |
 | `QWEN38_HF_SECRET_NAME` | `HF_TOKEN` | RunPod HF Secret name; set explicitly to empty to omit the reference |
-| `QWEN38_API_SECRET_NAME` | `LLM_API_KEY` | Name of the existing RunPod Secret used for SGLang; `LLAMA_API_KEY` is an explicit legacy override until migration is completed. The CLI never reads the Secret's value. |
+| `QWEN38_API_SECRET_NAME` | Auto-selected release template's existing Secret reference name (when not explicitly set); otherwise `LLM_API_KEY` | The v0.2.0 launcher derives only the selected template's `SGLANG_API_KEY` **reference name** (for example `LLAMA_API_KEY`), never its value. Explicitly setting `QWEN38_API_SECRET_NAME` overrides that. When using explicitly selected older template IDs, the normal default remains `LLM_API_KEY`. |
 | `QWEN38_SGLANG_CLIENT_KEY_FILE` | unset | Optional local matching SGLang API key file for launcher's positive readiness/inference probes |
 | `QWEN38_WEBUI_ADMIN_EMAIL` | `admin@qwen38.example.com` | Pre-provisioned Full WebUI admin email |
 | `QWEN38_WEBUI_ADMIN_PASSWORD` | generated protected file | Full WebUI admin password override; must be at least 16 characters |
