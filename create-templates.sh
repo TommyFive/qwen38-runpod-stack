@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create separate public (legacy) and tailnet-only RunPod templates.
+# Create separate public and tailnet-only RunPod templates for chosen SGLang image.
 # Never silently replace private templates with public port mappings.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -8,6 +8,25 @@ TS_RUNTIME="$HERE/scripts/tailscale-runtime.sh"
 STORAGE_HELPER="$HERE/scripts/model-storage.py"
 BENCH_SCRIPT="$HERE/scripts/benchmark_sglang.py"
 PORTS_HELPER="${QWEN38_PORTS_HELPER:-$HERE/scripts/private-template-ports.py}"
+# Image selection applies only to newly created templates. No Pod is launched.
+# Use --image official (or QWEN38_IMAGE_VARIANT=official) to retain upstream.
+IMAGE_VARIANT="${QWEN38_IMAGE_VARIANT:-custom}"
+IMAGE_SWITCH_EXPLICIT=0
+[[ -z "${QWEN38_IMAGE_VARIANT+x}" ]] || IMAGE_SWITCH_EXPLICIT=1
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --image)
+      [[ $# -ge 2 ]] || { echo "Usage: ./create-templates.sh --image custom|official" >&2; exit 64; }
+      IMAGE_VARIANT="$2"; IMAGE_SWITCH_EXPLICIT=1; shift 2 ;;
+    --help|-h)
+      echo "Usage: ./create-templates.sh [--image custom|official]"
+      echo "Default: custom (immutable, GPU-tested GHCR minimal-v1)."
+      echo "official: upstream lmsysorg/sglang:dev-qwen38-27b-dflash2."
+      echo "Also supports QWEN38_IMAGE_VARIANT and legacy QWEN38_IMAGE_REF."
+      exit 0 ;;
+    *) echo "Unknown option: $1" >&2; exit 64 ;;
+  esac
+done
 MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
 HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME-HF_TOKEN}"
 # Engine-neutral RunPod Secret name. Reuse the old Secret during migration with
@@ -22,13 +41,31 @@ fi
 MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
 MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
 case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
-# v0.2.0 / minimal-v1 GPU-tested image; original upstream is opt-in rollback.
-# The immutable digest is documented in images/sglang-qwen38/release.json.
-# Deploy the EXACT GPU-tested manifest; the human v0.2.0 tag is a release alias.
-IMAGE="${QWEN38_IMAGE_REF:-ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd}"
+# Both choices preserve the Qwen38 authentication, model and network configuration.
+CUSTOM_IMAGE="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+OFFICIAL_IMAGE="lmsysorg/sglang:dev-qwen38-27b-dflash2"
+if [[ -n "${QWEN38_IMAGE_REF:-}" ]]; then
+  case "$QWEN38_IMAGE_REF" in
+    "$CUSTOM_IMAGE") ref_variant=custom ;;
+    "$OFFICIAL_IMAGE") ref_variant=official ;;
+    *) echo "QWEN38_IMAGE_REF must be the pinned custom digest or the approved upstream image" >&2; exit 64 ;;
+  esac
+  if [[ "$IMAGE_SWITCH_EXPLICIT" == 1 && "$IMAGE_VARIANT" != "$ref_variant" ]]; then
+    echo "Conflicting image selectors: --image/QWEN38_IMAGE_VARIANT vs QWEN38_IMAGE_REF" >&2; exit 64
+  fi
+  IMAGE_VARIANT="$ref_variant"
+fi
+case "$IMAGE_VARIANT" in
+  custom) IMAGE="$CUSTOM_IMAGE"; TEMPLATE_PREFIX="qwen38-v0.2.0" ;;
+  official) IMAGE="$OFFICIAL_IMAGE"; TEMPLATE_PREFIX="qwen38-official" ;;
+  *) echo "Image must be custom or official" >&2; exit 64 ;;
+esac
 MODEL="${QWEN38_MODEL:-sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4}"
 FULL_DISK_GB="${QWEN38_FULL_DISK_GB:-150}"  # Full OpenWebUI not yet GPU validated at reduced disk
-LEAN_DISK_GB="${QWEN38_LEAN_DISK_GB:-20}"   # RAM-first lean validated at 20 GiB
+# Only the custom Lean image has completed a 20-GiB live test.
+LEAN_DISK_DEFAULT=20
+[[ "$IMAGE_VARIANT" != official ]] || LEAN_DISK_DEFAULT=150
+LEAN_DISK_GB="${QWEN38_LEAN_DISK_GB:-$LEAN_DISK_DEFAULT}"
 if [[ "$MODEL_STORAGE" == ssd && "$LEAN_DISK_GB" == 20 ]]; then
   LEAN_DISK_GB=150  # SSD checkpoint fallback must not silently use RAM-mode disk limit
 fi
@@ -42,7 +79,7 @@ if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$LEAN_DISK_GB < 50)); then
 fi
 
 REGISTRY_AUTH_ID=""
-if [[ "$IMAGE" == "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd" ]]; then
+if [[ "$IMAGE_VARIANT" == custom ]]; then
   # Never expose GHCR credentials. Only the existing registry-auth ID is read.
   REGISTRY_AUTH_ID=$(runpodctl registry list -o json | python3 -c 'import sys,json
 found=[x.get("id") for x in json.load(sys.stdin) if x.get("name")=="ghcr.io"]
@@ -51,8 +88,6 @@ if len(found)!=1 or not isinstance(found[0],str) or not found[0]:
 print(found[0])') || {
     echo "GHCR registry credential unavailable; refusing private image template" >&2; exit 1;
   }
-elif [[ "$IMAGE" != "lmsysorg/sglang:dev-qwen38-27b-dflash2" ]]; then
-  echo "Unapproved image ref override (only pinned v0.2.0 or original upstream allowed)" >&2; exit 64
 fi
 
 mk() { # name ports labels serve_webui network_mode disk_gib
@@ -120,20 +155,20 @@ if d.get("id")!=sys.argv[1] or d.get("env",{}).get("COLDSTART_TRACE")!="1" or d.
   printf '%s\n' "$template_id"
 }
 
-echo "Full v0.2.0 template (SGLang + OpenWebUI, PUBLIC RunPod ports):"
-id=$(mk qwen38-v0.2.0-full-public \
+echo "Full $IMAGE_VARIANT template (SGLang + OpenWebUI, PUBLIC RunPod ports):"
+id=$(mk ${TEMPLATE_PREFIX}-full-public \
   '8000/http,8080/http,22/tcp' '8000=SGLang API,8080=OpenWebUI,22=SSH' 1 runpod "$FULL_DISK_GB")
 echo "  QWEN38_TEMPLATE=$id"
-echo "Lean v0.2.0 template (SGLang API, PUBLIC RunPod ports):"
-id=$(mk qwen38-v0.2.0-lean-public \
+echo "Lean $IMAGE_VARIANT template (SGLang API, PUBLIC RunPod ports):"
+id=$(mk ${TEMPLATE_PREFIX}-lean-public \
   '8000/http,22/tcp' '8000=SGLang API,22=SSH' 0 runpod "$LEAN_DISK_GB")
 echo "  QWEN38_TEMPLATE_PI=$id"
 echo "Full tailnet-only template (NO published RunPod ports):"
-id=$(mk qwen38-v0.2.0-full-tailnet \
+id=$(mk ${TEMPLATE_PREFIX}-full-tailnet \
   '' '' 1 tailnet "$FULL_DISK_GB")
 echo "  QWEN38_TEMPLATE_TAILNET=$id"
 echo "Lean tailnet-only template (NO published RunPod ports):"
-id=$(mk qwen38-v0.2.0-lean-tailnet \
+id=$(mk ${TEMPLATE_PREFIX}-lean-tailnet \
   '' '' 0 tailnet "$LEAN_DISK_GB")
 echo "  QWEN38_TEMPLATE_TAILNET_PI=$id"
 echo "For tailnet-only templates, verify 'runpodctl template get <id>' has NO public ports."
@@ -142,6 +177,6 @@ echo "All templates reference RunPod Secret HF_TOKEN by default (override QWEN38
 echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenWebUI,"
 echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
-echo "Pinned image: $IMAGE. Disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
-echo "Original upstream rollback remains opt-in via QWEN38_IMAGE_REF=lmsysorg/sglang:dev-qwen38-27b-dflash2."
+echo "Image variant: $IMAGE_VARIANT; image: $IMAGE; disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
+echo "Switch source: ./create-templates.sh --image official|custom (creates distinct templates)."
 echo "Recreate all four templates after each bootstrap/helper change."
