@@ -46,8 +46,8 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 There are **two independently named template families**:
 
 - `custom` (default): `qwen38-v0.2.0-{full|lean}-{public|tailnet}`.
-  Uses the **private** custom minimal-v1 GHCR image; requires configured
-  RunPod `ghcr.io` registry read access.
+  Uses the **public** custom minimal-v1 GHCR image once the package owner has
+  changed GitHub package visibility to Public; **no private registry auth** needed.
 - `official`: `qwen38-official-{full|lean}-{public|tailnet}`.
   Uses the public upstream `lmsysorg/sglang:dev-qwen38-27b-dflash2` image,
   **without a private GHCR registry credential**.
@@ -83,15 +83,21 @@ Custom is pinned to the immutable GPU-tested image:
 The human-readable alias `ghcr.io/tommyfive/qwen38-sglang:v0.2.0`
 was successfully published after package **Manage Actions access** was
 granted to the repository; all 31 compressed layers matched the tested image.
-**The GHCR package is still private**: publishing the tag and granting
-GitHub Actions access do not allow anonymous pulls.
+**Package visibility must additionally be changed to Public** by the owner
+under Package settings → Danger Zone → Change visibility. A published tag and
+GitHub Actions write access do not by themselves permit anonymous pulls.
+Before creating public Custom templates, the setup executes the exact-digest
+anonymous verification tool `images/sglang-qwen38/check-public.py`. It fails
+closed if the package is not yet publicly downloadable. Public image access
+**does not** expose or grant SGLang, HF or Tailscale runtime secrets.
 The custom image is 12.907 GB compressed versus 14.676 GB for upstream
 (about 12.1% smaller). This does **not** establish a proportional cold-start
 performance gain. Further FlashInfer kernel and cache optimization is being
 evaluated, not yet shipped.
 
-The launcher validates matching image, registry auth, selected network and
-template name before creating a Pod. An **explicit** `QWEN38_TEMPLATE*` ID
+The launcher validates the exact image digest, selected network and template
+name before creating a Pod. Newly created Custom templates **omit** private
+GHCR registry-auth IDs; older owner templates with such IDs continue to work. An **explicit** `QWEN38_TEMPLATE*` ID
 remains a manual override; when combining one with an explicit image selector,
 the chosen image must match the template exactly or launch fails safely.
 Unset manual ID overrides for normal automatic `--image` switching.

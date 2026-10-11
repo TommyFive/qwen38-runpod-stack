@@ -5,6 +5,13 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/home"
+export QWEN38_TEST_REAL_PYTHON="$(command -v python3)"
+cat > "$TMP/bin/python3" <<'PY_WRAPPER'
+#!/usr/bin/env bash
+if [[ "${1:-}" == */images/sglang-qwen38/check-public.py ]]; then exit 0; fi
+exec "$QWEN38_TEST_REAL_PYTHON" "$@"
+PY_WRAPPER
+chmod +x "$TMP/bin/python3"
 export MOCK_OUTPUT_FILE="$TMP/env.jsonl"
 cat > "$TMP/bin/runpodctl" <<'MOCK'
 #!/usr/bin/env bash

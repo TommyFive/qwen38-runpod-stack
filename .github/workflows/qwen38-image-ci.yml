@@ -14,6 +14,25 @@ permissions:
   contents: read
 
 jobs:
+  image-metadata-audit:
+    # GitHub Actions has a dedicated read permission for the private GHCR
+    # package, independently of its future public visibility.
+    # This reads one manifest + its tiny OCI config, never the image layers.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Review published container metadata for build-time secrets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          python3 images/sglang-qwen38/audit-image-config.py
   image-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -45,6 +64,8 @@ jobs:
           bash -n images/sglang-qwen38/cloudzy/monitor-from-mac.sh
           bash -n images/sglang-qwen38/cloudzy/run-build.sh
           python3 -m py_compile images/sglang-qwen38/manifest-size.py
+          python3 -m py_compile images/sglang-qwen38/check-public.py
+          python3 -m py_compile images/sglang-qwen38/audit-image-config.py
           python3 -m py_compile images/sglang-qwen38/inspect-ghcr-size.py
           python3 -m py_compile images/sglang-qwen38/inspect-site-packages.py
           python3 -m py_compile images/sglang-qwen38/cloudzy/observer.py

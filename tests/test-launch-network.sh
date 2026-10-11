@@ -6,7 +6,18 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/home"
 export HOME="$TMP/home"
+# Offline fixture: simulate a verified PUBLIC image without contacting GHCR.
+# Production script always executes the real anonymous-manifest verifier.
+export QWEN38_TEST_REAL_PYTHON="$(command -v python3)"
 export PATH="$TMP/bin:$PATH"
+cat > "$TMP/bin/python3" <<'PY_WRAPPER'
+#!/usr/bin/env bash
+if [[ "${1:-}" == */images/sglang-qwen38/check-public.py ]]; then
+    exit 0
+fi
+exec "$QWEN38_TEST_REAL_PYTHON" "$@"
+PY_WRAPPER
+chmod +x "$TMP/bin/python3"
 export TEST_EVENTS="$TMP/events.jsonl"
 
 cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
@@ -31,7 +42,7 @@ elif args[:2] == ["template", "list"]:
     for flavor,prefix,image,auth in (
         ("custom","qwen38-v0.2.0",
          "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
-         "test-ghcr-registry"),
+         None),
         ("official","qwen38-official","lmsysorg/sglang:dev-qwen38-27b-dflash2",None),
     ):
         for profile in ("lean-public","full-public","lean-tailnet","full-tailnet"):
@@ -64,7 +75,7 @@ elif args[:2] == ["template", "create"]:
         assert int(args[args.index("--container-disk-in-gb")+1])==150
     else:
         assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
-        assert args[args.index("--registry-auth-id")+1]=="test-ghcr-registry"
+        assert "--registry-auth-id" not in args, "PUBLIC custom must not attach private GHCR credentials"
         assert int(args[args.index("--container-disk-in-gb")+1])==(20 if "-lean-" in name else 150)
     assert "--env" not in args, "large template env must be UPDATEd after creation"
     if "tailnet" in name:

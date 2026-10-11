@@ -78,15 +78,14 @@ if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$LEAN_DISK_GB < 50)); then
   echo "SSD checkpoint mode needs at least 50 GiB container disk" >&2; exit 64
 fi
 
-REGISTRY_AUTH_ID=""
+# The released Custom image is intended for PUBLIC GHCR access.
+# New templates never embed an account-specific registry-auth ID. Existing
+# older private-registry templates are intentionally not touched here.
+# If GHCR is still private, stop before creating unusable test templates.
 if [[ "$IMAGE_VARIANT" == custom ]]; then
-  # Never expose GHCR credentials. Only the existing registry-auth ID is read.
-  REGISTRY_AUTH_ID=$(runpodctl registry list -o json | python3 -c 'import sys,json
-found=[x.get("id") for x in json.load(sys.stdin) if x.get("name")=="ghcr.io"]
-if len(found)!=1 or not isinstance(found[0],str) or not found[0]:
-    sys.exit("Expected one private ghcr.io registry credential")
-print(found[0])') || {
-    echo "GHCR registry credential unavailable; refusing private image template" >&2; exit 1;
+  python3 "$HERE/images/sglang-qwen38/check-public.py" --quiet || {
+    echo "GHCR custom image is not yet anonymously pullable. Change Package settings -> Danger Zone -> Change visibility -> Public, then retry." >&2
+    exit 1
   }
 fi
 
@@ -118,7 +117,8 @@ mk() { # name ports labels serve_webui network_mode disk_gib
   # Provision no-secret skeleton then UPDATE only that new template.
   # The bootstrap command fails closed until BOOTSTRAP_B64 is installed.
   local args=(template create --name "$1" --image "$IMAGE" --container-disk-in-gb "$6")
-  [[ -z "$REGISTRY_AUTH_ID" ]] || args+=(--registry-auth-id "$REGISTRY_AUTH_ID")
+  # Both official upstream and public Custom image pull anonymously.
+  # No per-account ghcr.io registry credentials in newly shared templates.
   if [[ "$5" == runpod ]]; then
     args+=(--ports "$2" --port-labels "$3")
   fi
@@ -178,5 +178,6 @@ echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenW
 echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
 echo "Image variant: $IMAGE_VARIANT; image: $IMAGE; disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
+echo "Custom GHCR is publicly pullable: no private registry credentials attached to new templates."
 echo "Switch source: ./create-templates.sh --image official|custom (creates distinct templates)."
 echo "Recreate all four templates after each bootstrap/helper change."
