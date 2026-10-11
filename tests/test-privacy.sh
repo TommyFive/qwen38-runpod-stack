@@ -104,7 +104,7 @@ elif args[:2] == ["template", "create"]:
     assert env["RUNTIME_LOG_DIR"] == "/dev/shm/qwen38-runtime"
     assert env["ENABLE_SSH"] == "0"
     assert env["BOOTSTRAP_B64"] and env["MODEL_ID"]
-    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLM_API_KEY }}"
     if env["NETWORK_MODE"] == "tailnet":
         assert env["TS_AUTHKEY"] == "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
     else:
@@ -156,6 +156,11 @@ if SGLANG_API_KEY='' bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/
     echo "unauthenticated API was accepted" >&2; exit 1
 fi
 grep -Fq 'SGLANG_API_KEY required' "$TMP/no-api"
+if SGLANG_API_KEY='{{ RUNPOD_SECRET_LLM_API_KEY }}' \
+    bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/unresolved-api" 2>&1; then
+    echo "unresolved RunPod API Secret reference was accepted" >&2; exit 1
+fi
+grep -Fq 'unresolved secret reference' "$TMP/unresolved-api"
 set +e
 NETWORK_MODE=tailnet bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/no-ts" 2>&1
 tailnet_rc=$?
