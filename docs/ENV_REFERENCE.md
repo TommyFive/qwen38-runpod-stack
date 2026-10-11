@@ -53,7 +53,7 @@ A GitHub Release alone does not publish the GHCR image alias; verify the
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `QWEN38_IMAGE_REF` | `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` | Template creation image, with explicit original-upstream rollback |
+| `QWEN38_IMAGE_REF` | `ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd` | Immutable tested runtime reference; explicit upstream rollback remains supported |
 | `QWEN38_FULL_DISK_GB` | `150` | Full/OpenWebUI writable SSD (conservative pending new-image Full test) |
 | `QWEN38_LEAN_DISK_GB` | `20` | Lean writable SSD in RAM-first mode; auto-raises to 150 when selecting SSD model storage with the default |
 | `QWEN38_MODEL_STORAGE` | `ram` | Checkpoint storage mode; RAM-first lean 20-GiB validated |
