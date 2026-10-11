@@ -47,7 +47,7 @@ jobs:
             echo "::endgroup::"
 
             MANIFEST="$RUNNER_TEMP/qwen38-backup/release-$mode.parts.sha256"
-            while read -r EXPECTED NAME; do
+            while read -r EXPECTED NAME <&3; do
               case "$NAME" in
                 release-"$mode".part-*) ;;
                 *) echo "Unsafe file name: $NAME" >&2; exit 1 ;;
@@ -79,9 +79,25 @@ jobs:
               fi
               rm -f "$ASSET"
               echo "::endgroup::"
-            done < "$MANIFEST"
-            gh release upload "$RELEASE" "$MANIFEST" --repo "$REPO"
-            echo "=== COMPLETE OCI BACKUP $mode ==="
+            done 3< "$MANIFEST"
+            SUM_NAME="$(basename "$MANIFEST")"
+            SUM_SHA="$(sha256sum "$MANIFEST" | awk '{print $1}')"
+            EXISTING="$(gh api "repos/$REPO/releases/tags/$RELEASE" \
+              | jq -r --arg n "$SUM_NAME" '.assets[] | select(.name == $n) | .digest // empty')"
+            if [[ -z "$EXISTING" ]]; then
+              gh release upload "$RELEASE" "$MANIFEST" --repo "$REPO"
+            elif [[ "$EXISTING" != "sha256:$SUM_SHA" ]]; then
+              echo "Previously published checksum asset has unexpected digest: $EXISTING" >&2
+              exit 1
+            fi
+            EXPECTED_COUNT="$(wc -l < "$MANIFEST" | tr -d ' ')"
+            REMOTE_COUNT="$(gh api "repos/$REPO/releases/tags/$RELEASE" \
+              | jq -r --arg pref "release-$mode.part-" '[.assets[] | select(.name | startswith($pref))] | length')"
+            if [[ "$REMOTE_COUNT" != "$EXPECTED_COUNT" ]]; then
+              echo "INCOMPLETE $mode: only $REMOTE_COUNT of $EXPECTED_COUNT parts are on GitHub" >&2
+              exit 1
+            fi
+            echo "=== COMPLETE OCI BACKUP $mode: $REMOTE_COUNT parts SHA256 verified ==="
           done
       - name: Final GitHub release artifact inventory
         run: |
