@@ -23,10 +23,10 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `QWEN38_TEMPLATE` | Discover `qwen38-v0.2.0-full-public` | Explicit override to a different public Full template ID (rollback) |
-| `QWEN38_TEMPLATE_PI` | Discover `qwen38-v0.2.0-lean-public` | Explicit override to a different public Lean template ID |
-| `QWEN38_TEMPLATE_TAILNET` | Discover `qwen38-v0.2.0-full-tailnet` | Override private Full ID, still subject to live portless verification |
-| `QWEN38_TEMPLATE_TAILNET_PI` | Discover `qwen38-v0.2.0-lean-tailnet` | Override private Lean ID, still subject to live portless verification |
+| `QWEN38_TEMPLATE` | Discover matching `custom` or `official` Full/Public template | Explicit override to a different public Full template ID (rollback) |
+| `QWEN38_TEMPLATE_PI` | Discover matching `custom` or `official` Lean/Public template | Explicit override to a different public Lean template ID |
+| `QWEN38_TEMPLATE_TAILNET` | Discover matching image variant's private Full template | Override private Full ID, still subject to live portless verification |
+| `QWEN38_TEMPLATE_TAILNET_PI` | Discover matching image variant's private Lean template | Override private Lean ID, still subject to live portless verification |
 | `QWEN38_NETWORK_MODE` | `runpod` | `runpod` = public RunPod proxy; `tailnet` = private portless template |
 | `QWEN38_TAILNET_DOMAIN` | detect from local Tailscale | Your `*.ts.net` tailnet DNS suffix; required if detection fails |
 | `TS_HOSTNAME` | generated random label | Optional explicit Tailnet/MagicDNS Pod hostname |
@@ -41,26 +41,61 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `HF_TOKEN` | unset (local mode) | Optional local Hugging Face token in `local` credential mode; file fallback `~/.cache/huggingface/token` |
 | `RUNPOD_CLOUD` | `COMMUNITY` | First attempt to launch on Community; launcher tries Secure if Community creation fails |
 
-### Image and container disk (v0.2.0)
+### SGLang image selection, visibility and container disk
 
-`./create-templates.sh` uses the **private**
-`ghcr.io/tommyfive/qwen38-sglang:v0.2.0` image and resolves the RunPod
-`ghcr.io` registry credential by ID. Image integrity is anchored to the
-immutable `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`
-digest recorded in `images/sglang-qwen38/release.json`.
-A GitHub Release alone does not publish the GHCR image alias; verify the
-`qwen38-image-release` workflow passed.
+There are **two independently named template families**:
 
-| Variable | Default | Meaning |
+- `custom` (default): `qwen38-v0.2.0-{full|lean}-{public|tailnet}`.
+  Uses the **private** custom minimal-v1 GHCR image; requires configured
+  RunPod `ghcr.io` registry read access.
+- `official`: `qwen38-official-{full|lean}-{public|tailnet}`.
+  Uses the public upstream `lmsysorg/sglang:dev-qwen38-27b-dflash2` image,
+  **without a private GHCR registry credential**.
+
+```bash
+./create-templates.sh --image custom   # default
+./create-templates.sh --image official # different template names, does not overwrite custom
+qwen38pi --image official              # select official image when launching
+qwen38fast --image custom              # select the custom image, Full/OpenWebUI
+```
+
+Alternatively, set `QWEN38_IMAGE_VARIANT=official` (or `custom`)
+for both commands. The legacy `QWEN38_IMAGE_REF` option remains supported
+for the **two exact approved references only**; conflicting options fail.
+Without `QWEN38_IMAGE_VARIANT`, a matching legacy reference selects the
+corresponding template family. Changing only a custom template's image in
+the RunPod UI does **not** update the CLI's protected template discovery:
+select/create the corresponding family instead.
+
+| Variable or option | Default | Meaning |
 |---|---|---|
-| `QWEN38_IMAGE_REF` | `ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd` | Immutable tested runtime reference; explicit upstream rollback remains supported |
-| `QWEN38_FULL_DISK_GB` | `150` | Full/OpenWebUI writable SSD (conservative pending new-image Full test) |
-| `QWEN38_LEAN_DISK_GB` | `20` | Lean writable SSD in RAM-first mode; auto-raises to 150 when selecting SSD model storage with the default |
-| `QWEN38_MODEL_STORAGE` | `ram` | Checkpoint storage mode; RAM-first lean 20-GiB validated |
+| `--image custom\|official` | `custom` | Command-line image selector for `create-templates.sh` and `qwen38fast`/`qwen38pi` |
+| `QWEN38_IMAGE_VARIANT` | `custom` | Shell-level selector, same behavior as `--image` |
+| `QWEN38_IMAGE_REF` | unset | Legacy explicit image reference: tested custom digest or exact upstream tag. Conflicting selectors rejected |
+| `QWEN38_FULL_DISK_GB` | `150` | Full/OpenWebUI writable SSD for either image |
+| `QWEN38_LEAN_DISK_GB` | `20` custom; `150` official | Only custom Lean RAM-first has passed a 20-GiB live test |
+| `QWEN38_MODEL_STORAGE` | `ram` | RAM-first weights; SSD checkpoint mode requires larger writable disk |
 
-No existing RunPod templates are overwritten. Explicit template IDs preserve
-legacy rollback. A new default launch refuses to proceed if the matching
-v0.2.0 template is missing or has mismatched image/auth/network metadata.
+Custom is pinned to the immutable GPU-tested image:
+
+`ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`.
+
+The human-readable alias `ghcr.io/tommyfive/qwen38-sglang:v0.2.0`
+was successfully published after package **Manage Actions access** was
+granted to the repository; all 31 compressed layers matched the tested image.
+**The GHCR package is still private**: publishing the tag and granting
+GitHub Actions access do not allow anonymous pulls.
+The custom image is 12.907 GB compressed versus 14.676 GB for upstream
+(about 12.1% smaller). This does **not** establish a proportional cold-start
+performance gain. Further FlashInfer kernel and cache optimization is being
+evaluated, not yet shipped.
+
+The launcher validates matching image, registry auth, selected network and
+template name before creating a Pod. An **explicit** `QWEN38_TEMPLATE*` ID
+remains a manual override; when combining one with an explicit image selector,
+the chosen image must match the template exactly or launch fails safely.
+Unset manual ID overrides for normal automatic `--image` switching.
+Private Tailnet templates always require zero public ports.
 
 ### Launcher: storage, observability, benchmarking and helpers
 
