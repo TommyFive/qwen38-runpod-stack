@@ -41,8 +41,12 @@ def data(obj):
 
 
 def streaming(*events):
-    return FakeResponse([data(x) + "\r\n" for x in events] +
-                        ["data: [DONE]\r\n", "\r\n"])
+    # urllib's HTTP response iterator yields ONE physical line at a time.
+    lines = []
+    for event in events:
+        lines.extend([data(event), "\r\n"])
+    lines.extend(["data: [DONE]\r\n", "\r\n"])
+    return FakeResponse(lines)
 
 
 class ActualTokenCountingTests(unittest.TestCase):
@@ -129,7 +133,7 @@ class ActualTokenCountingTests(unittest.TestCase):
 
     def test_missing_done_does_not_claim_complete_benchmark(self):
         response = FakeResponse([
-            data({"choices": [{"delta": {"content": "x"}}]}) + "\n"])
+            data({"choices": [{"delta": {"content": "x"}}]}), "\r\n"])
         with self.assertRaisesRegex(ValueError, "missing .DONE."):
             self.run_with(response, [1.0, 2.0])
 
