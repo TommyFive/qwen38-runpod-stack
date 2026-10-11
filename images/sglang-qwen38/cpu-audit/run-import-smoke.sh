@@ -11,6 +11,7 @@ for item in baseline:$V1 modified:$B; do
   echo "=== SMOKE $label $(date -u +%FT%TZ) ==="
   timeout 180 docker run --rm --pull never --read-only --network none \
     --cap-drop ALL --security-opt no-new-privileges --pids-limit 256 \
+    --tmpfs /tmp:rw,nosuid,size=128m \
     --entrypoint /opt/sglang/bin/python3 "$image" \
     -c 'import importlib,sys,time
 for mod in ("torch","flashinfer","sglang","transformers"):
