@@ -37,7 +37,13 @@ def runpod_api_key(config_path=None):
             raise PortSafetyError("RunPod config ownership/permissions unsafe")
         if tomllib is not None:
             with path.open("rb") as handle:
-                value = tomllib.load(handle).get("apiKey", "")
+                config = tomllib.load(handle)
+                # Viper/runpodctl writes the native key in lower case.
+                # Keep support for the historical mixed-case spelling.
+                keys = [k for k in ("apikey", "apiKey") if k in config]
+                if len(keys) != 1:
+                    raise PortSafetyError("RunPod config has missing/ambiguous API key field")
+                value = config[keys[0]]
         else:
             # Minimal, strict parser of the native runpodctl root-level TOML
             # string key; no third-party parser or shell eval on Python 3.9.
@@ -49,14 +55,14 @@ def runpod_api_key(config_path=None):
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 name, _, literal = line.partition("=")
-                if name.strip() == "apiKey":
+                if name.strip() in ("apikey", "apiKey"):
                     literal = literal.strip()
                     if literal.startswith('"'):
                         value = json.loads(literal)
                     elif literal.startswith("'") and literal.endswith("'"):
                         value = literal[1:-1]
                     break
-        if isinstance(value, str) and value:
+        if isinstance(value, str) and value.strip() and value == value.strip():
             return value
     except (OSError, ValueError, UnicodeDecodeError):
         pass
