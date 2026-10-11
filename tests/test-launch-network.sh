@@ -72,11 +72,13 @@ elif args[:2] == ["template", "create"]:
     if official:
         assert image=="lmsysorg/sglang:dev-qwen38-27b-dflash2"
         assert "--registry-auth-id" not in args
-        assert int(args[args.index("--container-disk-in-gb")+1])==150
+        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 20
+        assert int(args[args.index("--container-disk-in-gb")+1])==expected
     else:
         assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
         assert "--registry-auth-id" not in args, "PUBLIC custom must not attach private GHCR credentials"
-        assert int(args[args.index("--container-disk-in-gb")+1])==(20 if "-lean-" in name else 150)
+        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 20
+        assert int(args[args.index("--container-disk-in-gb")+1])==expected
     assert "--env" not in args, "large template env must be UPDATEd after creation"
     if "tailnet" in name:
         assert not public, "private template must not publish ports"
@@ -113,6 +115,7 @@ assert args[1:3] == ["pod", "create"]
 env = json.loads(args[args.index("--env") + 1])
 with open(os.environ["TEST_EVENTS"], "a") as f:
     f.write(json.dumps({"kind":"pod","mode":env["NETWORK_MODE"],
+                        "disk_gib":int(args[args.index("--container-disk-in-gb")+1]),
                         "has_ts_authkey":"TS_AUTHKEY" in env,
                         "ts_key_ref":env.get("TS_AUTHKEY"),
                         "sglang_key_ref":env.get("SGLANG_API_KEY"),
@@ -193,6 +196,7 @@ pods=[x for x in events if x["kind"]=="pod"]
 assert len(templates)==4, templates
 assert len([x for x in templates if x["mode"]=="tailnet" and not x["has_ports"]])==2
 assert len(pods)==3, pods
+assert all(p["disk_gib"]==20 for p in pods), "RAM-first Full and Lean must use 20 GiB"
 private, full, public = pods
 assert private["mode"]=="tailnet" and private["disable_runpod_ssh"]
 assert private["ts_key_ref"]=="{{ RUNPOD_SECRET_TS_AUTHKEY }}"
@@ -234,7 +238,7 @@ if QWEN38_API_SECRET_NAME='BAD }}' QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
 fi
 grep -Fq 'QWEN38_API_SECRET_NAME must be a nonempty RunPod secret identifier' "$TMP/bad-api-name.out"
 
-echo "=== official image choice: distinct safe templates with conservative storage ==="
+echo "=== official image choice: all four RAM-first templates use 20 GiB ==="
 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image official > "$TMP/official-templates.out"
 grep -Fq 'Image variant: official' "$TMP/official-templates.out"
 python3 - "$TEST_EVENTS" <<'PY_OFFICIAL'
@@ -244,7 +248,7 @@ official=[x for x in items if x.get("kind")=="template" and x.get("name","").sta
 assert len(official)==4, official
 assert sum(x["mode"]=="tailnet" and not x["has_ports"] for x in official)==2
 assert sum(x["mode"]=="runpod" and x["has_ports"] for x in official)==2
-print("official templates: 4 distinct modes with 150 GiB disk")
+print("official templates: 4 distinct modes, all RAM-first 20 GiB")
 PY_OFFICIAL
 echo "=== official image selection: auto-resolve correct upstream template without actual pod ==="
 unset QWEN38_TEMPLATE QWEN38_TEMPLATE_PI QWEN38_TEMPLATE_TAILNET QWEN38_TEMPLATE_TAILNET_PI
@@ -256,3 +260,30 @@ assert rows[-1]["kind"]=="pod", rows[-1]
 assert rows[-1]["template"]=="template-qwen38-official-lean-public"
 print("Official launcher resolves distinct official Lean template")
 PY_SELECTION
+
+echo "=== SSD checkpoint mode: both template families use 150 GiB by default ==="
+QWEN38_MODEL_STORAGE=ssd QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image custom > "$TMP/custom-ssd-templates.out"
+QWEN38_MODEL_STORAGE=ssd QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image official > "$TMP/official-ssd-templates.out"
+if QWEN38_MODEL_STORAGE=ssd QWEN38_FULL_DISK_GB=20    QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/undersized-template.out" 2>&1; then
+  echo 'FAIL: accepted 20 GiB Full SSD template' >&2
+  exit 1
+fi
+grep -Fq 'requires at least 50 GiB' "$TMP/undersized-template.out"
+
+echo "=== SSD checkpoint mode: Pod overrides disk to 150 GiB ==="
+QWEN38_MODEL_STORAGE=ssd bash "$ROOT/bin/qwen38fast" --pi --storage ssd --image official --network runpod > "$TMP/ssd-official.out"
+QWEN38_MODEL_STORAGE=ssd bash "$ROOT/bin/qwen38fast" --storage ssd --image custom --network runpod > "$TMP/ssd-custom.out"
+python3 - "$TEST_EVENTS" <<'PY_SSD'
+import json,sys
+rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
+pods=[r for r in rows if r.get("kind")=="pod"]
+assert pods[-2]["disk_gib"]==150 and pods[-2]["template"]=="template-qwen38-official-lean-public"
+assert pods[-1]["disk_gib"]==150 and pods[-1]["template"]=="template-qwen38-v0.2.0-full-public"
+print("SSD model downloads correctly use 150 GiB for official Lean and Custom Full")
+PY_SSD
+if QWEN38_FULL_DISK_GB=20 bash "$ROOT/bin/qwen38fast" --storage ssd --image custom > "$TMP/undersized-pod.out" 2>&1; then
+  echo 'FAIL: accepted 20 GiB SSD Pod override' >&2
+  exit 1
+fi
+grep -Fq 'SSD model downloads require >=50 GiB' "$TMP/undersized-pod.out"
+
