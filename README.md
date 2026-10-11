@@ -16,6 +16,7 @@
 ## Contents
 
 - [What this fork adds](#what-this-fork-adds)
+- [Measured performance](#measured-performance--corrected-server-side-token-counting)
 - [Changes from upstream](#changes-from-upstream)
 - [Architecture and deployment modes](#architecture-and-deployment-modes)
 - [Requirements and installation](#requirements-and-installation)
@@ -43,6 +44,8 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **Cold-start evidence** | Host/Pod UTC + monotonic events, `qwen38cold` reports and per-Pod datasets covering image pull, model download, GPU load/graphs, health readiness, cloud class and missing region/cache metadata. |
 | **Four deployment templates** | Public Full/Lean and Private Full/Lean; helper scripts for safely repairing private port mappings and updating existing template helpers/secret references in place. |
 | **Validation** | Real RTX PRO 6000 GPU tests for RAM/SSD, native SSH, positive/negative API auth, positive WebUI login, private HTTPS and DFlash2; offline GitHub Actions for integrity and benchmark regressions. |
+
+**Why the Pod can use less SSD:** Model files are fetched from Hugging Face **straight into the RAM filesystem**; there is no initial SSD download followed by a copy to RAM. SGLang reads the model and draft weights from RAM and loads them into GPU VRAM. This avoids reserving disk space for roughly **22.7 GiB of downloaded weight blobs** in the tested configuration. **Docker layers, OpenWebUI and other runtime files still need container disk.** The current `create-templates.sh` deliberately retains its historical **150 GB** `--container-disk-in-gb` setting; changing the **Container Disk** size in RunPod's template is a separate manual optimization, not something `MODEL_STORAGE=ram` does automatically. Choose a smaller disk only after verifying enough capacity for the image and other files.
 
 ## Measured performance — corrected server-side token counting
 
