@@ -1,8 +1,21 @@
-# Qwen38 experimental minimal SGLang image
+# Qwen38 SGLang minimal-v1 image — release v0.2.0
 
-**Status (2026-10-11): candidate built on Alibaba ECS and successfully pushed to private GHCR; not yet GPU-tested or merged.** See [measured build results](BUILD_RESULTS_2026-10-10.md), [largest-layer audit](LAYER_AUDIT_2026-10-11.md), [GPU validation plan](GPU_VALIDATION.md), and the [read-only site-packages profiler](inspect-site-packages.py).
-This module is intentionally independent of the Qwen38 launcher, Tailscale,
-privacy, RAM storage, and the four existing RunPod templates.
+**Status (2026-10-11):** GPU-tested RTX PRO 6000 Blackwell NVFP4+DFlash2
+serving and 20-GiB Lean RAM-first startup, published as a private GHCR
+candidate at immutable
+`sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`.
+Release promotion aliases it as `ghcr.io/tommyfive/qwen38-sglang:v0.2.0`
+when the GitHub Release workflow passes; the alias itself is independently
+verified. Repository configuration now integrates the custom image with four
+separate public/tailnet templates without overwriting previous templates.
+Full OpenWebUI on this custom image, standardized throughput and fully uncached
+cold-start remain validation gaps, **not** completed guarantees.
+
+See [release notes](../../docs/releases/v0.2.0.md),
+[measured build results](BUILD_RESULTS_2026-10-10.md),
+[live GPU results](LIVE_TEST_RESULTS_2026-10-11.md),
+[largest-layer audit](LAYER_AUDIT_2026-10-11.md) and
+[read-only profiler](inspect-site-packages.py).
 Background: [cold-start issue #11](https://github.com/TommyFive/qwen38-runpod-stack/issues/11).
 
 ## Why
@@ -168,7 +181,7 @@ validate the actual peak footprint rather than assuming 16 GiB is sufficient.
    without explicit approval.
 7. Aim for >=5 comparable starts per cohort before interpreting median/p95.
 
-No GPU performance or cold-start gain has been measured for this candidate.
+GPU function and startup times have been measured for minimal-v1, but **no controlled GPU-performance or cold-start speedup** against the upstream reference has been established.
 The first candidate changes both the build target and dependency extra;
 an additional framework_final + minimal comparator can isolate those effects.
 
