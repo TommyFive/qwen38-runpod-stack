@@ -85,7 +85,7 @@ image have not yet been validated with this reduced capacity.
 **If you change model downloads from RAM to SSD, the 20 GiB default is too
 small. Increase Container Disk before starting the Pod**, or ensure the selected
 `MODEL_SSD_DIR` points to an appropriately sized mounted SSD volume.
-The template generator and launcher choose a conservative **150 GiB**
+The template generator and launcher choose a conservative **100 GiB**
 for `MODEL_STORAGE=ssd` / `--storage ssd`, unless an explicit disk override
 is provided. They reject SSD-mode settings below **50 GiB**, but **50 GiB
 has not been validated** as sufficient for every configuration.
@@ -98,12 +98,12 @@ downloads, caching, OpenWebUI and logs.
 qwen38fast --image custom              # Full = 20 GiB
 qwen38pi --image custom                # Lean = 20 GiB
 
-# SSD download mode: allocates 150 GiB by default instead of 20 GiB.
+# SSD download mode: allocates 100 GiB by default instead of 20 GiB.
 QWEN38_MODEL_STORAGE=ssd ./create-templates.sh --image custom
 qwen38fast --image custom --storage ssd
 
 # Example explicit disk overrides for SSD use:
-QWEN38_FULL_DISK_GB=150 QWEN38_LEAN_DISK_GB=150 \
+QWEN38_FULL_DISK_GB=100 QWEN38_LEAN_DISK_GB=100 \
   QWEN38_MODEL_STORAGE=ssd ./create-templates.sh --image official
 ```
 
@@ -170,7 +170,7 @@ still need live validation.
 **Important when switching to SSD model downloads:** set `MODEL_STORAGE=ssd`
 (or CLI `--storage ssd`) **and increase the Container Disk size** (or an
 appropriately mounted storage volume). The default SSD-mode allocation is
-**150 GiB** rather than 20 GiB. The minimum accepted override is 50 GiB,
+**100 GiB** rather than 20 GiB. The minimum accepted override is 50 GiB,
 but it is not a tested recommendation. Main + draft weights, caches and
 other runtime files must all fit. When editing a RunPod template manually,
 **increase its disk capacity as well as changing `MODEL_STORAGE`**.
@@ -205,7 +205,7 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **TLS on ephemeral Pods** | Tailscale machine identity and certificate state stored in RAM: `--state=mem:` plus a `/dev/shm` `--statedir`, with verified TLS on both endpoints. |
 | **Authentication and privacy** | Mandatory SGLang API key; OpenWebUI authentication enabled, signup disabled, pre-provisioned admin, runtime logs and WebUI data on tmpfs by default, `DEBUG=0` quiet mode and redacted diagnostics. |
 | **RunPod Secrets** | Default use of RunPod secret **references** (`LLM_API_KEY`, optional `HF_TOKEN`, private `TS_AUTHKEY`) rather than injecting local cleartext into the launcher; optional explicit local-credential mode. |
-| **Real RAM-only model downloads** | **Both the main model and DFlash2 draft are downloaded directly from Hugging Face into a RAM-backed `/dev/shm` cache**, not downloaded to SSD and copied afterward. Since the ~22.7 GiB model blobs do not occupy the container SSD, you can provision **significantly less disk** for a new Pod/template, subject to space needed by the Docker image, OpenWebUI installation and other runtime files. **All four templates now default to 20 GiB in RAM-first mode** (only Custom Lean was live-tested at 20 GiB). Switching to SSD model downloads requires a larger disk; the tooling defaults to 150 GiB in SSD mode. `MODEL_STORAGE=ssd` remains available as an opt-in fallback. |
+| **Real RAM-only model downloads** | **Both the main model and DFlash2 draft are downloaded directly from Hugging Face into a RAM-backed `/dev/shm` cache**, not downloaded to SSD and copied afterward. Since the ~22.7 GiB model blobs do not occupy the container SSD, you can provision **significantly less disk** for a new Pod/template, subject to space needed by the Docker image, OpenWebUI installation and other runtime files. **All four templates now default to 20 GiB in RAM-first mode** (only Custom Lean was live-tested at 20 GiB). Switching to SSD model downloads requires a larger disk; the tooling defaults to 100 GiB in SSD mode. `MODEL_STORAGE=ssd` remains available as an opt-in fallback. |
 | **Optional RAM reclaim** | Experimental post-inference checkpoint-blob release after authenticated model use; **off by default** and only allowed with RAM storage. |
 | **Correct tokens/s measurement** | Both the in-Pod benchmark and external `qwen38bench` count **actual generated tokens** via SGLang `usage.completion_tokens`, not Server-Sent Events (SSE) chunks. An SSE chunk can contain multiple tokens or none. Standardized in-Pod workloads run only with `BENCHMARK=1`. |
 | **Cold-start evidence** | Host/Pod UTC + monotonic events, `qwen38cold` reports and per-Pod datasets covering image pull, model download, GPU load/graphs, health readiness, cloud class and missing region/cache metadata. |
@@ -214,7 +214,7 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **Four deployment templates** | Public Full/Lean and Private Full/Lean; helper scripts for safely repairing private port mappings and updating existing template helpers/secret references in place. |
 | **Validation** | Real RTX PRO 6000 GPU tests for RAM/SSD, native SSH, positive/negative API auth, positive WebUI login, private HTTPS and DFlash2; offline GitHub Actions for integrity and benchmark regressions. |
 
-**Why the Pod can use less SSD:** Model files are fetched from Hugging Face **straight into the RAM filesystem**; there is no initial SSD download followed by a copy to RAM. SGLang reads the model and draft weights from RAM and loads them into GPU VRAM. This avoids reserving disk space for roughly **22.7 GiB of downloaded weight blobs** in the tested configuration. **Docker layers, OpenWebUI and other runtime files still need container disk.** All four generated template variants now default to **20 GiB Container Disk** in RAM-first mode. Only Custom Lean has been live-tested at this size. **If you change `MODEL_STORAGE` from `ram` to `ssd`, also raise the template's Container Disk (150 GiB recommended),** or provide a sufficiently large mounted SSD volume. The CLI and template generator choose 150 GiB by default for SSD mode and reject explicitly undersized overrides. Docker layers and OpenWebUI may need additional capacity, so validate Full/official at 20 GiB before relying on it.
+**Why the Pod can use less SSD:** Model files are fetched from Hugging Face **straight into the RAM filesystem**; there is no initial SSD download followed by a copy to RAM. SGLang reads the model and draft weights from RAM and loads them into GPU VRAM. This avoids reserving disk space for roughly **22.7 GiB of downloaded weight blobs** in the tested configuration. **Docker layers, OpenWebUI and other runtime files still need container disk.** All four generated template variants now default to **20 GiB Container Disk** in RAM-first mode. Only Custom Lean has been live-tested at this size. **If you change `MODEL_STORAGE` from `ram` to `ssd`, also raise the template's Container Disk (100 GiB recommended),** or provide a sufficiently large mounted SSD volume. The CLI and template generator choose 100 GiB by default for SSD mode and reject explicitly undersized overrides. Docker layers and OpenWebUI may need additional capacity, so validate Full/official at 20 GiB before relying on it.
 
 ## Measured performance — corrected server-side token counting
 
@@ -243,7 +243,7 @@ These distinctions matter if you used the original stack. Relevant changes were 
 | **Full Pod startup / NCCL crash** | Installing OpenWebUI into the serving SGLang environment can mutate GPU dependencies while SGLang starts, triggering a `deep_ep.check_nccl_so()` / NCCL crash. | **Isolated OpenWebUI virtualenv** avoids replacing SGLang/PyTorch/NCCL dependencies; Full mode starts UI only after authenticated SGLang readiness. | [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open**; related [upstream issue #3](https://github.com/nicremo/qwen38-runpod-stack/issues/3) |
 | **Tokens/s accounting** | Historical benchmark estimated generated tokens from SSE chunk counts, which may contain multiple tokens or none. | External and in-Pod benchmarks now use **`usage.completion_tokens`**; missing server usage is reported as unavailable instead of inventing numbers. | [nicremo #6](https://github.com/nicremo/qwen38-runpod-stack/pull/6) · **open** |
 | WebUI start | Older SSH-assisted restart workflow. | WebUI is started on the Pod after authenticated SGLang readiness; no client-side SSH restart. | Related to [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open** |
-| Storage / disk sizing | Model downloads/cache occupy disk. | Main and draft weights **download directly into `/dev/shm` RAM**, removing ~22.7 GiB of model weights from SSD requirements in the tested configuration; all RAM-first template variants now default to 20 GiB (only Custom Lean live-tested at 20 GiB); SSD download mode defaults to 150 GiB. | — |
+| Storage / disk sizing | Model downloads/cache occupy disk. | Main and draft weights **download directly into `/dev/shm` RAM**, removing ~22.7 GiB of model weights from SSD requirements in the tested configuration; all RAM-first template variants now default to 20 GiB (only Custom Lean live-tested at 20 GiB); SSD download mode defaults to 100 GiB. | — |
 | Privacy | Public RunPod service model | Authenticated public mode **or** Tailnet-only mode, with protected ephemeral runtime state and explicit logging switches. | — |
 | Testing | Basic throughput tooling | Repeatable in-Pod benchmark, cold-start tracing, security/storage regression tests. | — |
 | **RunPod CLI timer compatibility** | A wrapper can pass `--terminate-after` even on CLI versions that no longer support it, preventing Pod creation. | Detect supported timer flags before use; start commands remain compatible with newer CLI versions. **If unsupported, this is not a guaranteed auto-shutdown.** | [nicremo #2](https://github.com/nicremo/qwen38-runpod-stack/pull/2) · **open** |
