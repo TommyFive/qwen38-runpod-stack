@@ -56,6 +56,7 @@ TS_HOSTNAME="${TS_HOSTNAME:-}"
 TS_AUTHKEY="${TS_AUTHKEY:-}"
 CREDENTIAL_MODE="${QWEN38_CREDENTIAL_MODE:-runpod_secrets}"
 HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME-HF_TOKEN}"
+API_SECRET_NAME="${QWEN38_API_SECRET_NAME:-LLM_API_KEY}"
 TAILNET_DOMAIN="${QWEN38_TAILNET_DOMAIN:-}"
 
 TOKEN_FILE="$HOME/.cache/huggingface/token"
@@ -158,7 +159,10 @@ case "$CREDENTIAL_MODE" in
     runpod_secrets|local) ;;
     *) echo "QWEN38_CREDENTIAL_MODE must be runpod_secrets or local" >&2; exit 64 ;;
 esac
-# Use secret references only after checking secret names against an allowlist.
+# Keep RunPod Secret names safe before constructing the --env JSON payload.
+if [[ "$CREDENTIAL_MODE" == runpod_secrets && ! "$API_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
+    echo "QWEN38_API_SECRET_NAME must be a nonempty RunPod secret identifier" >&2; exit 64
+fi
 if [[ "$CREDENTIAL_MODE" == runpod_secrets && -n "$HF_SECRET_NAME" &&
       ! "$HF_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]]; then
     echo "QWEN38_HF_SECRET_NAME must be a RunPod secret identifier" >&2; exit 64
@@ -240,7 +244,7 @@ if [[ "$CREDENTIAL_MODE" == local ]]; then
 else
     # The RunPod Secret is resolved inside the pod, not on this Mac.
     # A local key may be supplied explicitly for authenticated health checks.
-    # Never assume the old auto-generated qwen38.key matches LLAMA_API_KEY.
+    # Never assume the old auto-generated qwen38.key matches the selected RunPod Secret.
     API_KEY=""
     if [[ -n "${QWEN38_SGLANG_CLIENT_KEY_FILE:-}" ]]; then
         [[ -s "$QWEN38_SGLANG_CLIENT_KEY_FILE" ]] || {
@@ -253,7 +257,7 @@ else
     if [[ -z "$API_KEY" ]]; then
         echo "No local matching SGLang client key: authenticated readiness/TTFI probes will be skipped."
     fi
-    echo "Local proxy needs the SAME LLAMA_API_KEY in ~/.runpod/qwen38.key."
+    echo "Local proxy needs the SAME $API_SECRET_NAME value in ~/.runpod/qwen38.key."
 fi
 WEBUI_ADMIN_PASSWORD=""
 if [[ $PI_MODE -eq 0 ]]; then
@@ -278,7 +282,7 @@ if [[ "$running" != "0" ]]; then
 fi
 
 # --env replaces the template env object completely, so everything goes in here.
-ENV_JSON=$(QWEN38_MODEL_RAM_RELEASE_AFTER_LOAD="$RAM_RELEASE" QWEN38_RAM_PEAK_FACTOR="$RAM_PEAK_FACTOR" QWEN38_CREDENTIAL_MODE="$CREDENTIAL_MODE" QWEN38_HF_SECRET_NAME="$HF_SECRET_NAME" WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
+ENV_JSON=$(QWEN38_MODEL_RAM_RELEASE_AFTER_LOAD="$RAM_RELEASE" QWEN38_RAM_PEAK_FACTOR="$RAM_PEAK_FACTOR" QWEN38_CREDENTIAL_MODE="$CREDENTIAL_MODE" QWEN38_HF_SECRET_NAME="$HF_SECRET_NAME" QWEN38_API_SECRET_NAME="$API_SECRET_NAME" WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD" WEBUI_ADMIN_EMAIL="$WEBUI_ADMIN_EMAIL" python3 - "$BOOTSTRAP" "$TOKEN_FILE" "$MODEL_ID" "$SPEC" "$MAX_LEN" "$MEM_FRAC" "$KEY_FILE" "$PI_MODE" "$ENABLE_SSH" "$TS_RUNTIME" "$NETWORK_MODE" "$TS_HOSTNAME" "$TS_ENABLE_SSH" "$STORAGE_HELPER" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$BENCHMARK_SCRIPT" "$BENCHMARK" "$BENCHMARK_RUNS" "$BENCHMARK_MAX_TOKENS" "$BENCHMARK_TIMEOUT_SECONDS" "$BENCHMARK_REPORT_PATH" "$DEBUG" "$COLDSTART_TRACE" <<'PY'
 import base64, json, os, pathlib, sys
 b64 = base64.b64encode(pathlib.Path(sys.argv[1]).read_bytes()).decode()
 env = {
@@ -302,7 +306,7 @@ env = {
     "MAX_LEN":       sys.argv[5],
     "MEM_FRAC":      sys.argv[6],
     "MAMBA_RATIO":   "4.59",
-    "SGLANG_API_KEY": ("{{ RUNPOD_SECRET_LLAMA_API_KEY }}" if os.environ["QWEN38_CREDENTIAL_MODE"] == "runpod_secrets"
+    "SGLANG_API_KEY": ("{{ RUNPOD_SECRET_" + os.environ["QWEN38_API_SECRET_NAME"] + " }}" if os.environ["QWEN38_CREDENTIAL_MODE"] == "runpod_secrets"
                         else pathlib.Path(sys.argv[7]).read_text().strip()),
     "SERVE_WEBUI":   "0" if sys.argv[8] == "1" else "1",
     "ENABLE_SSH":    sys.argv[9],
@@ -416,7 +420,7 @@ echo
 if [[ -z "$API_KEY" ]]; then
     # No matching local secret: auth probes cannot validate model readiness.
     # Do not spend 15 minutes on guaranteed 401s or report a false success.
-    echo "Model readiness and first inference NOT VERIFIED (no local LLAMA_API_KEY)."
+    echo "Model readiness and first inference NOT VERIFIED (no local matching API key)."
 else
 echo "Waiting for the model (bounded to 15 minutes)..."
 ready=0
