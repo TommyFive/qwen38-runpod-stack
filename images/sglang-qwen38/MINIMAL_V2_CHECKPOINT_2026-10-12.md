@@ -69,3 +69,46 @@ Once both GHCR uploads are **actually remote-verified**:
 - Candidate A remote registry manifest digest: **PENDING**
 - Candidate B remote registry manifest digest: **PENDING**
 - Registry visibility: default GHCR package setting; **no changes requested or made**.
+
+
+## 7. Emergency persistent GitHub Release fallback (GHCR returned 403)
+
+The first GHCR attempts using a temporary repository-scoped Actions token with `packages: write` authenticated successfully but subsequently received **HTTP 403 Forbidden on blob upload**. No successful remote image manifest should be claimed from that attempt. The reason may be package/repository access linkage; it must be diagnosed before retrying with additional credential scope. Visibility of existing/private GitHub packages was **not changed**.
+
+Because the ECS will be released automatically, the full **GHCR-safe split OCI layouts** are also archived with all OCI blobs, config, manifest, index and `oci-layout` metadata as ordinary TAR files, cut into `900MiB` independent blocks for GitHub Release Assets. This avoids GHCR package write permissions and the 2-GiB GitHub individual release-asset limit.
+
+- A: **13 sequential blocks** `release-rust.part-aa` through `release-rust.part-am`; checksum manifest `release-rust.parts.sha256`.
+- B: **12 sequential blocks** `release-rust-cuda.part-aa` through `release-rust-cuda.part-al`; checksum manifest `release-rust-cuda.parts.sha256`.
+- Each block is uploaded from the ECS by a short-lived GitHub-hosted runner and checked against the **server-provided `sha256:` release-asset digest**. The workflow additionally rejects incomplete part sets.
+- Workflow: `.github/workflows/qwen38-release-backup.yml`; Actions run `38158692348` and later runs if retry is required.
+- These blocks contain **complete OCI layouts**, NOT flattened payload-only tarballs. When all blocks are verified, they are sufficient to restore independently of the ECS. Until all 25 blocks and both manifest files are present, publication is **incomplete**.
+
+### Restore after the original VPS disappears
+
+On a new, authorized host with enough SSD capacity, download the release assets matching each candidate, preserving the exact names. With `gh`, `sha256sum`, `tar` and `skopeo` available:
+
+```bash
+REPO=TommyFive/qwen38-runpod-stack
+RELEASE=minimal-v2-cpu-checkpoint-20261012
+mkdir -p qwen38-recovery
+cd qwen38-recovery
+gh release download "$RELEASE" -R "$REPO" --pattern 'release-rust.part-*' --pattern 'release-rust.parts.sha256'
+gh release download "$RELEASE" -R "$REPO" --pattern 'release-rust-cuda.part-*' --pattern 'release-rust-cuda.parts.sha256'
+sha256sum -c release-rust.parts.sha256
+sha256sum -c release-rust-cuda.parts.sha256
+cat release-rust.part-* | tar -xf -
+cat release-rust-cuda.part-* | tar -xf -
+skopeo inspect --raw oci:oci-split-rust:checkpoint > rust-manifest.json
+skopeo inspect --raw oci:oci-split-rust-cuda:checkpoint > rust-cuda-manifest.json
+```
+
+Do NOT confuse the compressed OCI payload byte count with the total `tar` container size. After restoration, use `skopeo copy oci:oci-split-rust:checkpoint docker://...` and the analogous B source to publish (requires **authorized** GHCR `write:packages`).
+
+### Second encrypted GitHub checkpoint asset
+
+The original first Alibaba v1 builder archives from the Mac mini were also preserved as `qwen38-original-v1-build-logs.tar.age` on the same GitHub release and remote digest-verified:
+
+`sha256:661ab22b77167df7f76a65461b2a7a0c9d4c73e50ab930f2b214232b77e9f1b3`.
+
+These full raw build logs are encrypted to the same Mac mini SSH Ed25519 recipient as the CPU checkpoint. No private decryption key or token is committed to the repository.
+
