@@ -223,3 +223,14 @@ As of 2026-08-22, by published numbers:
 The pick is huihui: harder than orcarouter, cleaner than anything else with
 NVFP4. OBLITERATUS is more uncompromising but costs the FP4 path and thus two
 thirds of the speed.
+
+## Standardized opt-in in-pod benchmark
+
+The earlier results on this page were taken over the **RunPod proxy** with
+`qwen38bench` and its former SSE chunk-count token estimator. Because SSE
+chunks are **not** tokens, those past speed figures must be treated as
+historical/possibly undercounted until repeated with server-reported usage.
+The opt-in `BENCHMARK=1` suite now records comparable fixed-prompt engine-local
+measurements, model/GPU/config details and per-run JSON. See
+[docs/BENCHMARK.md](BENCHMARK.md). The two measurement paths are not directly
+interchangeable.

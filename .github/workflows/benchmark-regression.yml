@@ -1,0 +1,27 @@
+name: Benchmark regression
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Python and shell syntax
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/benchmark_sglang.py bin/qwen38bench tests/test_benchmark_sglang.py
+          bash -n scripts/bootstrap-sglang-openwebui.sh bin/qwen38fast create-templates.sh setup.sh
+      - name: Authenticated SSE / lifecycle / SIGTERM regression tests
+        run: python -m unittest discover -s tests -p 'test_benchmark_*.py' -v
+      - name: Existing RunPod CLI regression tests
+        run: bash tests/test-rp.sh

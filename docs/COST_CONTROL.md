@@ -3,67 +3,52 @@
 On 2026-08-15 two forgotten pods ran for 24 hours doing nothing. Everything here
 exists because of that.
 
-## The rule
+## Accepted account scope and residual risk (2026-10-10)
 
-**Always create pods through `rp`, including quick tests.** It adds a
-server-side shutdown timer when the installed `runpodctl` supports one and
-keeps the local reaper fallback active on versions that do not:
+**PR #17 merge decision: documented non-blocker, not a resolved safety fix.**
+The owner confirmed the account is presently dedicated to QWEN38 pods only.
+This is a **precondition**, not an enforced software invariant. If unrelated
+workloads are ever added, the existing commands can become destructive.
+Track accepted limitation in [#22](https://github.com/TommyFive/qwen38-runpod-stack/issues/22)
+and proper future implementation in [#18](https://github.com/TommyFive/qwen38-runpod-stack/issues/18).
 
-```bash
-rp pod create ...                          # 1h local-reaper limit
-RUNPOD_MAX_AGE_HOURS=6 rp pod create ...   # requests a 6h window
-rp 6h pod create ...                       # same, shorter
-```
+### What the current code actually does
 
-`rp` lives in `~/.local/bin/rp` and passes everything through to `runpodctl`
-unchanged. On `pod create`, it first inspects the command's help output. If
-`--terminate-after` is available and no timer was supplied, it adds one. If the
-flag is unavailable, it emits a warning and lets the local reaper enforce its
-one-hour limit while the Mac is running.
-
-You can check whether the installed CLI exposes a server-side timer:
-
-```bash
-runpodctl pod create --help | grep -- --terminate-after
-```
-
-## The three layers
-
-| Layer | What | Fires when |
+| Component | Actual behavior | Limitation |
 |---|---|---|
-| 1. `rp` wrapper | detects and sets a supported timer flag | every `rp pod create` |
-| 2. `--terminate-after` | server-side at RunPod | when the installed CLI supports it, even with the Mac asleep |
-| 3. `runpod-reaper` | LaunchAgent, every 10 min, kills anything over 1h | while the Mac is running, including pods from the web console |
+| `qwen38fast stop` / `qwen38pi stop` | Uses `runpodctl pod list` and deletes **all returned Pod IDs** | Account-wide, not current-pod-only |
+| `bin/rp` | Adds a server-side `--terminate-after` *only if supported by CLI* | RunPod CLI 2.15.0 on Mac mini lacks this option; requested `2h`/`4h` is **not guaranteed** |
+| `bin/runpod-reaper` | Enumerates account pods and deletes those past global default 1h age, except `keep-` names | Account-wide, not a per-pod TTL; may conflict with 4h request |
+| `setup.sh` | Installs/loads proxy **and legacy reaper** LaunchAgents on macOS | Do not assume reaper is safely scoped or currently running |
+| Mac mini at audit | Reaper LaunchAgent **absent**; `runpodctl 2.15.0` noninteractive API worked | No active local reaper protection demonstrated |
 
-The server-side timer is the only layer that works without a running Mac, but
-not every `runpodctl` release exposes it. It also can't be verified through
-`pod get`, which returns no `terminateAfter`. That's why the reaper stays active
-instead of trusting the timer. When the flag is unavailable, protection is
-local only and cannot fire while the Mac is asleep or offline.
+`RUNPOD_MAX_AGE_HOURS` and `rp 6h ...` are requested runtime windows;
+they are **not an SLA, auto-delete guarantee or billing limit** in the
+installed CLI/runtime configuration. A Mac-side timer can also fail when the
+machine sleeps, loses connectivity or cannot authenticate.
 
-For windows longer than one hour, `rp` adds a `keep-` name prefix only when a
-server-side timer is present. If the CLI has no timer support, the requested
-longer window cannot be safely guaranteed, so the reaper continues to enforce
-one hour. Manually naming a pod `keep-*` bypasses that protection and should be
-reserved for actively monitored runs.
+### Current operating rule for paid integration tests
 
-Check the reaper by hand:
+1. Use this RunPod account **exclusively** for QWEN38; avoid account-global
+   cleanup entirely if any other project begins using the account.
+2. Before renting, agree on test scope, hourly rate, maximum intended time and
+   exact Pod ID. Require explicit paid-run authorization.
+3. Keep the **legacy global reaper disabled** during supervised integration
+   tests. Be aware that running `./setup.sh` can reactivate it.
+4. Monitor actual spend and Pod state. Terminate only the **verified exact ID**
+   with `runpodctl pod delete <exact-pod-id>` or in the RunPod dashboard.
+   Recheck active pods and billing after cleanup.
+5. A local/manual short timer is not independent shutdown assurance; do not
+   rely on one to prevent runaway charges.
 
-```bash
-RUNPOD_REAPER_DRY_RUN=1 runpod-reaper && cat ~/.runpod/reaper.log
-```
+### Post-merge engineering
 
-The reaper only writes to the log on errors or kills. A quiet log means all is
-well, not that it isn't running. Whether it runs shows in
-`launchctl list | grep runpod`.
-
-## What RunPod can't do
-
-**There is no global auto-terminate setting.** An idle timeout exists only for
-serverless endpoints, not for pods. Some CLI releases expose
-`--terminate-after`; others do not. `runpodctl user` is read-only. The only
-account-wide cap is the spend limit, but that only bites once the month is
-already burned.
+[#18](https://github.com/TommyFive/qwen38-runpod-stack/issues/18)
+tracks a project-owned ID registry, atomic per-pod deadlines, headless
+authentication, safe stop, read-only identity verification before delete and
+observable failures. It is explicitly **deferred** for PR #17 under the
+owner's single-project-account assumption. A later change to the account
+usage invalidates that assumption and requires reassessment before operation.
 
 ## Prices, as of 2026-08-22
 
