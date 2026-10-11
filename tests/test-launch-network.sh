@@ -181,6 +181,7 @@ rows=[json.loads(s) for s in open(sys.argv[1])]
 assert len([r for r in rows if r["kind"]=="template"])==4, "resume created duplicates"
 print("Resume reused all four templates without creating duplicates")
 PY_RESUME
+cp -R "$TMP/templates-store" "$TMP/custom-first"
 
 echo "=== tailnet CLI launch mock ==="
 export QWEN38_TEMPLATE_TAILNET=private-full
@@ -340,3 +341,30 @@ assert pod["disk_gib"]==50 and pod["template"]=="template-qwen38-official-lean-p
 print("SSD explicit 50 GiB minimum remains accepted")
 PY_SSD_MIN
 
+
+echo "=== resume incomplete run (only missing tailnet lean should be created) ==="
+rm -rf "$TMP/templates-store"
+cp -R "$TMP/custom-first" "$TMP/templates-store"
+rm "$TMP/templates-store/template-qwen38-v0.2.0-lean-tailnet.json"
+before=$(grep -c '"kind": "template"' "$TEST_EVENTS")
+QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
+  bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume-partial.output"
+after=$(grep -c '"kind": "template"' "$TEST_EVENTS")
+[[ $((after - before)) -eq 1 ]] || { echo "resume did not create exactly one missing template" >&2; exit 1; }
+grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=template-qwen38-v0.2.0-lean-tailnet' "$TMP/resume-partial.output"
+
+echo "=== resume must refuse modified existing template ==="
+python3 - "$TMP/templates-store/template-qwen38-v0.2.0-full-public.json" <<'PY_STALE'
+import json,sys
+path=sys.argv[1]
+d=json.load(open(path))
+d["imageName"]="unapproved-image"
+with open(path,"w") as f: json.dump(d,f)
+PY_STALE
+if QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
+    bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume-stale.output" 2>&1; then
+  echo "FAIL: --resume reused a modified template" >&2
+  exit 1
+fi
+grep -Fq 'differs from requested' "$TMP/resume-stale.output"
+echo "resume partial and stale-template guards: ok"
