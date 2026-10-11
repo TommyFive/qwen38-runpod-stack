@@ -356,7 +356,8 @@ overwritten. Example after a partial custom run:
 
 The generator performs a credential/permissions preflight **before creating
 any template**. If no `RUNPOD_API_KEY` environment variable is set, it reads
-`~/.runpod/config.toml`; a regular config owned by your current user with
+`~/.runpod/config.toml` using the native TOML field `apikey` (lowercase,
+not the CLI flag spelling `--apiKey`); a regular config owned by your current user with
 mode `0644` is automatically tightened to `0600` without exposing its API
 key. Symlinks, wrong ownership and malformed credentials are rejected. A
 fresh clone does not change credentials by itself: the permission hardening

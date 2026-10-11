@@ -135,7 +135,7 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     # List only user-owned templates. Never silently adopt a name collision or
     # overwrite stale/modified templates. Credentials were checked above.
     local existing_id existing_details
-    existing_id=$(runpodctl template list --type user --all -o json 2>/dev/null | python3 -c 'import sys,json,re
+    existing_id=$(runpodctl template list --type user -o json 2>/dev/null | python3 -c 'import sys,json,re
 name=sys.argv[1]
 items=json.load(sys.stdin)
 if not isinstance(items,list):
