@@ -34,7 +34,7 @@ elif args[:2] == ["template", "create"]:
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
-    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+    assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_LLM_API_KEY }}"
     assert env["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
     assert ("TS_AUTHKEY" in env) == (env["NETWORK_MODE"] == "tailnet")
     if env["NETWORK_MODE"] == "tailnet":
@@ -140,7 +140,7 @@ assert len(pods)==3, pods
 private, full, public = pods
 assert private["mode"]=="tailnet" and private["disable_runpod_ssh"]
 assert private["ts_key_ref"]=="{{ RUNPOD_SECRET_TS_AUTHKEY }}"
-assert private["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+assert private["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLM_API_KEY }}"
 assert private["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 assert private["has_ts_authkey"] and private["runtime_included"]
 assert private["template"]=="private-pi" and private["serve_webui"]=="0"
@@ -149,7 +149,7 @@ assert full["has_ts_authkey"] and full["template"]=="private-full"
 assert full["serve_webui"]=="1"
 assert public["mode"]=="runpod" and not public["disable_runpod_ssh"]
 assert not public["has_ts_authkey"] and public["template"]=="legacy-pi"
-assert public["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
+assert public["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLM_API_KEY }}"
 assert public["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 print("test-launch-network: ok")
 PY
