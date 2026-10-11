@@ -42,7 +42,7 @@ def verify_anonymous():
     if not isinstance(token, str) or not token:
         raise RuntimeError("Anonymous GHCR pull token unavailable")
     data, headers = get_json(
-        REGISTRY + "/v2/" + REPOSITORY + "/manifests/" + PINN,
+        REGISTRY + "/v2/" + REPOSITORY + "/manifests/" + PINNED,
         {"Authorization": "Bearer " + token, "Accept": MANIFEST_TYPE}
     )
     actual = "sha256:" + hashlib.sha256(data).hexdigest()
