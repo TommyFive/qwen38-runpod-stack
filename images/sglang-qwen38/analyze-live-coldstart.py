@@ -40,7 +40,9 @@ def read_jsonl(path):
 def summarize(folder):
     plan=json.loads((folder/"plan.json").read_text())
     creation=json.loads((folder/"creation.json").read_text()) if (folder/"creation.json").exists() else {}
-    logs=read_jsonl(folder/"pod-events.jsonl")
+    # The separate container --follow stream is needed because image-pull
+    # events may displace the container tail in combined RunPod log queries.
+    logs=read_jsonl(folder/"pod-events.jsonl")+read_jsonl(folder/"container-stream.jsonl")
     statuses=read_jsonl(folder/"pod-status.jsonl")
     events={}
     coldstart_events={}
