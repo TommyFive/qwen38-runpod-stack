@@ -11,41 +11,96 @@
 
 </div>
 
-> **Project origin:** This is the [TommyFive fork](https://github.com/TommyFive/qwen38-runpod-stack) of [nicremo/qwen38-runpod-stack](https://github.com/nicremo/qwen38-runpod-stack). Credit for the original GPU/agent workflow goes to the upstream project. This README describes **this fork's actual behavior**, including incompatible changes and security limitations; refer to [upstream's README](https://github.com/nicremo/qwen38-runpod-stack#readme) for the original design. Both use the repository's [MIT license](LICENSE). The fork is versioned independently; [v0.1.0](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.1.0) was the first integrated release, followed by the optimized image v0.2.0.
+> **Project origin:** This is the [TommyFive fork](https://github.com/TommyFive/qwen38-runpod-stack) of [nicremo/qwen38-runpod-stack](https://github.com/nicremo/qwen38-runpod-stack). Credit for the original GPU/agent workflow goes to the upstream project. This README describes **this fork's actual behavior**, including incompatible changes and security limitations; refer to [upstream's README](https://github.com/nicremo/qwen38-runpod-stack#readme) for the original design. Both use the repository's [MIT license](LICENSE). The fork is versioned independently; [v0.1.0](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.1.0) was the first integrated release, [v0.2.0](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.2.0) introduced the custom image, and [v0.2.1](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.2.1) integrated the release deployment fixes.
 
-## Optimized SGLang image — v0.2.0 / minimal-v1
+## Choose your SGLang image: optimized custom or official upstream
 
-The tested custom SGLang image is shipped through a private GHCR repository,
-with a separately versioned release reference:
+This fork **builds and maintains its own optimized SGLang Docker image**
+(`minimal-v1`) instead of merely configuring the standard upstream image.
+The custom image is the **default** for new Qwen38 templates. Its source,
+Docker build pin, release notes and measured GPU evidence are in this repository.
 
-- Version: `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` (verify that the
-  [release promotion workflow](.github/workflows/qwen38-image-release.yml)
-  has completed successfully).
-- Immutable image:
-  `ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`.
-- **12.907 GB** compressed (31 layers), **12.1% smaller** than the original
-  upstream SGLang image. RTX PRO 6000 Blackwell NVFP4 + DFlash2 serving
-  and a **20-GiB RAM-first lean container disk** were live-tested.
-- Full OpenWebUI and private Tailnet modes **on this specific image**, as well
-  as standardized steady-state throughput and unbiased cold-start A/B,
-  remain separate validation tasks. Do not infer a performance gain
-  from compressed image size alone.
+| SGLang Docker image | Compressed linux/amd64 size | Registry layers | Availability |
+|---|---:|---:|---|
+| [Official upstream](https://hub.docker.com/r/lmsysorg/sglang) — `lmsysorg/sglang:dev-qwen38-27b-dflash2` | **14.676 GB** | **68** | Public Docker Hub |
+| **Our optimized minimal-v1** — `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` | **12.907 GB** | **31** | **Private GHCR**; authorized RunPod registry access required |
+| **Difference** | **−1.769 GB (−12.1%)** | **−37 layers** | Same Qwen38 NVFP4 + DFlash2 serving goal |
 
-Re-run `./setup.sh` and then `./create-templates.sh` to create four
-**new v0.2.0 public/private Full/Lean templates**. The existing templates
-are left unchanged for rollback. RunPod needs a private `ghcr.io` registry
-credential with read permission. The launcher resolves only exact release
-template names by default and refuses to deploy if those are missing.
-**The runtime templates pin the tested SHA-256 digest**, so deployment works
-before the separate GHCR human-readable `v0.2.0` alias is published. The
-alias is currently blocked by the package's GitHub Actions access setting;
-this does not invalidate the image or the GitHub release.
+*These are compressed registry-layer sizes, not host-disk usage. The original
+14.676-GB measurement is rounded. A 12.1% smaller download **does not prove**
+a 12.1% faster cold start. RunPod network and caching strongly affect startup.*
 
-**Lean RAM-first:** 20 GiB writable SSD. **Full OpenWebUI:** 150 GiB until
-its additional dependencies are revalidated. Explicit `QWEN38_TEMPLATE*`
-environment overrides select older templates deliberately for rollback.
+The optimized image was **actually tested on an RTX PRO 6000 Blackwell** with
+NVFP4 + DFlash2 and authenticated inference. The Lean RAM-first configuration
+also started successfully with a **20-GiB container disk**. The Full/OpenWebUI
+and Tailnet modes *with this particular custom image*, standardized long-output
+throughput, and a controlled fully uncached cold-start comparison are still
+follow-up work. Optimization continues: the [layer audit](images/sglang-qwen38/LAYER_AUDIT_2026-10-11.md)
+identified FlashInfer cubins/JIT caches as investigation targets, **not yet
+safe-to-remove dependencies**. No additional performance or size gain is
+claimed until measured.
 
-[Release notes, limitations and image provenance](docs/releases/v0.2.0.md).
+**Image access:** GitHub Releases and the `ghcr.io` `v0.2.0` tag are published,
+but the custom GHCR **package remains private**. GitHub Actions has been granted
+package access so CI can tag it; this does **not** make it anonymously pullable.
+The existing RunPod private registry credential is configured for this fork.
+The Docker Hub upstream image does not require it.
+
+### One switch for the official upstream image
+
+`./setup.sh` installs scripts only; it does not create templates or GPUs.
+Select the image when creating **new** templates, then select the same image
+when launching. Defaults are `custom`:
+
+```bash
+# Custom minimal-v1 (default): versioned templates, Lean 20 GiB
+./create-templates.sh --image custom
+qwen38pi --image custom
+# Or Full: qwen38fast --image custom
+
+# Official SGLang image: separate templates, Lean 150 GiB until validated
+./create-templates.sh --image official
+qwen38pi --image official
+# Or Full: qwen38fast --image official
+```
+
+You can alternatively configure the selection for both commands once:
+
+```bash
+export QWEN38_IMAGE_VARIANT=official   # custom | official
+./create-templates.sh
+qwen38pi
+```
+
+**Separate templates avoid surprises:** Custom names start with
+`qwen38-v0.2.0-`; upstream names start with `qwen38-official-`, each having
+Full/Lean × Public/Tailnet variants. **No existing template is overwritten**.
+The launcher verifies the selected template's image, registry access, secret
+reference and network mode before creating a chargeable Pod. Explicit
+`QWEN38_TEMPLATE*` IDs remain a manual override; unset those variables
+to use automatic `--image` selection.
+
+In the RunPod UI, **yes, the Docker image reference itself can be changed**,
+but for CLI launches that is *not sufficient*: the launcher deliberately checks
+the template's name/image combination and requires the matching variant.
+Using the commands above is the supported, safer approach. For manual edits,
+also check the image's private-registry auth, disk size, port exposure,
+environment variables and entrypoint; changes affect only **new Pods**.
+
+The custom templates pin the **immutable, GPU-tested digest** rather than
+relying on a mutable tag:
+
+`ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`
+
+The upstream `dev-qwen38-27b-dflash2` tag can change over time.
+Custom Lean RAM-first uses **20 GiB SSD**, Custom Full **150 GiB**.
+Both official-upstream template sizes conservatively default to **150 GiB**;
+SSD model-storage mode also needs a larger disk than RAM-first Lean.
+
+See [v0.2.0 image details](docs/releases/v0.2.0.md),
+[latest project release](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.2.1),
+[measured build](images/sglang-qwen38/BUILD_RESULTS_2026-10-10.md) and
+[live GPU report](images/sglang-qwen38/LIVE_TEST_RESULTS_2026-10-11.md).
 
 ## Contents
 
@@ -72,7 +127,7 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **TLS on ephemeral Pods** | Tailscale machine identity and certificate state stored in RAM: `--state=mem:` plus a `/dev/shm` `--statedir`, with verified TLS on both endpoints. |
 | **Authentication and privacy** | Mandatory SGLang API key; OpenWebUI authentication enabled, signup disabled, pre-provisioned admin, runtime logs and WebUI data on tmpfs by default, `DEBUG=0` quiet mode and redacted diagnostics. |
 | **RunPod Secrets** | Default use of RunPod secret **references** (`LLM_API_KEY`, optional `HF_TOKEN`, private `TS_AUTHKEY`) rather than injecting local cleartext into the launcher; optional explicit local-credential mode. |
-| **Real RAM-only model downloads** | **Both the main model and DFlash2 draft are downloaded directly from Hugging Face into a RAM-backed `/dev/shm` cache**, not downloaded to SSD and copied afterward. Since the ~22.7 GiB model blobs do not occupy the container SSD, you can provision **significantly less disk** for a new Pod/template, subject to space needed by the Docker image, OpenWebUI installation and other runtime files. The existing example templates still request **150 GB container disk**; reducing that allocation is a separate template choice, **not** automatic. `MODEL_STORAGE=ssd` remains available as an opt-in fallback. |
+| **Real RAM-only model downloads** | **Both the main model and DFlash2 draft are downloaded directly from Hugging Face into a RAM-backed `/dev/shm` cache**, not downloaded to SSD and copied afterward. Since the ~22.7 GiB model blobs do not occupy the container SSD, you can provision **significantly less disk** for a new Pod/template, subject to space needed by the Docker image, OpenWebUI installation and other runtime files. **Custom Lean now defaults to 20 GiB** (live-tested); Custom Full and both official upstream variants retain **150 GiB** by default. `MODEL_STORAGE=ssd` remains available as an opt-in fallback. |
 | **Optional RAM reclaim** | Experimental post-inference checkpoint-blob release after authenticated model use; **off by default** and only allowed with RAM storage. |
 | **Correct tokens/s measurement** | Both the in-Pod benchmark and external `qwen38bench` count **actual generated tokens** via SGLang `usage.completion_tokens`, not Server-Sent Events (SSE) chunks. An SSE chunk can contain multiple tokens or none. Standardized in-Pod workloads run only with `BENCHMARK=1`. |
 | **Cold-start evidence** | Host/Pod UTC + monotonic events, `qwen38cold` reports and per-Pod datasets covering image pull, model download, GPU load/graphs, health readiness, cloud class and missing region/cache metadata. |
@@ -81,7 +136,7 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **Four deployment templates** | Public Full/Lean and Private Full/Lean; helper scripts for safely repairing private port mappings and updating existing template helpers/secret references in place. |
 | **Validation** | Real RTX PRO 6000 GPU tests for RAM/SSD, native SSH, positive/negative API auth, positive WebUI login, private HTTPS and DFlash2; offline GitHub Actions for integrity and benchmark regressions. |
 
-**Why the Pod can use less SSD:** Model files are fetched from Hugging Face **straight into the RAM filesystem**; there is no initial SSD download followed by a copy to RAM. SGLang reads the model and draft weights from RAM and loads them into GPU VRAM. This avoids reserving disk space for roughly **22.7 GiB of downloaded weight blobs** in the tested configuration. **Docker layers, OpenWebUI and other runtime files still need container disk.** The current `create-templates.sh` deliberately retains its historical **150 GB** `--container-disk-in-gb` setting; changing the **Container Disk** size in RunPod's template is a separate manual optimization, not something `MODEL_STORAGE=ram` does automatically. Choose a smaller disk only after verifying enough capacity for the image and other files.
+**Why the Pod can use less SSD:** Model files are fetched from Hugging Face **straight into the RAM filesystem**; there is no initial SSD download followed by a copy to RAM. SGLang reads the model and draft weights from RAM and loads them into GPU VRAM. This avoids reserving disk space for roughly **22.7 GiB of downloaded weight blobs** in the tested configuration. **Docker layers, OpenWebUI and other runtime files still need container disk.** Current template defaults are **20 GiB for Custom Lean RAM-first** (GPU-tested) and **150 GiB for Custom Full and official-upstream templates**. These are template selections, not an automatic effect of `MODEL_STORAGE=ram`. Choose a smaller disk only after verifying enough capacity for the image and other files.
 
 ## Measured performance — corrected server-side token counting
 
@@ -110,7 +165,7 @@ These distinctions matter if you used the original stack. Relevant changes were 
 | **Full Pod startup / NCCL crash** | Installing OpenWebUI into the serving SGLang environment can mutate GPU dependencies while SGLang starts, triggering a `deep_ep.check_nccl_so()` / NCCL crash. | **Isolated OpenWebUI virtualenv** avoids replacing SGLang/PyTorch/NCCL dependencies; Full mode starts UI only after authenticated SGLang readiness. | [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open**; related [upstream issue #3](https://github.com/nicremo/qwen38-runpod-stack/issues/3) |
 | **Tokens/s accounting** | Historical benchmark estimated generated tokens from SSE chunk counts, which may contain multiple tokens or none. | External and in-Pod benchmarks now use **`usage.completion_tokens`**; missing server usage is reported as unavailable instead of inventing numbers. | [nicremo #6](https://github.com/nicremo/qwen38-runpod-stack/pull/6) · **open** |
 | WebUI start | Older SSH-assisted restart workflow. | WebUI is started on the Pod after authenticated SGLang readiness; no client-side SSH restart. | Related to [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open** |
-| Storage / disk sizing | Model downloads/cache occupy disk. | Main and draft weights **download directly into `/dev/shm` RAM**, removing ~22.7 GiB of model weights from SSD requirements in the tested configuration; smaller container disk is possible, but the current template still allocates 150 GB. | — |
+| Storage / disk sizing | Model downloads/cache occupy disk. | Main and draft weights **download directly into `/dev/shm` RAM**, removing ~22.7 GiB of model weights from SSD requirements in the tested configuration; Custom Lean defaults to a GPU-tested 20 GiB container disk; Full and upstream remain at 150 GiB pending validation. | — |
 | Privacy | Public RunPod service model | Authenticated public mode **or** Tailnet-only mode, with protected ephemeral runtime state and explicit logging switches. | — |
 | Testing | Basic throughput tooling | Repeatable in-Pod benchmark, cold-start tracing, security/storage regression tests. | — |
 | **RunPod CLI timer compatibility** | A wrapper can pass `--terminate-after` even on CLI versions that no longer support it, preventing Pod creation. | Detect supported timer flags before use; start commands remain compatible with newer CLI versions. **If unsupported, this is not a guaranteed auto-shutdown.** | [nicremo #2](https://github.com/nicremo/qwen38-runpod-stack/pull/2) · **open** |
