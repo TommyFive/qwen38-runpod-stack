@@ -37,8 +37,17 @@ and Tailnet modes *with this particular custom image*, standardized long-output
 throughput, and a controlled fully uncached cold-start comparison are still
 follow-up work. Optimization continues: the [layer audit](images/sglang-qwen38/LAYER_AUDIT_2026-10-11.md)
 identified FlashInfer cubins/JIT caches as investigation targets, **not yet
-safe-to-remove dependencies**. No additional performance or size gain is
-claimed until measured.
+safe-to-remove dependencies**. No additional **production** performance or size
+gain is claimed without matched GPU validation.
+
+**Experimental minimal-v2 (not deployed):** two independently stored,
+digest-pinned GHCR **CPU candidates** and all 25 SHA256-verified GitHub backup
+parts survived the disposable build host. Preliminary OCI size reductions
+against GPU-tested minimal-v1: **7.637% / 16.498%** for Rust-only / Rust+CUDA
+deduplication respectively; these are **not** production or GPU performance
+claims. See the [checkpoint and manifests](images/sglang-qwen38/MINIMAL_V2_CHECKPOINT_2026-10-12.md),
+[recovery instructions](images/sglang-qwen38/MINIMAL_V2_RECOVERY.md) and
+[open final-image CPU/GPU acceptance issue #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46).
 
 **Public image available now:** The `v0.2.0` GHCR tag and GitHub
 Release are published, and anonymous pull access to the exact **GPU-tested
