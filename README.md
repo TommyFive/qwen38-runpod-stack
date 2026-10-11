@@ -23,7 +23,7 @@ Docker build pin, release notes and measured GPU evidence are in this repository
 | SGLang Docker image | Compressed linux/amd64 size | Registry layers | Availability |
 |---|---:|---:|---|
 | [Official upstream](https://hub.docker.com/r/lmsysorg/sglang) — `lmsysorg/sglang:dev-qwen38-27b-dflash2` | **14.676 GB** | **68** | Public Docker Hub |
-| **Our optimized minimal-v1** — `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` | **12.907 GB** | **31** | **Public GHCR (once package visibility is changed)**; anonymous pull, no GHCR login |
+| **Our optimized minimal-v1** — `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` | **12.907 GB** | **31** | **Public GHCR — verified anonymous access**, no GHCR login |
 | **Difference** | **−1.769 GB (−12.1%)** | **−37 layers** | Same Qwen38 NVFP4 + DFlash2 serving goal |
 
 *These are compressed registry-layer sizes, not host-disk usage. The original
@@ -40,33 +40,29 @@ identified FlashInfer cubins/JIT caches as investigation targets, **not yet
 safe-to-remove dependencies**. No additional performance or size gain is
 claimed until measured.
 
-**Public image rollout:** The `v0.2.0` tag and GitHub Release already exist.
-To allow **anyone** to pull the custom image, the package owner must additionally
-change the GHCR package visibility to **Public** under
-**Package settings → Danger Zone → Change visibility**. A published tag and
-GitHub Actions permission alone do **not** grant public access. Once the
-[anonymous manifest check](images/sglang-qwen38/check-public.py) passes, anyone
-can pull the custom image without a GitHub account or PAT. The template helper
-verifies this access and attaches **no private GHCR credentials**. Existing
-owner templates with private registry auth still work, but should **not be
-shared** as portable templates; new public-image templates carry no such ID.
+**Public image available now:** The `v0.2.0` GHCR tag and GitHub
+Release are published, and anonymous pull access to the exact **GPU-tested
+SHA-256 manifest** was verified on **2026-10-11** with the
+[anonymous manifest checker](images/sglang-qwen38/check-public.py)
+(**31 layers, no GitHub login, PAT or RunPod registry secret**).
+Anyone can use the custom image. The template helper independently checks
+public access before creating new templates and attaches **no private GHCR
+credentials**. Older owner templates with attached registry-auth IDs remain
+compatible but are not portable to other RunPod accounts.
 
 ### Publish once, run without GHCR credentials
 
-The **repository code is public**, but GHCR container-package visibility is a
-separate GitHub setting. The owner must enable **Public** once for
-`qwen38-sglang`. **GitHub documents this as irreversible**: an exposed public
-container package cannot be returned to Private.
-
-After that change, verify the exact image without downloading its 12.9 GB of
-layers:
+Both the **repository source** and **custom GHCR image** are now public.
+GitHub package visibility was changed separately from repository access.
+The exact tested image can be verified anonymously without downloading the
+12.9 GB of registry layers:
 
 ```bash
 python3 images/sglang-qwen38/check-public.py
 # PUBLIC_IMAGE_VERIFIED: ... (31 layers); no login required.
 ```
 
-Then **any RunPod user** can create their own public-image templates with
+**Any RunPod user** can create their own public-image templates with
 `./create-templates.sh --image custom`. No personal `ghcr.io` registry
 credential is needed. **Your application secrets remain separate**: each user
 must configure their own RunPod API/SGLang credentials, and any required

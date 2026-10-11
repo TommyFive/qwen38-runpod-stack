@@ -1,18 +1,16 @@
 # Qwen38 SGLang minimal-v1 image — release v0.2.0
 
 **Status (2026-10-11):** GPU-tested RTX PRO 6000 Blackwell NVFP4+DFlash2
-serving and 20-GiB Lean RAM-first startup, published as a private GHCR
-candidate at immutable
+serving and 20-GiB Lean RAM-first startup, published to GHCR and now
+**publicly downloadable** at immutable
 `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd`.
 The human-readable `ghcr.io/tommyfive/qwen38-sglang:v0.2.0` tag
 **was successfully published** by the release workflow, verifying all 31
-layer digests match the tested candidate. **Anonymous public image access requires a separate Package visibility setting**:
-GitHub Actions package permission is not public pull access. The owner has
-authorized public distribution. Set **Package settings → Danger Zone →
-Change visibility → Public**, then verify the exact digest using
-`python3 images/sglang-qwen38/check-public.py`. New templates omit
-personal RunPod GHCR registry-auth IDs. The immutable image, Docker build
-context, and model/runtime secret handling are unchanged. Repository
+layer digests match the tested candidate. GHCR package visibility is now
+**Public**; the anonymous check `python3 images/sglang-qwen38/check-public.py`
+verified the exact tested manifest and all **31 layer entries on 2026-10-11**.
+New templates omit personal RunPod GHCR registry-auth IDs. The immutable
+image, Docker build context and model/runtime secret handling are unchanged. Repository
 configuration integrates this custom image with four separate public/tailnet
 templates without overwriting previous templates. No private GHCR credentials are needed after public visibility is verified.
 Full OpenWebUI on this custom image, standardized throughput and fully uncached
