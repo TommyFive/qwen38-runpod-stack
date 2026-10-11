@@ -8,7 +8,7 @@ The most straightforward way to run a Pod is through the **RunPod Control UI**: 
 
 **Important difference for command-line users:** `qwen38fast` creates its own full `--env` JSON for a Pod. That overrides the template's environment object, so **changes to the template's ENV alone are not guaranteed to affect Pods launched through `qwen38fast`**. Configure the corresponding local `QWEN38_*` launcher variables when using the CLI.
 
-Credentials should normally be supplied using RunPod Secret references (e.g. `{{ RUNPOD_SECRET_LLAMA_API_KEY }}`), not literal values in a public repository, shell-history command or shared diagnostics. A private template must publish **no public RunPod ports**; a mode switch by itself cannot undo published port mappings.
+Credentials should normally be supplied using RunPod Secret references (e.g. `{{ RUNPOD_SECRET_LLM_API_KEY }}`), not literal values in a public repository, shell-history command or shared diagnostics. A private template must publish **no public RunPod ports**; a mode switch by itself cannot undo published port mappings.
 
 ## Complete environment variable reference
 
@@ -34,6 +34,7 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `TS_AUTHKEY` | unset | Used by the **opt-in local-credential** mode; default RunPod-secret mode references secret `TS_AUTHKEY` instead |
 | `QWEN38_CREDENTIAL_MODE` | `runpod_secrets` | `runpod_secrets` (default) or `local`; legacy local mode exposes credentials to the RunPod CLI ENV call |
 | `QWEN38_HF_SECRET_NAME` | `HF_TOKEN` | RunPod HF Secret name; set explicitly to empty to omit the reference |
+| `QWEN38_API_SECRET_NAME` | `LLM_API_KEY` | Name of the existing RunPod Secret used for SGLang; `LLAMA_API_KEY` is an explicit legacy override until migration is completed. The CLI never reads the Secret's value. |
 | `QWEN38_SGLANG_CLIENT_KEY_FILE` | unset | Optional local matching SGLang API key file for launcher's positive readiness/inference probes |
 | `QWEN38_WEBUI_ADMIN_EMAIL` | `admin@qwen38.example.com` | Pre-provisioned Full WebUI admin email |
 | `QWEN38_WEBUI_ADMIN_PASSWORD` | generated protected file | Full WebUI admin password override; must be at least 16 characters |
@@ -83,7 +84,7 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | Variable(s) | Pod default | Meaning |
 |---|---|---|
 | `NETWORK_MODE` | `runpod` | `runpod` or `tailnet`; **requires correct matching published port configuration** |
-| `SGLANG_API_KEY` | **required** | Nonempty SGLang Bearer secret; template references `LLAMA_API_KEY` |
+| `SGLANG_API_KEY` | **required** | Engine-specific Pod variable for SGLang Bearer authentication; new Qwen38 template references RunPod Secret `LLM_API_KEY` (legacy selector: `LLAMA_API_KEY`) |
 | `TS_AUTHKEY` | empty | Tailnet enrollment, required in private mode; recommended RunPod Secret reference |
 | `TS_HOSTNAME`, `TS_ENABLE_SSH` | generated, `1` | Pod-side Tailnet hostname and native SSH toggle |
 | `MODEL_ID`, `SERVED_NAME` | required model, `qwen38-uncensored` | HF model ID and OpenAI-visible model name |
