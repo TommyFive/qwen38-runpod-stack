@@ -1,0 +1,146 @@
+{
+  "schema": 1,
+  "date_utc": "2026-10-12",
+  "status": "lean_and_full_gpu_smoke_passed_with_remaining_quality_and_positive_login_gaps",
+  "gpu_pod": {
+    "id": "7rwwhciymmqr77",
+    "name": "qwen38-v2b-rc1-261012-c36f28",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "cloud": "SECURE",
+    "hourly_price_usd": 2.49,
+    "deleted_at_utc": "2026-10-12T12:02:03Z",
+    "terminated_verified": true,
+    "active_pods_after_deletion": 0,
+    "public_runpod_ports": 0
+  },
+  "cost": {
+    "balance_before_usd": 3.2962450844,
+    "balance_after_usd": 2.0074189759,
+    "observed_balance_debit_usd": 1.2888261085,
+    "note": "Observed prepaid balance change, not official invoice; may contain billing lag or other account changes."
+  },
+  "image": {
+    "ref": "ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+    "rebuilt": false,
+    "bootstrap_sha256": "b589dfa24a75bf7e2ba1c399944c4646d07ab889d5416301f47a062a149c411c",
+    "source_commit": "dbcee65"
+  },
+  "full": {
+    "status": "smoke_pass",
+    "bootstrap_failures_seen_and_fixed": [
+      "/workspace absent (file relocated to runtime tmpfs)",
+      "uv absent (verified on-demand wheel)",
+      "uv --version contains architecture suffix (bootstrap predicate corrected)"
+    ],
+    "benchmark": {
+      "status": "completed",
+      "workloads": 3,
+      "measured_runs": 15,
+      "completed_utc": "2026-10-12T11:46:46.654269+00:00",
+      "medians": {
+        "technical": {
+          "decode_tps": 134.54,
+          "ttft_ms": 51.9
+        },
+        "code": {
+          "decode_tps": 186.26,
+          "ttft_ms": 53.9
+        },
+        "code_edit": {
+          "decode_tps": 194.19,
+          "ttft_ms": 56.8
+        }
+      }
+    },
+    "openwebui": {
+      "version": "0.11.4",
+      "installed_at_runtime": true,
+      "prebaked_in_image": false,
+      "readiness_http": 200,
+      "tailnet_https_8443_http": 200,
+      "valid_tls": true,
+      "signup_enabled": false,
+      "auth_enabled": true,
+      "unauthenticated_model_api_http": 401,
+      "invalid_login_http": 400,
+      "admin_rows_in_ephemeral_database": 1,
+      "successful_admin_login_tested": false,
+      "real_chat_via_ui_tested": false
+    },
+    "direct_sglang": {
+      "tailnet_https_443_unauth_http": 401,
+      "valid_tls": true
+    },
+    "observed_container_disk_used_gb_after_ui_install": 7.3
+  },
+  "lean": {
+    "status": "smoke_pass",
+    "serve_webui": false,
+    "webui_installation_skipped": true,
+    "webui_listener_8443_absent": true,
+    "benchmark": {
+      "status": "completed",
+      "workloads": 3,
+      "measured_runs": 15,
+      "completed_utc": "2026-10-12T11:59:41.219089+00:00",
+      "medians": {
+        "technical": {
+          "decode_tps": 133.72,
+          "ttft_ms": 55.2
+        },
+        "code": {
+          "decode_tps": 182.89,
+          "ttft_ms": 53.4
+        },
+        "code_edit": {
+          "decode_tps": 196.09,
+          "ttft_ms": 51.7
+        }
+      }
+    },
+    "direct_sglang": {
+      "tailnet_https_443_unauth_http": 401,
+      "valid_tls": true,
+      "authenticated_in_pod_benchmark": true
+    }
+  },
+  "templates": {
+    "full_experimental": {
+      "id": "9o071jcin3",
+      "name": "qwen38-v2b-rc1-261012-full-tailnet",
+      "container_disk_gib": 30,
+      "portless": true,
+      "flags": {
+        "SERVE_WEBUI": "1",
+        "DEBUG": "1",
+        "BENCHMARK": "1",
+        "BENCHMARK_BLOCKING": "1"
+      }
+    },
+    "lean_candidate": {
+      "id": "4vzhpbj5kw",
+      "name": "qwen38-v2b-rc1-261012-lean-tailnet",
+      "container_disk_gib": 30,
+      "portless": true,
+      "flags": {
+        "SERVE_WEBUI": "0",
+        "DEBUG": "0",
+        "BENCHMARK": "0",
+        "BENCHMARK_BLOCKING": "0"
+      }
+    }
+  },
+  "ci": {
+    "branch": "feature/minimal-v2-gpu-full-tailnet-live-test",
+    "bootstrap_integrity": "pass",
+    "benchmark_regression": "pass",
+    "image_source_checks": "pass"
+  },
+  "limits": [
+    "A separate coding correctness/quality regression is not yet proven by token-speed benchmarks.",
+    "Successful real admin-password login and authenticated OpenWebUI chat completion have not been tested.",
+    "These are sequential resets on one GPU Pod, not controlled same-host cold starts.",
+    "RTX SM120 text inference passed; optional TorchCodec/FFmpeg audio import warnings remain outside text-serving acceptance.",
+    "Production v1 templates and main branch have not been changed."
+  ]
+}
