@@ -84,7 +84,7 @@ This non-blocking performance evidence is tracked in #23.
   
 ## Test 1 completed — Private Full / Community Cloud, 2026-10-10
 
-**Recorded reproducible evidence:** [Full timeline and validation matrix](https://github.com/TommyFive/qwen38-runpod-stack/blob/feature/19-optional-postload-ram-release/docs/INTEGRATION_FULL_COMMUNITY_20261010.md) (initially added on PR #19's feature branch, now merged into integration). The active test was performed from an isolated worktree pinned to exact commit `bffa632`, not the main integration checkout.
+**Recorded reproducible evidence:** [Full timeline and validation matrix](INTEGRATION_FULL_COMMUNITY_20261010.md) (initially added on PR #19's feature branch, then consolidated into `main`; the source branch is retired). The active test was performed from an isolated worktree pinned to exact commit `bffa632`, not the main integration checkout.
 
 - **Cloud:** COMMUNITY explicitly requested; billed **$1.69/h**, matching RunPod GPU catalog Community price ($1.69/h) instead of Secure ($2.49/h). The CLI does not expose `cloudType`; mark this **rate-inferred, not direct-metadata verified**. Datacenter/region: **unknown**.
 - **Measured stages:** Pod creation to downloaded Docker image **4m38s** (includes scheduler/platform delay); main+DFlash2 HF download **3m27.7s**; SGLang process to first authenticated completion **~104s**; end-to-end first inference **~9m59s**. OpenWebUI install **43.17s**; admin created and first observed `/api/config` 200 after **~10m44s**.
@@ -142,8 +142,9 @@ Der Benchmark-Bericht liegt auf dem Local workstation unter
 ~/.runpod/qwen38-live04-benchmark.json (0600). Alle vier existierenden
 Template-IDs wurden aktualisiert, nicht neu angelegt. Die ursprünglichen
 PRs #12–#16 wurden als **superseded by PR #17** geschlossen, da alle
-Feature-Commits im Integrationsbranch enthalten sind. Ihre Branches und
-Kommentare bleiben erhalten; sie dürfen nicht separat nach main gemergt werden.
+Feature-Commits im damaligen Integrationsbranch enthalten sind. Die historischen
+PR-Kommentare bleiben erhalten; die konsolidierten Quellbranches wurden später
+gelöscht und dürfen nicht separat nach `main` gemergt werden.
 
 Beim Cleanup nur **runpodctl pod delete <EXAKTE_POD_ID>** verwenden.
 qwen38fast stop / qwen38pi stop löschen in der aktuellen Version
@@ -155,10 +156,12 @@ automatische TTL. #18 ist künftig zu beheben, aber kein Merge-Blocker.
 ---
 
 
-> **Integration branch:** `integration/issues-7-11-20261010`.
+> **Historical integration branch:** `integration/issues-7-11-20261010`
+> (retired after consolidation into `main`).
 > This is a **partially GPU-verified** pre-release candidate. See the live
-> status matrix above: important release gates remain open. Original PRs #12–#16 and `main`
-> are preserved as branches, while the older feature PRs are closed as consolidated. All integration CI is mock/offline.
+> status matrix above: important release gates remained open at capture time.
+> Original PR history is retained on GitHub; the obsolete source branches were
+> later deleted after consolidation. All integration CI was mock/offline.
 
 ## What is combined
 
@@ -182,14 +185,16 @@ On the workstation from which the pod will be launched:
 
 ```bash
 git fetch origin
-git switch --detach origin/integration/issues-7-11-20261010
+git switch --detach origin/main
 git log -1 --format='%h %s'
 bash -n bin/qwen38fast scripts/bootstrap-sglang-openwebui.sh create-templates.sh
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
+The original integration branch no longer exists; the command above validates the
+current consolidated repository, not the historical pre-release tree.
 `git switch --detach` intentionally avoids moving an unrelated local branch.
-Alternatively make a dedicated local tracking branch. The launcher needs
+Alternatively make a dedicated local branch. The launcher needs
 `runpodctl`, the local `rp` wrapper and RunPod credentials. Do **not**
 paste bearer keys, HF tokens, Tailscale auth keys or web passwords into issues.
 

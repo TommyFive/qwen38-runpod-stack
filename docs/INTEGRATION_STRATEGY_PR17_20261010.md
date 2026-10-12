@@ -88,8 +88,9 @@ sample sizes and cache/region control, and candidate smaller SGLang image
    known failure logs; determine whether the issue is port permissions,
    userspace Serve listener, SNI/TLS or relay path. Do not widen ACLs or open
    RunPod ports as workaround.
-2. **Isolated fixes:** small feature PR(s) into
-   `integration/issues-7-11-20261010`, CI on each change. Include a real
+2. **Historical isolated-fix plan:** small feature PR(s) targeted the now-retired
+   `integration/issues-7-11-20261010` branch, with CI on each change. The plan
+   required a real
    external HTTPS reachability assertion (configured Serve state alone
    is not sufficient).
 3. **Parity and offline matrix:** inspect all four existing RunPod template

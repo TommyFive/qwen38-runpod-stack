@@ -8,7 +8,7 @@
 
 **Decision: NO-GO for merge to `main` today.** The actual network/TLS blocker is fixed and live verified. Remaining **positive authentication acceptance gates** have not been demonstrated; neither green offline CI nor a passing negative-auth test substitutes for a positive login. This review does not approve merging and does not create a paid Pod.
 
-**Code basis at review start:** `ad481c4eabed78378464c3802c75cf0e73f061a7` on `integration/issues-7-11-20261010`, PR [#17](https://github.com/TommyFive/qwen38-runpod-stack/pull/17), `main` at `6e25ce80a17d19d3dd46dc146ad9a2173bf39885`. GitHub reports mergeable (no conflicts), Draft; 38 changed paths, both CI workflows `Bootstrap integrity` and `Benchmark regression` successful at that SHA; no submitted PR reviews or unresolved review threads. The main branch was reported unprotected by GitHub's branch API; GitHub mergeability is NOT security approval.
+**Code basis at review start:** `ad481c4eabed78378464c3802c75cf0e73f061a7` on the historical `integration/issues-7-11-20261010` branch (later retired after consolidation), PR [#17](https://github.com/TommyFive/qwen38-runpod-stack/pull/17), `main` at `6e25ce80a17d19d3dd46dc146ad9a2173bf39885`. GitHub reported mergeable (no conflicts), Draft; 38 changed paths, both CI workflows `Bootstrap integrity` and `Benchmark regression` successful at that SHA; no submitted PR reviews or unresolved review threads. The main branch was reported unprotected by GitHub's branch API; GitHub mergeability is NOT security approval.
 
 ## Release-gate disposition
 
