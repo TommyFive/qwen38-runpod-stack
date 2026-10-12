@@ -20,7 +20,7 @@ while [[ $# -gt 0 ]]; do
       IMAGE_VARIANT="$2"; IMAGE_SWITCH_EXPLICIT=1; shift 2 ;;
     --help|-h)
       echo "Usage: ./create-templates.sh [--image custom|official]"
-      echo "Default: custom (immutable, GPU-tested GHCR minimal-v1)."
+      echo "Default: custom (GPU-tested GHCR minimal-v2 B v0.2.2)."
       echo "official: upstream lmsysorg/sglang:dev-qwen38-27b-dflash2."
       echo "Also supports QWEN38_IMAGE_VARIANT and legacy QWEN38_IMAGE_REF."
       exit 0 ;;
@@ -28,6 +28,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
+WEBUI_PASSWORD_SECRET_NAME="${QWEN38_WEBUI_PASSWORD_SECRET_NAME:-QWEN38_WEBUI_ADMIN_PASSWORD}"
+WEBUI_ADMIN_EMAIL="${QWEN38_WEBUI_ADMIN_EMAIL:-admin@qwen38.example.com}"
+[[ "$WEBUI_PASSWORD_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]] || { echo "Invalid WEBUI password secret name" >&2; exit 64; }
+[[ "$WEBUI_ADMIN_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || { echo "Invalid WEBUI admin email" >&2; exit 64; }
 HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME-HF_TOKEN}"
 # Engine-neutral RunPod Secret name. Reuse the old Secret during migration with
 # QWEN38_API_SECRET_NAME=LLAMA_API_KEY (does NOT alter the A40 project).
@@ -42,7 +46,7 @@ MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
 MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
 case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
 # Both choices preserve the Qwen38 authentication, model and network configuration.
-CUSTOM_IMAGE="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+CUSTOM_IMAGE="ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
 OFFICIAL_IMAGE="lmsysorg/sglang:dev-qwen38-27b-dflash2"
 if [[ -n "${QWEN38_IMAGE_REF:-}" ]]; then
   case "$QWEN38_IMAGE_REF" in
@@ -56,16 +60,15 @@ if [[ -n "${QWEN38_IMAGE_REF:-}" ]]; then
   IMAGE_VARIANT="$ref_variant"
 fi
 case "$IMAGE_VARIANT" in
-  custom) IMAGE="$CUSTOM_IMAGE"; TEMPLATE_PREFIX="qwen38-v0.2.0" ;;
+  custom) IMAGE="$CUSTOM_IMAGE"; TEMPLATE_PREFIX="qwen38-v0.2.2" ;;
   official) IMAGE="$OFFICIAL_IMAGE"; TEMPLATE_PREFIX="qwen38-official" ;;
   *) echo "Image must be custom or official" >&2; exit 64 ;;
 esac
 MODEL="${QWEN38_MODEL:-sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4}"
 # RAM-first models and the DFlash2 draft download to /dev/shm, not SSD.
-# User-requested default: ALL four templates (Full/Lean × Public/Tailnet) 20 GiB.
-# Only Custom Lean has been live-tested at 20 GiB so far; Full and official
-# at this smaller capacity still need validation.
+# 30 GiB GPU-tested for minimal-v2 B Full and Lean (official keeps 20 GiB).
 DEFAULT_DISK_GB=20
+[[ "$IMAGE_VARIANT" == custom ]] && DEFAULT_DISK_GB=30
 if [[ "$MODEL_STORAGE" == ssd ]]; then
   # Main/draft weights (~24 GiB) and caches need significantly more disk.
   # Switching to SSD at template creation automatically chooses 150 GiB.
@@ -117,9 +120,10 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     "DEBUG":"0", "COLDSTART_TRACE":"1",
     "RUNTIME_LOG_DIR":"/dev/shm/qwen38-runtime",
     "SGLANG_API_KEY":"{{ RUNPOD_SECRET_"+sys.argv[12]+" }}",
+    **({"WEBUI_ADMIN_EMAIL":sys.argv[13], "WEBUI_ADMIN_PASSWORD":"{{ RUNPOD_SECRET_"+sys.argv[14]+" }}"} if sys.argv[4]=="1" else {}),
     **({"TS_AUTHKEY":"{{ RUNPOD_SECRET_TS_AUTHKEY }}"} if sys.argv[5]=="tailnet" else {}),
     **({"HF_TOKEN":"{{ RUNPOD_SECRET_"+sys.argv[11]+" }}"} if sys.argv[11] else {})
-  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME" "$API_SECRET_NAME")
+  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME" "$API_SECRET_NAME" "$WEBUI_ADMIN_EMAIL" "$WEBUI_PASSWORD_SECRET_NAME")
 
   # CLI/backend may reject large --env on CREATE (observed HTTP 500).
   # Provision no-secret skeleton then UPDATE only that new template.
@@ -165,11 +169,11 @@ if d.get("id")!=sys.argv[1] or d.get("env",{}).get("COLDSTART_TRACE")!="1" or d.
 
 echo "Full $IMAGE_VARIANT template (SGLang + OpenWebUI, PUBLIC RunPod ports):"
 id=$(mk ${TEMPLATE_PREFIX}-full-public \
-  '8000/http,8080/http,22/tcp' '8000=SGLang API,8080=OpenWebUI,22=SSH' 1 runpod "$FULL_DISK_GB")
+  '8000/http,8080/http' '8000=SGLang API,8080=OpenWebUI' 1 runpod "$FULL_DISK_GB")
 echo "  QWEN38_TEMPLATE=$id"
 echo "Lean $IMAGE_VARIANT template (SGLang API, PUBLIC RunPod ports):"
 id=$(mk ${TEMPLATE_PREFIX}-lean-public \
-  '8000/http,22/tcp' '8000=SGLang API,22=SSH' 0 runpod "$LEAN_DISK_GB")
+  '8000/http' '8000=SGLang API' 0 runpod "$LEAN_DISK_GB")
 echo "  QWEN38_TEMPLATE_PI=$id"
 echo "Full tailnet-only template (NO published RunPod ports):"
 id=$(mk ${TEMPLATE_PREFIX}-full-tailnet \
@@ -182,11 +186,11 @@ echo "  QWEN38_TEMPLATE_TAILNET_PI=$id"
 echo "For tailnet-only templates, verify 'runpodctl template get <id>' has NO public ports."
 echo "Private templates reference existing RunPod Secret TS_AUTHKEY; all templates reference $API_SECRET_NAME for SGLang."
 echo "All templates reference RunPod Secret HF_TOKEN by default (override QWEN38_HF_SECRET_NAME)."
-echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenWebUI,"
-echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
+echo "Full templates use RunPod Secret $WEBUI_PASSWORD_SECRET_NAME and WEBUI_ADMIN_EMAIL."
+echo "Resolved admin passwords must be >=16 characters; otherwise Full fails closed."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
 echo "Image variant: $IMAGE_VARIANT; image: $IMAGE; disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
 echo "No private GHCR registry credentials attached to new templates; public images pull anonymously."
-echo "NOTE: 20 GiB defaults require MODEL_STORAGE=ram; SSD downloads need >=50 GiB, recommended 150 GiB."
+echo "NOTE: Custom RAM-first defaults to 30 GiB; SSD downloads need >=50 GiB, default 150 GiB."
 echo "Switch source: ./create-templates.sh --image official|custom (creates distinct templates)."
 echo "Recreate all four templates after each bootstrap/helper change."

@@ -111,7 +111,7 @@ elif args[:2] == ["template", "create"]:
     name=args[args.index("--name")+1]
     assert "--env" not in args
     assert "--registry-auth-id" not in args
-    assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+    assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
     print(json.dumps({"id":"template-ci-"+name,"name":name}))
 elif args[:2] == ["template", "update"]:
     env=json.loads(args[args.index("--env")+1])
@@ -124,7 +124,11 @@ elif args[:2] == ["template", "update"]:
         assert env["TS_AUTHKEY"] == "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
     else:
         assert "TS_AUTHKEY" not in env
-    assert "WEBUI_ADMIN_PASSWORD" not in env
+    if env["SERVE_WEBUI"]=="1":
+        assert env["WEBUI_ADMIN_PASSWORD"]=="{{ RUNPOD_SECRET_QWEN38_WEBUI_ADMIN_PASSWORD }}"
+        assert env["WEBUI_ADMIN_EMAIL"]=="admin@qwen38.example.com"
+    else:
+        assert "WEBUI_ADMIN_PASSWORD" not in env
     tid=args[2]
     with open(os.environ["TEST_TEMPLATE_FLAGS"], "a") as out:
         out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":"8000/http" if env["NETWORK_MODE"]=="runpod" and env["SERVE_WEBUI"]=="0" else ("8000/http,8080/http" if env["NETWORK_MODE"]=="runpod" else ""), "mode":env["NETWORK_MODE"]})+"\n")
@@ -252,8 +256,8 @@ PY
 echo '=== launcher local credential fallback and password provision ==='
 # These tests focus on credential safety and inject fixed template IDs.
 # Release-template discovery is independently covered in deployment tests.
-export QWEN38_TEMPLATE=template-ci-qwen38-v0.2.0-full-public
-export QWEN38_TEMPLATE_PI=template-ci-qwen38-v0.2.0-lean-public
+export QWEN38_TEMPLATE=template-ci-qwen38-v0.2.2-full-public
+export QWEN38_TEMPLATE_PI=template-ci-qwen38-v0.2.2-lean-public
 export QWEN38_CREDENTIAL_MODE=local
 export QWEN38_DEBUG=1
 export TEST_EXPECTED_LAUNCH_HF="$HF_TOKEN"

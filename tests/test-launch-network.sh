@@ -40,8 +40,8 @@ elif args[:2] == ["template", "list"]:
     # Minimal offline fixtures: custom + upstream names both resolve.
     res=[]
     for flavor,prefix,image,auth in (
-        ("custom","qwen38-v0.2.0",
-         "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
+        ("custom","qwen38-v0.2.2",
+         "ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
          None),
         ("official","qwen38-official","lmsysorg/sglang:dev-qwen38-27b-dflash2",None),
     ):
@@ -75,11 +75,12 @@ elif args[:2] == ["template", "create"]:
         expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 20
         assert int(args[args.index("--container-disk-in-gb")+1])==expected
     else:
-        assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+        assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
         assert "--registry-auth-id" not in args, "PUBLIC custom must not attach private GHCR credentials"
-        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 20
+        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 30
         assert int(args[args.index("--container-disk-in-gb")+1])==expected
     assert "--env" not in args, "large template env must be UPDATEd after creation"
+    if public: assert "22/tcp" not in args[args.index("--ports")+1]
     if "tailnet" in name:
         assert not public, "private template must not publish ports"
         assert "--port-labels" not in args
@@ -94,6 +95,11 @@ elif args[:2] == ["template", "update"]:
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
+    if env["SERVE_WEBUI"]=="1":
+        assert env["WEBUI_ADMIN_PASSWORD"]=="{{ RUNPOD_SECRET_QWEN38_WEBUI_ADMIN_PASSWORD }}"
+        assert "@" in env["WEBUI_ADMIN_EMAIL"]
+    else:
+        assert "WEBUI_ADMIN_PASSWORD" not in env and "WEBUI_ADMIN_EMAIL" not in env
     secret = os.environ.get("QWEN38_API_SECRET_NAME", "LLM_API_KEY")
     assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_" + secret + " }}"
     assert env["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
@@ -196,7 +202,7 @@ pods=[x for x in events if x["kind"]=="pod"]
 assert len(templates)==4, templates
 assert len([x for x in templates if x["mode"]=="tailnet" and not x["has_ports"]])==2
 assert len(pods)==3, pods
-assert all(p["disk_gib"]==20 for p in pods), "RAM-first Full and Lean must use 20 GiB"
+assert all(p["disk_gib"]==30 for p in pods), "custom v0.2.2 RAM-first Full and Lean use 30 GiB"
 private, full, public = pods
 assert private["mode"]=="tailnet" and private["disable_runpod_ssh"]
 assert private["ts_key_ref"]=="{{ RUNPOD_SECRET_TS_AUTHKEY }}"
@@ -280,7 +286,7 @@ import json,sys
 rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 pods=[r for r in rows if r.get("kind")=="pod"]
 assert pods[-2]["disk_gib"]==150 and pods[-2]["template"]=="template-qwen38-official-lean-public"
-assert pods[-1]["disk_gib"]==150 and pods[-1]["template"]=="template-qwen38-v0.2.0-full-public"
+assert pods[-1]["disk_gib"]==150 and pods[-1]["template"]=="template-qwen38-v0.2.2-full-public"
 print("SSD model downloads correctly use 150 GiB for official Lean and Custom Full")
 PY_SSD
 if QWEN38_FULL_DISK_GB=20 bash "$ROOT/bin/qwen38fast" --storage ssd --image custom > "$TMP/undersized-pod.out" 2>&1; then
