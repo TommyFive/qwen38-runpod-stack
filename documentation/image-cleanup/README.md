@@ -116,6 +116,20 @@ part of the current integration. Rewriting an ancestor changes published release
 Git-tag commit SHAs even when the current filetree is unchanged. That needs
 separate approval; OCI tags/digests must remain unchanged.
 
+The post-merge rehearsal against public `main` `774e879` completed on 2026-10-13
+(CST). It captured and preserved all 87 advertised/accessibly fetched references
+(41 heads, 41 pull refs and 5 tags), produced mappings for 556 commits and all 87
+refs, dropped no commit or ref mapping, and passed strict object verification.
+The rewritten `main` tree is byte-identical to the public tree. A bounded scan of
+2,563 reachable objects found no non-allowlisted private infrastructure residue or
+private author/committer identity; the allowlist is limited to privacy-detector
+fixtures/placeholders, loopback/unspecified addresses, RFC 5737 documentation
+addresses and the OpenCV version literal. An independent non-local clone then
+passed privacy and Gitleaks scans, whitespace validation, and the 100 + 57 Python
+tests. Rules, findings and mappings remain private because they contain the values
+being removed. This evidence validates feasibility only; it does not authorize or
+perform a remote rewrite.
+
 Residuals: GitHub PR refs/diffs/caches may need Support; old Actions logs/artifacts,
 release bodies, forks, external clones and signed-object verification require
 separate coordinated cleanup. Git history rewriting does not alter GHCR config
