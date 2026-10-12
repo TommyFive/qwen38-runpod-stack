@@ -7,7 +7,7 @@
 ## Scope, image and isolation
 
 - Authorized **single** Pod: `7rwwhciymmqr77`, `qwen38-v2b-rc1-261012-c36f28`, RTX PRO 6000 Blackwell Server Edition, Secure Cloud, **$2.49/h**, provisioned ~11:28:17 UTC, independently verified **deleted 12:02:03 UTC**. Provider showed **zero remaining Pods**. The independent Mac mini GPU watchdog and log collector were unregistered after deletion.
-- Observed account balance **$3.2962450844 → $2.0074189759** (delta **~$1.29**); this is a **balance-based estimate, not a final per-Pod invoice**, and may be influenced by billing timing.
+- Observed account balance **$3.2962450844 → $1.8943093426** (delta **~$1.40**); this is a **post-termination balance-based estimate, not an official per-Pod invoice**. RunPod's balance settled further after deletion; the $1.8943 balance was confirmed at 12:08:57 UTC. Unrelated account activity cannot be independently excluded.
 - **Immutable image:** `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7`. CUDA, PyTorch and SGLang image layer contents unchanged.
 - Tested final bootstrap SHA256: `b589dfa24a75bf7e2ba1c399944c4646d07ab889d5416301f47a062a149c411c`, from feature branch commit [`dbcee65`](https://github.com/TommyFive/qwen38-runpod-stack/commit/dbcee65). All provider-published Pod ports disabled; Tailscale userspace networking and private HTTPS.
 - Linux arm64 Mac mini controlled the Pod via RunPod CLI and authenticated Tailnet SSH. Secrets remained RunPod Secret references; neither provider environment nor `/proc/*/environ` contents were published.
