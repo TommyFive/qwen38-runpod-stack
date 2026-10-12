@@ -22,7 +22,18 @@ case "$CANDIDATE" in
   a) IMAGE="ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e" ;;
   v1) IMAGE="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd" ;;
 esac
-NAME="qwen38-gpulive-20261012-$CANDIDATE-full-tailnet-bench5-debug"
+# RunPod web editor enforces strictly fewer than 50 characters (CLI may not).
+# Keep labels readable, versioned and short; validate BEFORE provider mutation.
+case "$CANDIDATE" in
+  b) SHORT_VARIANT=v2b ;;
+  a) SHORT_VARIANT=v2a ;;
+  v1) SHORT_VARIANT=v1 ;;
+esac
+NAME="qwen38-gpulive-261012-$SHORT_VARIANT-full-tailnet-b5-debug"
+if (( ${#NAME} >= 50 )); then
+  echo "Template name must be shorter than 50 characters" >&2
+  exit 64
+fi
 DISK_GB="${QWEN38_LIVE_DISK_GB:-30}"
 [[ "$DISK_GB" =~ ^[0-9]+$ ]] && ((10#$DISK_GB >= 20 && 10#$DISK_GB <= 150)) || {
   echo "QWEN38_LIVE_DISK_GB must be 20..150 GiB" >&2; exit 64;
