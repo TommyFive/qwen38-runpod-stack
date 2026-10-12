@@ -10,6 +10,9 @@ REL="minimal-v2-cpu-checkpoint-20261012"
 BASE="https://github.com/TommyFive/qwen38-runpod-stack/releases/download/$REL"
 OUT="$ROOT/release-recovery"
 mkdir -p "$OUT"
+# Reserve space so backup extraction cannot exhaust the Docker test host.
+avail="$(df -B1 --output=avail "$OUT" | tail -1 | tr -d " ")"
+(( avail >= 70000000000 )) || { echo "Need >=70 GB available for complete Release recovery" >&2; exit 20; }
 
 for mode in rust-cuda rust; do
   printf '\n=== BACKUP CHECK %s %s ===\n' "$mode" "$(date -u +%FT%TZ)"
@@ -58,9 +61,10 @@ for mode in rust-cuda rust; do
   printf '=== ALL %s %s ASSETS INDEPENDENTLY VERIFIED ===\n' "$count" "$mode"
 
   dst="$OUT/restored-$mode"
-  if [[ ! -e "$dst" ]]; then
+  if [[ ! -f "$dst/.archive-extracted-ok" ]]; then
     mkdir -p "$dst"
     cat release-"$mode".part-?? | tar -xf - -C "$dst"
+    touch "$dst/.archive-extracted-ok"
   fi
   image_root="$dst/oci-split-$mode"
   [[ -s "$image_root/index.json" ]] || { echo "Missing OCI index" >&2; exit 34; }
