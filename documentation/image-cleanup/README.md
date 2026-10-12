@@ -7,13 +7,15 @@ starting point; sanitize the current repository without rewriting published
 history or changing any production OCI image. Work started from current `main`,
 with selective reviewed imports, not merges of historic research commits.
 
-Source heads recorded before changes:
+Source heads recorded before changes. Both research branches were retired after
+their reviewed content was consolidated; the SHAs remain historical provenance,
+not live branch references:
 
-| Reference | SHA |
-|---|---|
-| main | `2d613e40fcb4638c7c397658280edde4c51cec49` |
-| feature/minimal-v2-gpu-full-tailnet-live-test | `b2c40c00676c3560418fd8984ad7f07f1654a107` |
-| research/minimal-v2-kernel-audit | `b1b5bbfae8627eaffd98a658cb4b141bbb451469` |
+| Reference at capture | SHA | Current status |
+|---|---|---|
+| main | `2d613e40fcb4638c7c397658280edde4c51cec49` | Superseded by current `main` |
+| feature/minimal-v2-gpu-full-tailnet-live-test | `b2c40c00676c3560418fd8984ad7f07f1654a107` | Branch deleted after consolidation |
+| research/minimal-v2-kernel-audit | `b1b5bbfae8627eaffd98a658cb4b141bbb451469` | Branch deleted after consolidation |
 
 ## Layout, dependencies and entrypoints
 

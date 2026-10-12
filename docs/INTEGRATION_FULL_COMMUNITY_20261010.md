@@ -7,7 +7,7 @@
 | Field | Value / evidence |
 |---|---|
 | Exact Git commit | `bffa632233d8c5877890f211192e8150009619e1` (Draft PR #19), isolated worktree `/tmp/qwen38-pr19-live-test1`; the normal integration worktree was not switched |
-| Base integration branch | `integration/issues-7-11-20261010`, unchanged in normal Local workstation checkout during the launch |
+| Base integration branch at capture | `integration/issues-7-11-20261010`, unchanged in the normal local workstation checkout during the launch; retired after consolidation into `main` |
 | Pod ID | `historical-resource-13` (**deleted**) |
 | GPU | 1× NVIDIA RTX PRO 6000 Blackwell Server Edition |
 | Template | `historical-resource-9` — Private Full, zero published RunPod ports, `SERVE_WEBUI=1` |

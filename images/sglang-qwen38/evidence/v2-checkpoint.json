@@ -3,7 +3,8 @@
   "purpose": "Historical remote evidence snapshot, not a substitute for future cold pull or runtime verification",
   "observed_release": "2026-10-12",
   "github_repository": "TommyFive/qwen38-runpod-stack",
-  "release_url": "https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/minimal-v2-cpu-checkpoint-20261012",
+  "retired_release_tag": "minimal-v2-cpu-checkpoint-20261012",
+  "release_status": "deleted after v0.2.2 promotion; GHCR checkpoint package retained",
   "release_assets_verified_workflow": {
     "run_url": "https://github.com/TommyFive/qwen38-runpod-stack/actions/runs/38158692348",
     "conclusion": "success",
