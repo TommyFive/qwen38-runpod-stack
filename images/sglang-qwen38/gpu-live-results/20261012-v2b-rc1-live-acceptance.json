@@ -15,9 +15,10 @@
   },
   "cost": {
     "balance_before_usd": 3.2962450844,
-    "balance_after_usd": 2.0074189759,
-    "observed_balance_debit_usd": 1.2888261085,
-    "note": "Observed prepaid balance change, not official invoice; may contain billing lag or other account changes."
+    "balance_after_usd": 1.8943093426,
+    "observed_balance_debit_usd": 1.4019357418,
+    "note": "Observed prepaid balance change after delayed post-termination billing settlement, not an official per-Pod invoice; unrelated account debits cannot be independently excluded.",
+    "balances_rechecked_utc": "2026-10-12T12:08:57Z"
   },
   "image": {
     "ref": "ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
