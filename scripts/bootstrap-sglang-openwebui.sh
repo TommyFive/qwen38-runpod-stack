@@ -113,6 +113,9 @@ if [[ "$BENCHMARK_BLOCKING" == 1 ]]; then
         [[ -n "${WEBUI_ADMIN_EMAIL:-}" && ${#admin_password_value} -ge 16 ]] || {
             echo "ERROR: blocking Full mode requires WebUI admin email/password (>=16 chars)" >&2; exit 64;
         }
+        if [[ "$admin_password_value" == *'{{ RUNPOD_SECRET_'* || "$admin_password_value" == *'\${'* ]]; then
+            echo "ERROR: unresolved Full OpenWebUI password secret" >&2; exit 64
+        fi
     fi
 fi
 [[ "$COLDSTART_TRACE" == 0 || "$COLDSTART_TRACE" == 1 ]] || { echo "ERROR: COLDSTART_TRACE must be 0 or 1" >&2; exit 64; }
