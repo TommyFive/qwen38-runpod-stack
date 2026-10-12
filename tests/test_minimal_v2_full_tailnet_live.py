@@ -50,12 +50,15 @@ class FullTailnetLiveTests(unittest.TestCase):
                          capture_output=True,text=True,timeout=20)
         self.assertEqual(p.returncode,0,p.stderr)
         self.assertIn("DRY RUN",p.stdout)
-        self.assertIn("NO", "NO")  # no external call needed
         self.assertIn("sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",p.stdout)
         self.assertIn("full-tailnet",p.stdout)
         self.assertIn("BENCHMARK_BLOCKING=1",p.stdout)
         self.assertIn("No public ports",p.stdout)
         self.assertNotIn("RUNPOD_API_KEY",p.stdout)
+        name=re.search(r"GPU live Full Tailnet template: (\\S+)",p.stdout)
+        self.assertIsNotNone(name)
+        self.assertLess(len(name.group(1)),50,"RunPod UI requires strictly fewer than 50 characters")
+        self.assertEqual(name.group(1),"qwen38-gpulive-261012-v2b-full-tailnet-b5-debug")
 
     def test_other_images_are_pinned_and_separate(self):
         for name,sha in (
@@ -66,6 +69,10 @@ class FullTailnetLiveTests(unittest.TestCase):
                              capture_output=True,text=True,timeout=20)
             self.assertEqual(p.returncode,0,p.stderr)
             self.assertIn("sha256:"+sha,p.stdout)
+            name_match=re.search(r"GPU live Full Tailnet template: (\\S+)",p.stdout)
+            self.assertIsNotNone(name_match)
+            self.assertLess(len(name_match.group(1)),50)
+            self.assertIn("-"+name+"-" if name=="v1" else "-v2a-",name_match.group(1))
 
     def test_fail_closed_invalid_disk_and_secrets(self):
         env=dict(os.environ,QWEN38_LIVE_DISK_GB="10")
@@ -114,6 +121,7 @@ class FullTailnetLiveTests(unittest.TestCase):
         self.assertIn('repair "$ID"',s)
         self.assertIn('RUNPOD_SECRET_',s)
         self.assertNotIn('PUBLIC_KEY',s)
+        self.assertIn('if (( ${#NAME} >= 50 ))',s)
 
 
 if __name__=="__main__":
