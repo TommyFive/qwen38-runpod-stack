@@ -284,16 +284,16 @@ if [[ "$DEBUG" == 1 && "$MODEL_STORAGE" == ram ]]; then
     echo "QWEN38_STORAGE_METRIC: read-only RAM monitor started"
 fi
 [[ -n "${HF_TOKEN:-}" ]] && export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
-cat > /workspace/smoke-storage.sh <<'SMOKE'
+cat > "$RUNTIME_LOG_DIR/smoke-storage.sh" <<'SMOKE'
 #!/usr/bin/env bash
 set -euo pipefail
-python3 /dev/shm/qwen38-runtime/model-storage.py audit
-df -B1 "${HF_HOME}" /workspace
+python3 "${RUNTIME_LOG_DIR:?}/model-storage.py" audit
+df -B1 "${HF_HOME}" "$RUNTIME_LOG_DIR"
 du -sh "${HF_HOME}" 2>/dev/null || true
 curl -fsS --max-time 30 -H "Authorization: Bearer ${SGLANG_API_KEY:?}" http://127.0.0.1:8000/v1/models |
   python3 -c 'import json,sys; assert json.load(sys.stdin).get("data"); print("SGLang: ready")'
 SMOKE
-chmod 700 /workspace/smoke-storage.sh
+chmod 700 "$RUNTIME_LOG_DIR/smoke-storage.sh"
 [[ -n "${HF_TOKEN:-}" ]] && export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
 
 nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv,noheader || true
@@ -488,14 +488,90 @@ BENCH_GATE
     unset BENCHMARK_B64
 fi
 
+
+# Full-only runtime installer. Pinned wheel: uv 0.12.10, linux/x86_64.
+# No OpenWebUI/uv binaries are added to the immutable Docker image.
+provision_uv_runtime() {
+    if command -v uv >/dev/null 2>&1; then
+        UV_BIN="$(command -v uv)"
+        echo "QWEN38_WEBUI_UV status=existing"
+        return 0
+    fi
+    local uv_dir="${QWEN38_UV_RUNTIME_DIR:-/tmp/qwen38-uv-runtime}"
+    install -d -m 700 "$uv_dir" || return 1
+    UV_BIN="$uv_dir/uv"
+    if [[ -x "$UV_BIN" ]] && "$UV_BIN" --version 2>/dev/null | grep -qx 'uv 0.12.10'; then
+        echo "QWEN38_WEBUI_UV status=reused version=0.12.10"
+        return 0
+    fi
+    if ! python3 - "$UV_BIN" <<'PY_UV_RUNTIME'
+import hashlib
+import io
+import json
+import os
+import pathlib
+import sys
+import urllib.parse
+import urllib.request
+import zipfile
+
+target = pathlib.Path(sys.argv[1])
+version = '0.12.10'
+wheel_name = 'uv-0.12.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl'
+expected = 'f7d6248ad9f2d282fea795f248da8fa666ab382df50d8385bd98e01049440a0c'
+with urllib.request.urlopen('https://pypi.org/pypi/uv/0.12.10/json', timeout=20) as response:
+    metadata = json.load(response)
+wheels = [f for f in metadata['urls'] if f.get('filename') == wheel_name]
+if len(wheels) != 1:
+    raise SystemExit('ERROR: pinned uv x86_64 wheel unavailable')
+wheel = wheels[0]
+url = wheel['url']
+parsed = urllib.parse.urlparse(url)
+if parsed.scheme != 'https' or parsed.hostname != 'files.pythonhosted.org':
+    raise SystemExit('ERROR: unexpected uv wheel distribution host')
+if wheel['digests']['sha256'] != expected:
+    raise SystemExit('ERROR: pinned uv wheel digest mismatch in PyPI metadata')
+with urllib.request.urlopen(url, timeout=120) as response:
+    raw = response.read(25_000_001)
+if len(raw) > 25_000_000 or hashlib.sha256(raw).hexdigest() != expected:
+    raise SystemExit('ERROR: uv wheel byte size or SHA256 mismatch')
+with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+    executable = archive.read('uv-0.12.10.data/scripts/uv')
+tmp = target.with_suffix('.tmp')
+tmp.write_bytes(executable)
+os.chmod(tmp, 0o700)
+os.replace(tmp, target)
+print('QWEN38_WEBUI_UV status=verified version='+version, flush=True)
+PY_UV_RUNTIME
+    then
+        return 1
+    fi
+    "$UV_BIN" --version 2>/dev/null | grep -qx 'uv 0.12.10'
+}
+
+wait_for_webui_ready() {
+    local attempt
+    for ((attempt=0; attempt<60; attempt++)); do
+        if curl -fsS --max-time 3 -o /dev/null http://127.0.0.1:8080/health 2>/dev/null; then
+            return 0
+        fi
+        sleep 3
+    done
+    return 1
+}
+
 if [[ "$SERVE_WEBUI" == 1 ]]; then
   # Public OpenWebUI must have a preprovisioned administrator. In particular,
   # allowing first-user signup on an internet-facing port is NOT acceptable.
   admin_pwd="${WEBUI_ADMIN_PASSWORD:-}"
-  if [[ -z "${WEBUI_ADMIN_EMAIL:-}" || ${#admin_pwd} -lt 16 ]]; then
-    echo "WARNING: OpenWebUI disabled: WEBUI_ADMIN_EMAIL and strong (>=16 chars) WEBUI_ADMIN_PASSWORD required"
+  if [[ -z "${WEBUI_ADMIN_EMAIL:-}" || ${#admin_pwd} -lt 16 ||
+        "$admin_pwd" == *'{{ RUNPOD_SECRET_'* || "$admin_pwd" == *'${ '* ]]; then
+    echo "ERROR: requested Full mode requires WEBUI_ADMIN_EMAIL and WEBUI_ADMIN_PASSWORD >=16 chars" >&2
+    echo "QWEN38_WEBUI status=failed phase=credentials"
+    exit 73
   else
-    WEBUI_VENV="${QWEN38_WORKSPACE:-/workspace}/openwebui-venv"
+    WEBUI_VENV="${QWEN38_WORKSPACE:-/tmp/qwen38-webui}/openwebui-venv"
+    install -d -m 700 "$(dirname "$WEBUI_VENV")" || exit 70
     WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
     export WEBUI_VENV WEBUI_ADMIN_EMAIL WEBUI_ADMIN_PASSWORD
     cat > "$RUNTIME_LOG_DIR/start-openwebui.sh" <<'WEBUI_SCRIPT'
@@ -526,10 +602,22 @@ WEBUI_SCRIPT
     # Separate venv: do NOT change SGLang/PyTorch/NCCL installed packages.
     cold_mark openwebui_install_start
     echo "--- installing isolated OpenWebUI"
-    if ! command -v uv >/dev/null 2>&1; then
-      echo "ERROR: uv missing; OpenWebUI disabled (SGLang unaffected)"
-    elif uv venv --python /usr/bin/python3 "$WEBUI_VENV" >/dev/null 2>&1 &&
-         uv pip install --python "$WEBUI_VENV/bin/python" "open-webui==$WEBUI_VERSION" >/dev/null 2>&1; then
+    if ! provision_uv_runtime; then
+      echo "ERROR: Full OpenWebUI uv provisioning failed; refusing false-ready Full mode" >&2
+      echo "QWEN38_WEBUI status=failed phase=uv"
+      exit 73
+    fi
+    export UV_CACHE_DIR="$RUNTIME_LOG_DIR/uv-cache"
+    if "$UV_BIN" venv --python /usr/bin/python3 "$WEBUI_VENV" 2>&1 |
+         env DEBUG=1 python3 -u "$RUNTIME_LOG_DIR/redact-log.py" | tee -a "$RUNTIME_LOG_DIR/openwebui-install.log" &&
+       timeout 900 "$UV_BIN" pip install --python "$WEBUI_VENV/bin/python" "open-webui==$WEBUI_VERSION" 2>&1 |
+         env DEBUG=1 python3 -u "$RUNTIME_LOG_DIR/redact-log.py" | tee -a "$RUNTIME_LOG_DIR/openwebui-install.log"; then
+      [[ -x "$WEBUI_VENV/bin/open-webui" ]] || {
+        echo "ERROR: OpenWebUI executable absent after successful installer" >&2
+        echo "QWEN38_WEBUI status=failed phase=install"
+        exit 73
+      }
+      echo "QWEN38_WEBUI status=installed version=$WEBUI_VERSION"
       # Start only after the authenticated API reports the model. No SSH
       # restart, no inherited redirection to persistent /workspace logs.
       cat > "$RUNTIME_LOG_DIR/start-webui-when-ready.sh" <<'READY'
@@ -547,8 +635,16 @@ exit 1
 READY
       chmod 700 "$RUNTIME_LOG_DIR/start-webui-when-ready.sh"
       launch_private openwebui bash "$RUNTIME_LOG_DIR/start-webui-when-ready.sh"
+      if ! wait_for_webui_ready; then
+        echo "ERROR: OpenWebUI readiness deadline expired (see redacted openwebui.log)" >&2
+        echo "QWEN38_WEBUI status=failed phase=readiness"
+        exit 74
+      fi
+      echo "QWEN38_WEBUI status=ready"
     else
-      echo "ERROR: OpenWebUI installation failed; SGLang remains running"
+      echo "ERROR: OpenWebUI install failed (see redacted openwebui-install.log)" >&2
+      echo "QWEN38_WEBUI status=failed phase=install"
+      exit 73
     fi
     cold_mark openwebui_install_end
   fi

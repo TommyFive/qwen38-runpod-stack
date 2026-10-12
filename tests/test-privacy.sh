@@ -229,9 +229,11 @@ fi
 
 echo '=== fail-closed public OpenWebUI missing admin ==='
 rm -rf "$RUNTIME_LOG_DIR" "$WEBUI_DATA_DIR"
-WEBUI_ADMIN_PASSWORD='' DEBUG=0 bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/no-admin" 2>&1
+if WEBUI_ADMIN_PASSWORD='' DEBUG=0 bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/no-admin" 2>&1; then
+    echo "Full mode with missing administrator password did not fail closed" >&2; exit 1
+fi
 test ! -e "$RUNTIME_LOG_DIR/start-openwebui.sh"
-grep -Fq 'OpenWebUI disabled' "$TMP/no-admin"
+grep -Fq 'Full mode requires WEBUI_ADMIN_EMAIL' "$TMP/no-admin"
 
 echo '=== direct RunPod template contract ==='
 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/templates-out" 2>&1
