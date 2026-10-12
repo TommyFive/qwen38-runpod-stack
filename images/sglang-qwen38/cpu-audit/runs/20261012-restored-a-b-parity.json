@@ -1,0 +1,82 @@
+{
+  "status": "PASS",
+  "date": "2026-10-12",
+  "comparison": "actual GHCR recovered A versus B, CPU-only, no-network containers",
+  "a_ghcr_manifest": "sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e",
+  "b_ghcr_manifest": "sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+  "imports": {
+    "flashinfer": "0.6.17",
+    "sglang": "0.0.0.dev1+g5f55db35e.d20261010",
+    "torch": "2.13.0+cu130",
+    "transformers": "5.12.1"
+  },
+  "cuda_library_hashes": {
+    "libcublas.so.13": {
+      "sha256": "25cde432108543626df85d887c730bf2cab96803ca16f9654e4abc8d2b45833e",
+      "bytes": 54177976,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libcublasLt.so.13": {
+      "sha256": "1489aeb75d55ee55782798343ac66f57771d561cc1fe1e0491568deefa0e6515",
+      "bytes": 541607888,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libcufft.so.12": {
+      "sha256": "0933f68bb7e3bf90f86d70bc87cd2f69027f7757e89e5de5e19ec33a53fd8d3a",
+      "bytes": 286542352,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libcurand.so.10": {
+      "sha256": "b53732a66b302b11926e00f762e2c2ba67058347ff93cf4ae709de45e93e06da",
+      "bytes": 132698328,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libcusolver.so.12": {
+      "sha256": "c571d524fc5571e6c8a5784d51f75fbe8cf17590463c397a06e48428cb926c48",
+      "bytes": 141152872,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libcusolverMg.so.12": {
+      "sha256": "46ec08743afd10232075105a731f23ab94998e6d06b7399144edf55a0c827d91",
+      "bytes": 103956840,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libcusparse.so.12": {
+      "sha256": "09339f848f60bb1111a61ee0fe91ed0c25132b7ff63298244d7ac14e61b58466",
+      "bytes": 162565256,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libnvperf_host.so": {
+      "sha256": "efac1e754623c6cf52dbd7748451b94c9dedcae0a54e4666ec5d22db60068db3",
+      "bytes": 32405040,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libnvperf_target.so": {
+      "sha256": "93ba51d66be962f38a6e6cbb25d587b40b8d2218b49ec619ebebbe8f4f4bf128",
+      "bytes": 5304944,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libnvrtc.alt.so.13": {
+      "sha256": "c1e3f9b5194970fb1de865620a67a5c7e7ea199425df8df5963bd883f843acb6",
+      "bytes": 109821488,
+      "a_regular": true,
+      "b_symlink": true
+    },
+    "libnvrtc.so.13": {
+      "sha256": "a49e67e8e74590f1e98de55c39c6287efd3f59e3c3797464d7bbe0fe01349b11",
+      "bytes": 109338064,
+      "a_regular": true,
+      "b_symlink": true
+    }
+  },
+  "rest_of_test": "baseline comparison and GPU validation pending"
+}
