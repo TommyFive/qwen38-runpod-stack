@@ -135,14 +135,35 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     args+=(--ports "$2" --port-labels "$3")
   fi
   args+=(--docker-start-cmd 'bash,-c,umask 077; echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh' -o json)
-  local template_id
-  template_id=$(runpodctl "${args[@]}" 2>/dev/null | python3 -c 'import sys,json
+  local template_id="" attempt
+  # Provider CREATE can fail transiently. Retry only when the name is absent.
+  for attempt in 1 2 3; do
+    if template_id=$(runpodctl "${args[@]}" 2>/dev/null | python3 -c 'import sys,json
 try:
     d=json.load(sys.stdin)
     assert d.get("id") and d.get("name")==sys.argv[1]
     print(d["id"])
 except (ValueError,KeyError,TypeError,AssertionError):
-    sys.exit("RunPod skeleton creation failed (response suppressed)")' "$1") || return 1
+    sys.exit("RunPod skeleton creation failed (response suppressed)")
+' "$1"); then
+      break
+    fi
+    template_id=""
+    if ! runpodctl template list --type user -o json | python3 -c 'import json,sys
+items=json.load(sys.stdin)
+name=sys.argv[1]
+sys.exit(1 if any(x.get("name")==name for x in items) else 0)
+' "$1"; then
+      echo "Template $1 may already exist after a provider error; refusing duplicate creation" >&2
+      return 1
+    fi
+    if [[ "$attempt" == 3 ]]; then
+      echo "Template creation failed after 3 verified no-duplicate attempts" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  [[ -n "$template_id" ]] || return 1
 
   local updated
   if ! updated=$(runpodctl template update "$template_id" --env "$ENV" -o json 2>/dev/null); then
