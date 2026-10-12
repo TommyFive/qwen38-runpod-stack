@@ -2,10 +2,11 @@
 
 **Outcome:** Experimental v2-B image **passed both Full and Lean RTX PRO 6000 Blackwell smoke tests** on one authorized RunPod Secure Cloud Pod. The image was **never rebuilt**. **Production deployment/merging has not happened**. Separate coding correctness and a successful real WebUI administrator login remain unverified; do not confuse throughput with correctness.
 
-[Machine-readable test summary](./20261012-v2b-rc1-live-acceptance.json) · [CPU/backup tracking #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46) · [Existing Draft PR #48](https://github.com/TommyFive/qwen38-runpod-stack/pull/48)
+[Machine-readable test summary](./20261012-v2b-rc1-live-acceptance.json) · [US-KS-2 host screenshot / Docker cold-start evidence](./20261012-v2b-rc1-US-KS-2-coldstart-evidence.md) · [CPU/backup tracking #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46) · [Existing Draft PR #48](https://github.com/TommyFive/qwen38-runpod-stack/pull/48)
 
 ## Scope, image and isolation
 
+- **Datacenter now identified from user screenshot: US-KS-2 (Secure Cloud).** Host allocation: 16 vCPU on AMD EPYC 9335, 283 GB RAM and 30 GB disk. The previously unrecorded first OCI pull was **190 s (11:28:19–11:31:29 UTC)**. The successful Full runtime log followed an **already-cached restart**, so its model readiness cannot be simply added to the earlier image-pull timeline. [Detailed provenance, per-layer timings and source hashes](./20261012-v2b-rc1-US-KS-2-coldstart-evidence.md).
 - Authorized **single** Pod: `7rwwhciymmqr77`, `qwen38-v2b-rc1-261012-c36f28`, RTX PRO 6000 Blackwell Server Edition, Secure Cloud, **$2.49/h**, provisioned ~11:28:17 UTC, independently verified **deleted 12:02:03 UTC**. Provider showed **zero remaining Pods**. The independent Mac mini GPU watchdog and log collector were unregistered after deletion.
 - Observed account balance **$3.2962450844 → $1.8943093426** (delta **~$1.40**); this is a **post-termination balance-based estimate, not an official per-Pod invoice**. RunPod's balance settled further after deletion; the $1.8943 balance was confirmed at 12:08:57 UTC. Unrelated account activity cannot be independently excluded.
 - **Immutable image:** `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7`. CUDA, PyTorch and SGLang image layer contents unchanged.
