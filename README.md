@@ -40,6 +40,14 @@ identified FlashInfer cubins/JIT caches as investigation targets, **not yet
 safe-to-remove dependencies**. No additional performance or size gain is
 claimed until measured.
 
+**Historical minimal-v2 CPU checkpoint (not deployed):** Two separately
+published experimental GHCR images and 25/25 SHA256-verified backup blocks
+are preserved on GitHub after the disposable build host was shut down.
+See the [immutable manifests and evidence](images/sglang-qwen38/MINIMAL_V2_CHECKPOINT_2026-10-12.md)
+and [recovery runbook](images/sglang-qwen38/MINIMAL_V2_RECOVERY.md).
+Experimental code remains on the [research branch](https://github.com/TommyFive/qwen38-runpod-stack/tree/research/minimal-v2-kernel-audit);
+the final B CPU validation and all GPU tests are still [open in #46](https://github.com/TommyFive/qwen38-runpod-stack/issues/46).
+
 **Public image available now:** The `v0.2.0` GHCR tag and GitHub
 Release are published, and anonymous pull access to the exact **GPU-tested
 SHA-256 manifest** was verified on **2026-10-11** with the
