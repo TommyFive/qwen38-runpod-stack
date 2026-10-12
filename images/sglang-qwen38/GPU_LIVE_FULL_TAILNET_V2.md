@@ -12,6 +12,19 @@
 
 Do **not** change existing `qwen38-v0.2.0-*-tailnet` templates or v1 production GHCR tags. New names are `qwen38-gpulive-20261012-<candidate>-full-tailnet-bench5-debug`, specifically one per immutable image. No production image builds or deployment happen in this procedure.
 
+## RunPod preparation complete (2026-10-12; cost-free)
+
+Two **new** separately named Full/Tailnet templates were created and verified directly from the Mac mini using RunPod CLI 2.15.0. Their secret-bearing environment was never printed; only the expected names/flags, decoded bootstrap SHA256 and portless state were checked. **No GPU Pod was launched**.
+
+| Role | RunPod template ID | Image | RAM-first container SSD | RunPod published ports |
+|---|---|---|---:|---|
+| **B, first GPU run** | `k4utchus1j` | Candidate B, pinned manifest `sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7` | 30 GiB | **None** |
+| v1, matched reference | `87895wpehk` | GPU-tested v1, pinned manifest `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd` | 30 GiB | **None** |
+
+Both verified live with `DEBUG=1`, `BENCHMARK=1`, `BENCHMARK_BLOCKING=1`, `SERVE_WEBUI=1`, `NETWORK_MODE=tailnet`, `BENCHMARK_RUNS=5`, `BENCHMARK_MAX_TOKENS=512`, `BENCHMARK_TIMEOUT_SECONDS=1800`. Embedded bootstrap SHA256 in **both** remote templates: `068d4b032980ccafa95649447ec519ddce6086e80f6d656874eb4bdfd631f60a`.
+
+**Pending before paid GPU launch:** Confirm that the RunPod Secret `QWEN38_WEBUI_ADMIN_PASSWORD` exists and resolves to a strong (at least 16-character) password. The RunPod CLI cannot list provider Secret availability. Other needed Secret names are `LLAMA_API_KEY`, `TS_AUTHKEY` and `HF_TOKEN`; their existence at Pod runtime must also be confirmed. This is a Secret-availability check, not a requirement to expose secret values. If the password Secret is missing, create it in the RunPod console. The exact runtime bootstrap will refuse an unresolved password.
+
 ## 1. Secret and template prerequisites (cost-free)
 
 Use a Mac mini checkout of branch `feature/minimal-v2-gpu-full-tailnet-live-test` and a RunPod account authorized for templates. Prepare **four RunPod Secrets** in the RunPod console, then verify their names without displaying secret values:
