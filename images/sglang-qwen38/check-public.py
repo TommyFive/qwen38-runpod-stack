@@ -18,7 +18,7 @@ import urllib.request
 
 REGISTRY = "https://ghcr.io"
 REPOSITORY = "tommyfive/qwen38-sglang"
-PINNED = "sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+PINNED = "sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
 MANIFEST_TYPE = "application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json"
 
 
@@ -53,8 +53,8 @@ def verify_anonymous():
         raise RuntimeError("Public registry declared unexpected manifest digest")
     manifest = json.loads(data)
     layers = manifest.get("layers") or []
-    if not isinstance(layers, list) or len(layers) != 31:
-        raise RuntimeError("Public registry did not return expected 31-layer image")
+    if not isinstance(layers, list) or len(layers) != 8:
+        raise RuntimeError("Public registry did not return expected 8-layer image")
     return len(layers)
 
 

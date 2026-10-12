@@ -1,0 +1,107 @@
+{
+  "actual_cuda_dedup": {
+    "full_path_list": [
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublasLt.so.13.1.1.3",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcublasLt.so.13",
+        "removed_content_bytes": 541607888,
+        "sha256_verified_identical_contents": "1489aeb75d55ee55782798343ac66f57771d561cc1fe1e0491568deefa0e6515"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libcufft.so.12.0.0.61",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcufft.so.12",
+        "removed_content_bytes": 286542352,
+        "sha256_verified_identical_contents": "0933f68bb7e3bf90f86d70bc87cd2f69027f7757e89e5de5e19ec33a53fd8d3a"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libcusparse.so.12.6.3.3",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcusparse.so.12",
+        "removed_content_bytes": 162565256,
+        "sha256_verified_identical_contents": "09339f848f60bb1111a61ee0fe91ed0c25132b7ff63298244d7ac14e61b58466"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libcusolver.so.12.0.4.66",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcusolver.so.12",
+        "removed_content_bytes": 141152872,
+        "sha256_verified_identical_contents": "c571d524fc5571e6c8a5784d51f75fbe8cf17590463c397a06e48428cb926c48"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libcurand.so.10.4.0.35",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcurand.so.10",
+        "removed_content_bytes": 132698328,
+        "sha256_verified_identical_contents": "b53732a66b302b11926e00f762e2c2ba67058347ff93cf4ae709de45e93e06da"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libnvrtc.alt.so.13.0.88",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvrtc.alt.so.13",
+        "removed_content_bytes": 109821488,
+        "sha256_verified_identical_contents": "c1e3f9b5194970fb1de865620a67a5c7e7ea199425df8df5963bd883f843acb6"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libnvrtc.so.13.0.88",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvrtc.so.13",
+        "removed_content_bytes": 109338064,
+        "sha256_verified_identical_contents": "a49e67e8e74590f1e98de55c39c6287efd3f59e3c3797464d7bbe0fe01349b11"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libcusolverMg.so.12.0.4.66",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcusolverMg.so.12",
+        "removed_content_bytes": 103956840,
+        "sha256_verified_identical_contents": "46ec08743afd10232075105a731f23ab94998e6d06b7399144edf55a0c827d91"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libcublas.so.13.1.1.3",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcublas.so.13",
+        "removed_content_bytes": 54177976,
+        "sha256_verified_identical_contents": "25cde432108543626df85d887c730bf2cab96803ca16f9654e4abc8d2b45833e"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libnvperf_host.so",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvperf_host.so",
+        "removed_content_bytes": 32405040,
+        "sha256_verified_identical_contents": "efac1e754623c6cf52dbd7748451b94c9dedcae0a54e4666ec5d22db60068db3"
+      },
+      {
+        "new_symlink_target": "/usr/local/cuda-13.0/targets/x86_64-linux/lib/libnvperf_target.so",
+        "old_regular_file": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvperf_target.so",
+        "removed_content_bytes": 5304944,
+        "sha256_verified_identical_contents": "93ba51d66be962f38a6e6cbb25d587b40b8d2218b49ec619ebebbe8f4f4bf128"
+      }
+    ],
+    "logical_bytes_of_replaced_regular_files": 1679571048,
+    "package_library_prefix": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib",
+    "regular_files_replaced_by_links": 11,
+    "system_library_prefix": "/usr/local/cuda-13.0/targets/x86_64-linux/lib"
+  },
+  "actual_rust_removal": {
+    "allowed_extensions": [
+      ".rlib",
+      ".rmeta"
+    ],
+    "by_extension": {
+      ".rlib": 597,
+      ".rmeta": 595
+    },
+    "bytes": 1665334510,
+    "count": 1192,
+    "directory": "/sgl-workspace/sglang/rust/target/release/deps/"
+  },
+  "disclosure_boundary": "Path list is complete for explicitly performed source-level v2B pruning operations. No raw OCI filesystem diff versus upstream Docker Hub image is claimed; repacking may alter OCI metadata without removing file paths.",
+  "inventory_sha256": {
+    "deduplicated-cuda-libraries-v1-to-v2b.tsv": "5db330523e1b9d6f8fc9b069ca4109575396016147786d7dab93c1c4315b145d",
+    "removed-rust-files-v1-to-v2b.tsv": "db752d85b72e2f2e948a6a1da65b0fb7a8fdff8b3d5c2b8163380a549d716116"
+  },
+  "known_nonremovals": [
+    "CUDA 13.0.3 toolkit and developer tools",
+    "NCCL and cuDNN non-byte-identical copies",
+    "Torch, Triton, FlashInfer, SGLang kernel cache and DFlash2 runtime",
+    "No preinstalled optional OpenWebUI/uv was added as part of bootstrap fixes"
+  ],
+  "manifest_purpose": "Complete intentional v1->v2B deletion/deduplication path inventory (not physical upstream-image filesystem diff)",
+  "original_v1_image": "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
+  "result_v2b_image": "ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+  "schema": 1,
+  "source": "private CPU baseline filesystem scan archived 2026-10-11; implementation prune-candidate.py; verified historical build logs",
+  "source_archive_name": "qwen38-audit-snapshot-20261011.tar.gz",
+  "source_archive_sha256": "9068c1ce0e590102eb5b466dbf7601b7d711e697f3b9c396cc62b0f09da13b69"
+}

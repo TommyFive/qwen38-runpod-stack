@@ -46,16 +46,16 @@ else
 fi
 
 echo "== 3) choose an SGLang Docker image and create the RunPod templates"
-echo "   Custom GPU-tested minimal-v1 (default, private GHCR):"
+echo "   Custom GPU-tested minimal-v2 B v0.2.2 (default, public GHCR):"
 echo "     ./create-templates.sh --image custom"
 echo "   Official upstream public SGLang image:"
 echo "     ./create-templates.sh --image official"
 echo "   Then launch with the same image selector:"
 echo "     qwen38pi --image custom       # or: qwen38pi --image official"
 echo "   QWEN38_IMAGE_VARIANT=official is an alternative to both --image flags."
-echo "   RAM-first Full/Lean templates each use 20 GiB Container Disk (Custom Lean tested)."
+echo "   Custom RAM-first Full/Lean templates use 30 GiB Container Disk (both tested)."
 echo "   WARNING: switching to MODEL_STORAGE=ssd requires raising Container Disk."
-echo "   SSD downloads use 100 GiB by default; manual RunPod template edits must increase disk too."
+echo "   SSD downloads use 150 GiB by default; manual RunPod template edits must increase disk too."
 echo "   Distinct template names are auto-discovered; no IDs need exporting."
 echo "   Explicit QWEN38_TEMPLATE* IDs remain for advanced manual/rollback use."
 

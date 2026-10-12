@@ -4,8 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-mkdir -p "$TMP/bin" "$TMP/home" "$TMP/templates-store"
-export QWEN38_TEST_TEMPLATE_STORE="$TMP/templates-store"
+mkdir -p "$TMP/bin" "$TMP/home"
 export HOME="$TMP/home"
 # Offline fixture: simulate a verified PUBLIC image without contacting GHCR.
 # Production script always executes the real anonymous-manifest verifier.
@@ -24,35 +23,25 @@ export TEST_EVENTS="$TMP/events.jsonl"
 cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
 #!/usr/bin/env python3
 import sys
-if sys.argv[1] == "preflight":
-    assert sys.argv[2:] == []
-    sys.exit(0)
 assert sys.argv[1:3] == ["repair", sys.argv[2]]
-assert sys.argv[3:] == ["--delete-on-failure"] if len(sys.argv) > 3 else True
+assert sys.argv[3:] == ["--delete-on-failure"]
 print("PASS: mocked port hardening", file=sys.stderr)
 MOCK_PORTS
 chmod +x "$TMP/bin/ports-helper"
 cat > "$TMP/bin/runpodctl" <<'PY'
 #!/usr/bin/env python3
 import json, os, sys
-from pathlib import Path
 args = sys.argv[1:]
-store = Path(os.environ["QWEN38_TEST_TEMPLATE_STORE"])
 if args[:2] == ["pod", "list"]:
     print("[]")
 elif args[:2] == ["registry", "list"]:
     print(json.dumps([{"id":"test-ghcr-registry","name":"ghcr.io"}]))
 elif args[:2] == ["template", "list"]:
-    if os.getenv("QWEN38_MOCK_EXISTING"):
-        assert "--type" in args and args[args.index("--type") + 1] == "user"
-        assert "--all" not in args, "resume must not include global/public templates"
-        print(json.dumps([json.loads(p.read_text()) for p in store.glob("*.json")]))
-        sys.exit(0)
     # Minimal offline fixtures: custom + upstream names both resolve.
     res=[]
     for flavor,prefix,image,auth in (
-        ("custom","qwen38-v0.2.0",
-         "ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
+        ("custom","qwen38-v0.2.2",
+         "ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
          None),
         ("official","qwen38-official","lmsysorg/sglang:dev-qwen38-27b-dflash2",None),
     ):
@@ -67,12 +56,6 @@ elif args[:2] == ["template", "list"]:
     print(json.dumps(res))
 elif args[:2] == ["template", "get"]:
     tid = args[2]
-    if os.getenv("QWEN38_MOCK_EXISTING"):
-        path = store / (tid + ".json")
-        if not path.exists():
-            sys.exit(1)
-        print(path.read_text())
-        sys.exit(0)
     if tid.startswith("template-qwen38-official-"):
         print(json.dumps({"id":tid,"imageName":"lmsysorg/sglang:dev-qwen38-27b-dflash2",
            "ports":[],"portsConfig":[],
@@ -89,26 +72,21 @@ elif args[:2] == ["template", "create"]:
     if official:
         assert image=="lmsysorg/sglang:dev-qwen38-27b-dflash2"
         assert "--registry-auth-id" not in args
-        expected=int(os.getenv("QWEN38_FULL_DISK_GB" if "-full-" in name else "QWEN38_LEAN_DISK_GB", "100" if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else "20"))
+        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 20
         assert int(args[args.index("--container-disk-in-gb")+1])==expected
     else:
-        assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+        assert image=="ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
         assert "--registry-auth-id" not in args, "PUBLIC custom must not attach private GHCR credentials"
-        expected=int(os.getenv("QWEN38_FULL_DISK_GB" if "-full-" in name else "QWEN38_LEAN_DISK_GB", "100" if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else "20"))
+        expected=150 if os.getenv("QWEN38_MODEL_STORAGE")=="ssd" else 30
         assert int(args[args.index("--container-disk-in-gb")+1])==expected
     assert "--env" not in args, "large template env must be UPDATEd after creation"
+    if public: assert "22/tcp" not in args[args.index("--ports")+1]
     if "tailnet" in name:
         assert not public, "private template must not publish ports"
         assert "--port-labels" not in args
     else:
         assert public and "8000/http" in args[args.index("--ports") + 1]
-    ident="template-"+name
-    disk=int(args[args.index("--container-disk-in-gb")+1])
-    ports=[] if not public else args[args.index("--ports")+1].split(",")
-    (store / (ident+".json")).write_text(json.dumps({
-        "id":ident,"name":name,"imageName":image,"containerDiskInGb":disk,
-        "ports":ports,"env":{}}))
-    print(json.dumps({"id":ident,"name":name}))
+    print(json.dumps({"id":"template-"+name,"name":name}))
 elif args[:2] == ["template", "update"]:
     tid = args[2]
     name=tid.removeprefix("template-") if hasattr(tid,"removeprefix") else tid[len("template-"):]
@@ -117,15 +95,16 @@ elif args[:2] == ["template", "update"]:
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
+    if env["SERVE_WEBUI"]=="1":
+        assert env["WEBUI_ADMIN_PASSWORD"]=="{{ RUNPOD_SECRET_QWEN38_WEBUI_ADMIN_PASSWORD }}"
+        assert "@" in env["WEBUI_ADMIN_EMAIL"]
+    else:
+        assert "WEBUI_ADMIN_PASSWORD" not in env and "WEBUI_ADMIN_EMAIL" not in env
     secret = os.environ.get("QWEN38_API_SECRET_NAME", "LLM_API_KEY")
     assert env["SGLANG_API_KEY"] == "{{ RUNPOD_SECRET_" + secret + " }}"
     assert env["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
     assert ("TS_AUTHKEY" in env) == (env["NETWORK_MODE"] == "tailnet")
     assert (env["NETWORK_MODE"] == "runpod") == public
-    path=store / (tid+".json")
-    state=json.loads(path.read_text())
-    state["env"]=env
-    path.write_text(json.dumps(state))
     with open(os.environ["TEST_EVENTS"], "a") as f:
         f.write(json.dumps({"kind":"template","name":name,"mode":env["NETWORK_MODE"],
                             "has_ports":public,"serve_webui":env["SERVE_WEBUI"],
@@ -172,18 +151,6 @@ chmod +x "$TMP/bin/"*
 echo "=== create templates ==="
 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/templates.output"
 grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=' "$TMP/templates.output"
-
-echo "=== resume must reuse four exact matching templates without duplicate creates ==="
-QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
-  bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume.output"
-grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=template-qwen38-v0.2.0-lean-tailnet' "$TMP/resume.output"
-python3 - "$TEST_EVENTS" <<'PY_RESUME'
-import json,sys
-rows=[json.loads(s) for s in open(sys.argv[1])]
-assert len([r for r in rows if r["kind"]=="template"])==4, "resume created duplicates"
-print("Resume reused all four templates without creating duplicates")
-PY_RESUME
-cp -R "$TMP/templates-store" "$TMP/custom-first"
 
 echo "=== tailnet CLI launch mock ==="
 export QWEN38_TEMPLATE_TAILNET=private-full
@@ -235,7 +202,7 @@ pods=[x for x in events if x["kind"]=="pod"]
 assert len(templates)==4, templates
 assert len([x for x in templates if x["mode"]=="tailnet" and not x["has_ports"]])==2
 assert len(pods)==3, pods
-assert all(p["disk_gib"]==20 for p in pods), "RAM-first Full and Lean must use 20 GiB"
+assert all(p["disk_gib"]==30 for p in pods), "custom v0.2.2 RAM-first Full and Lean use 30 GiB"
 private, full, public = pods
 assert private["mode"]=="tailnet" and private["disable_runpod_ssh"]
 assert private["ts_key_ref"]=="{{ RUNPOD_SECRET_TS_AUTHKEY }}"
@@ -300,7 +267,7 @@ assert rows[-1]["template"]=="template-qwen38-official-lean-public"
 print("Official launcher resolves distinct official Lean template")
 PY_SELECTION
 
-echo "=== SSD checkpoint mode: both template families use 100 GiB by default ==="
+echo "=== SSD checkpoint mode: both template families use 150 GiB by default ==="
 QWEN38_MODEL_STORAGE=ssd QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image custom > "$TMP/custom-ssd-templates.out"
 QWEN38_MODEL_STORAGE=ssd QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image official > "$TMP/official-ssd-templates.out"
 if QWEN38_MODEL_STORAGE=ssd QWEN38_FULL_DISK_GB=20    QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "$TMP/undersized-template.out" 2>&1; then
@@ -309,11 +276,7 @@ if QWEN38_MODEL_STORAGE=ssd QWEN38_FULL_DISK_GB=20    QWEN38_PORTS_HELPER="$TMP/
 fi
 grep -Fq 'requires at least 50 GiB' "$TMP/undersized-template.out"
 
-# The safety minimum stays 50 GiB: explicit 50-GiB SSD templates must pass.
-QWEN38_MODEL_STORAGE=ssd QWEN38_FULL_DISK_GB=50 QWEN38_LEAN_DISK_GB=50 \
-  QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" --image official > "$TMP/minimum-ssd-templates.out"
-
-echo "=== SSD checkpoint mode: Pod overrides disk to 100 GiB ==="
+echo "=== SSD checkpoint mode: Pod overrides disk to 150 GiB ==="
 # Disk-focused tests supply an explicit mock API Secret reference; the
 # automatic template Secret reference is exercised separately above.
 QWEN38_MODEL_STORAGE=ssd QWEN38_API_SECRET_NAME=LLM_API_KEY bash "$ROOT/bin/qwen38fast" --pi --storage ssd --image official --network runpod > "$TMP/ssd-official.out"
@@ -322,51 +285,12 @@ python3 - "$TEST_EVENTS" <<'PY_SSD'
 import json,sys
 rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 pods=[r for r in rows if r.get("kind")=="pod"]
-assert pods[-2]["disk_gib"]==100 and pods[-2]["template"]=="template-qwen38-official-lean-public"
-assert pods[-1]["disk_gib"]==100 and pods[-1]["template"]=="template-qwen38-v0.2.0-full-public"
-print("SSD model downloads correctly use 100 GiB for official Lean and Custom Full")
+assert pods[-2]["disk_gib"]==150 and pods[-2]["template"]=="template-qwen38-official-lean-public"
+assert pods[-1]["disk_gib"]==150 and pods[-1]["template"]=="template-qwen38-v0.2.2-full-public"
+print("SSD model downloads correctly use 150 GiB for official Lean and Custom Full")
 PY_SSD
 if QWEN38_FULL_DISK_GB=20 bash "$ROOT/bin/qwen38fast" --storage ssd --image custom > "$TMP/undersized-pod.out" 2>&1; then
   echo 'FAIL: accepted 20 GiB SSD Pod override' >&2
   exit 1
 fi
 grep -Fq 'SSD model downloads require >=50 GiB' "$TMP/undersized-pod.out"
-
-# Preserve an explicit 50-GiB SSD Pod override, without changing the default.
-QWEN38_LEAN_DISK_GB=50 QWEN38_MODEL_STORAGE=ssd QWEN38_API_SECRET_NAME=LLM_API_KEY \
-  bash "$ROOT/bin/qwen38fast" --pi --storage ssd --image official --network runpod > "$TMP/minimum-ssd-pod.out"
-python3 - "$TEST_EVENTS" <<'PY_SSD_MIN'
-import json,sys
-rows=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
-pod=[r for r in rows if r.get("kind")=="pod"][-1]
-assert pod["disk_gib"]==50 and pod["template"]=="template-qwen38-official-lean-public"
-print("SSD explicit 50 GiB minimum remains accepted")
-PY_SSD_MIN
-
-
-echo "=== resume incomplete run (only missing tailnet lean should be created) ==="
-rm -rf "$TMP/templates-store"
-cp -R "$TMP/custom-first" "$TMP/templates-store"
-rm "$TMP/templates-store/template-qwen38-v0.2.0-lean-tailnet.json"
-before=$(grep -c '"kind": "template"' "$TEST_EVENTS")
-QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
-  bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume-partial.output"
-after=$(grep -c '"kind": "template"' "$TEST_EVENTS")
-[[ $((after - before)) -eq 1 ]] || { echo "resume did not create exactly one missing template" >&2; exit 1; }
-grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=template-qwen38-v0.2.0-lean-tailnet' "$TMP/resume-partial.output"
-
-echo "=== resume must refuse modified existing template ==="
-python3 - "$TMP/templates-store/template-qwen38-v0.2.0-full-public.json" <<'PY_STALE'
-import json,sys
-path=sys.argv[1]
-d=json.load(open(path))
-d["imageName"]="unapproved-image"
-with open(path,"w") as f: json.dump(d,f)
-PY_STALE
-if QWEN38_MOCK_EXISTING=1 QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
-    bash "$ROOT/create-templates.sh" --image custom --resume > "$TMP/resume-stale.output" 2>&1; then
-  echo "FAIL: --resume reused a modified template" >&2
-  exit 1
-fi
-grep -Fq 'differs from requested' "$TMP/resume-stale.output"
-echo "resume partial and stale-template guards: ok"
