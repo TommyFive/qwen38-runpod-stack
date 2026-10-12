@@ -43,7 +43,7 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **Correct tokens/s measurement** | Both the in-Pod benchmark and external `qwen38bench` count **actual generated tokens** via SGLang `usage.completion_tokens`, not Server-Sent Events (SSE) chunks. An SSE chunk can contain multiple tokens or none. Standardized in-Pod workloads run only with `BENCHMARK=1`. |
 | **Cold-start evidence** | Host/Pod UTC + monotonic events, `qwen38cold` reports and per-Pod datasets covering image pull, model download, GPU load/graphs, health readiness, cloud class and missing region/cache metadata. |
 | **Port labels in RunPod templates** | **Public template ports now have descriptive labels in the RunPod Control UI**: `8000 → SGLang API`, `8080 → OpenWebUI` (Full), and `22 → SSH`. Both private Tailnet templates have **no published ports**, so port labels do not apply to them. |
-| **RunPod CLI compatibility** | Detect whether the installed `runpodctl` actually supports a server-side termination flag instead of failing Pod creation on CLI versions that removed it. **No hard TTL guarantee** if the flag is absent; the old reaper remains account-wide. |
+| **RunPod CLI compatibility** | Detect whether the installed `runpodctl` actually supports a server-side termination flag instead of failing Pod creation on CLI versions that removed it. **No guaranteed auto-shutdown** if the flag is absent. |
 | **Four deployment templates** | Public Full/Lean and Private Full/Lean; helper scripts for safely repairing private port mappings and updating existing template helpers/secret references in place. |
 | **Validation** | Real RTX PRO 6000 GPU tests for RAM/SSD, native SSH, positive/negative API auth, positive WebUI login, private HTTPS and DFlash2; offline GitHub Actions for integrity and benchmark regressions. |
 
@@ -72,7 +72,7 @@ These distinctions matter if you used the original stack. Relevant changes were 
 | Templates | Public API / Full variants | **Four** separate Public/Private × Full/Lean templates. Private templates publish **no ports**; changing `NETWORK_MODE` alone does not make a public template private. | — |
 | **Port labels** | Template ports do not have explicit human-readable service labels. | Public templates supply **`--port-labels`**: **8000 = SGLang API**, **8080 = OpenWebUI** (Full only), **22 = SSH**. Labels make published services recognizable in the RunPod Control UI. Private templates publish no ports and need no labels. | [nicremo #1](https://github.com/nicremo/qwen38-runpod-stack/pull/1) · **open** |
 | Secrets | Locally generated/forwarded key workflow | RunPod Secret references are the **default**; the local proxy must use the **matching** API key, not an unrelated generated one. | — |
-| **SSH access** | The SGLang image has no active `sshd`, so exposing SSH alone does not provide working login. | **Verified native Tailscale SSH** without a tun device; optional early OpenSSH provisioning for debugging (`ENABLE_SSH=1`). The upstream PR covers **debug OpenSSH**, not the fork's separate native Tailscale SSH integration. | [nicremo #5](https://github.com/nicremo/qwen38-runpod-stack/pull/5) · **closed, not merged** |
+| **SSH access** | The SGLang image does not run `sshd` by default. | **Native Tailscale SSH** works without a tun device; optional OpenSSH debugging with `ENABLE_SSH=1`. | — |
 | **Full Pod startup / NCCL crash** | Installing OpenWebUI into the serving SGLang environment can mutate GPU dependencies while SGLang starts, triggering a `deep_ep.check_nccl_so()` / NCCL crash. | **Isolated OpenWebUI virtualenv** avoids replacing SGLang/PyTorch/NCCL dependencies; Full mode starts UI only after authenticated SGLang readiness. | [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open**; related [upstream issue #3](https://github.com/nicremo/qwen38-runpod-stack/issues/3) |
 | **Tokens/s accounting** | Historical benchmark estimated generated tokens from SSE chunk counts, which may contain multiple tokens or none. | External and in-Pod benchmarks now use **`usage.completion_tokens`**; missing server usage is reported as unavailable instead of inventing numbers. | [nicremo #6](https://github.com/nicremo/qwen38-runpod-stack/pull/6) · **open** |
 | WebUI start | Older SSH-assisted restart workflow. | WebUI is started on the Pod after authenticated SGLang readiness; no client-side SSH restart. | Related to [nicremo #4](https://github.com/nicremo/qwen38-runpod-stack/pull/4) · **open** |
@@ -80,9 +80,8 @@ These distinctions matter if you used the original stack. Relevant changes were 
 | Privacy | Public RunPod service model | Authenticated public mode **or** Tailnet-only mode, with protected ephemeral runtime state and explicit logging switches. | — |
 | Testing | Basic throughput tooling | Repeatable in-Pod benchmark, cold-start tracing, security/storage regression tests. | — |
 | **RunPod CLI timer compatibility** | A wrapper can pass `--terminate-after` even on CLI versions that no longer support it, preventing Pod creation. | Detect supported timer flags before use; start commands remain compatible with newer CLI versions. **If unsupported, this is not a guaranteed auto-shutdown.** | [nicremo #2](https://github.com/nicremo/qwen38-runpod-stack/pull/2) · **open** |
-| Rental duration / cleanup | Historical automatic-shutdown assumptions | A `1h` / `4h` argument is **not** a guaranteed TTL or cost cap. Existing stop/reaper remain account-wide; terminate the **exact Pod ID** instead. | Related to [nicremo #2](https://github.com/nicremo/qwen38-runpod-stack/pull/2) · **open**; project-scoped cleanup remains separate follow-up |
 
-**Upstream PR status checked 2026-10-11:** #1, #2, #4 and **#6** were open; #5 was closed **without merging**. These are not the fork's integration PR numbers. Their status may change independently. The fork **does not automatically inherit upstream changes**, and attribution/history do not require copying the upstream README verbatim.
+**Upstream PR status checked 2026-10-11:** #1, #2, #4 and #6 were open. These are separate from this fork's own PRs and may change. The fork does not automatically inherit upstream changes.
 
 ## Architecture and deployment modes
 
@@ -123,28 +122,15 @@ Private Tailnet-only mode requires a valid Tailscale enrollment key, HTTPS certi
 
 You need a RunPod account and authenticated [`runpodctl`](https://github.com/runpod/runpodctl), a supported Blackwell GPU (default RTX PRO 6000), Python 3, Bash, `curl` and `base64`. macOS is used for local LaunchAgents and several helper commands; RunPod containers run Linux. [pi](https://pi.dev) is optional; any OpenAI-compatible client can call the API. For private mode, connect your client to the same [Tailscale tailnet](https://tailscale.com/).
 
-### Safe manual install (does not activate the legacy reaper)
-
-The current `./setup.sh` **automatically installs and loads an account-wide reaper LaunchAgent on macOS**. Until issue [#18](https://github.com/TommyFive/qwen38-runpod-stack/issues/18) is fixed, prefer this targeted installation if you do **not** want that background process:
+### Install
 
 ```bash
-mkdir -p "$HOME/.local/bin" "$HOME/.local/share/qwen38-runpod-stack"
-for file in bin/*; do
-  test -f "$file" && install -m 755 "$file" "$HOME/.local/bin/"
-done
-for file in \
-  scripts/bootstrap-sglang-openwebui.sh \
-  scripts/tailscale-runtime.sh \
-  scripts/model-storage.py \
-  scripts/benchmark_sglang.py \
-  scripts/private-template-ports.py; do
-  install -m 700 "$file" "$HOME/.local/share/qwen38-runpod-stack/"
-done
-# Add ~/.local/bin to your PATH if necessary; start qwen38-proxy
-# manually if you use the stable local endpoint.
+git clone https://github.com/TommyFive/qwen38-runpod-stack.git
+cd qwen38-runpod-stack
+./setup.sh
 ```
 
-If you deliberately run `./setup.sh`, first read [cost-control implications](docs/COST_CONTROL.md): it installs **both** proxy and global reaper LaunchAgents. The reaper is neither project-scoped nor a reliable per-Pod TTL.
+Add `~/.local/bin` to your `PATH` if necessary. On macOS, installation also enables local LaunchAgents; see [Security and costs](#security-and-costs).
 
 ### Docker image: compact or official
 
@@ -171,104 +157,36 @@ Use `qwen38fast` instead of `qwen38pi` for Full/OpenWebUI. Both images are publi
 
 ### RunPod templates and secrets
 
-For regular usage, prefer configuring the existing templates **once in the RunPod Control UI**. The steps below are for initial template creation and controlled updates; do not recreate templates on every launch.
+Create these **RunPod Secrets** in the RunPod dashboard:
 
-
-Provision RunPod Secrets via its console (never commit or echo real values):
-
-| RunPod Secret | Purpose |
+| Secret | When needed |
 |---|---|
-| `LLM_API_KEY` **or existing** `LLAMA_API_KEY` | Required SGLang Bearer key stored in a RunPod Secret; select an existing name via `QWEN38_API_SECRET_NAME` when creating templates |
-| `TS_AUTHKEY` | **Required for private mode**; tagged/ephemeral Tailscale enrollment |
-| `HF_TOKEN` | Optional for Hugging Face downloads; omit if the model is public and not needed |
+| `LLM_API_KEY` | Always: API Bearer key |
+| `TS_AUTHKEY` | Private/Tailnet deployments |
+| `HF_TOKEN` | Only if Hugging Face access requires it |
 
-**API key naming (only this Qwen38 repository):** The engine still expects `SGLANG_API_KEY` and the HTTP API still requires `Authorization: Bearer <key>`. Newly created templates default to a RunPod Secret called `LLM_API_KEY`, **but you do not need to create or duplicate it** if you already use `LLAMA_API_KEY`: select your existing name with `QWEN38_API_SECRET_NAME=LLAMA_API_KEY ./create-templates.sh --image official` (or `custom`). For automatically selected templates, `qwen38fast` reads the already configured **Secret reference name**, not the secret value, and forwards the same reference. The four deployed v0.2.0 custom templates already reference `LLAMA_API_KEY`. Your local proxy must still have the matching Bearer key; no engine or A40 project changes are involved. See [Secret name migration](docs/SECURITY.md#api-secret-name-migration).
+Already using `LLAMA_API_KEY`? Keep it: use `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` when creating templates. Full/OpenWebUI templates also need a `WEBUI_ADMIN_EMAIL` and `WEBUI_ADMIN_PASSWORD` (16+ characters) when launched in the RunPod UI.
 
-Create the **four templates for your chosen image** once. New templates never overwrite old ones, and creating them does not start a paid GPU. The already deployed custom v0.2.0 templates need not be recreated. For a new official-upstream family using your existing API Secret:
-
-```bash
-QWEN38_API_SECRET_NAME=LLAMA_API_KEY ./create-templates.sh --image official
-qwen38pi --image official
-# Optional Tailnet mode: qwen38pi --image official --network tailnet
-```
-
-For the already created custom family, simply use `qwen38pi` or
-`qwen38fast`, or pass `--image custom` explicitly. No template IDs need
-to be exported for the normal automatic selection. Export
-`QWEN38_TAILNET_DOMAIN=your-tailnet.ts.net` only when Tailscale discovery
-cannot determine it. **Manual** `QWEN38_TEMPLATE*` ID overrides are for
-advanced use or rollback; unset them before switching image families.
-**Recover an interrupted creation safely:** use `--resume` to find exact-name,
-user-owned templates and reuse them **only** if their image, 20/100-GiB
-disk size, complete environment (including embedded helper versions) and
-public ports match. Tailnet templates have their RunPod ports explicitly
-cleared and independently verified before reuse. Missing templates are
-created; conflicting or duplicate names fail closed instead of being
-overwritten. Example after a partial custom run:
-
-```bash
-./create-templates.sh --image custom --resume
-```
-
-The generator performs a credential/permissions preflight **before creating
-any template**. If no `RUNPOD_API_KEY` environment variable is set, it reads
-`~/.runpod/config.toml` using the native TOML field `apikey` (lowercase,
-not the CLI flag spelling `--apiKey`); a regular config owned by your current user with
-mode `0644` is automatically tightened to `0600` without exposing its API
-key. Symlinks, wrong ownership and malformed credentials are rejected. A
-fresh clone does not change credentials by itself: the permission hardening
-happens when you run the generator.
-
-Repeated creation **without `--resume`** can create duplicate names, which the launcher
-deliberately rejects, so create each family once or explicitly resume it. If updating existing
-templates, use the controlled `scripts/sync-runpod-secrets.py` helper and
-verify that private templates have **no published ports**. See [Security](docs/SECURITY.md).
-
-**Direct RunPod console launches:** Provide `SGLANG_API_KEY`, plus `TS_AUTHKEY` for private mode, and `WEBUI_ADMIN_EMAIL` / `WEBUI_ADMIN_PASSWORD` (at least 16 characters) for Full mode. Template defaults hold references to the API/Tailscale/HF secrets, **not** a default admin password. Missing required credentials must fail closed.
+Create the matching templates **once** using the command above. If creation was interrupted, retry with `--resume` (for example, `./create-templates.sh --image custom --resume`). Creating templates does not rent a GPU. See [Security](docs/SECURITY.md) for advanced settings.
 
 ## Run and connect
 
-**Primary workflow — RunPod Control UI:** Select the appropriate **Full** (with OpenWebUI) or **Lean** (API-only), **Public** or **Private** template. Adjust the relevant template **Environment Variables** in RunPod, deploy a new Pod, and wait until SGLang is ready. For Private Full, connect through Tailscale HTTPS `https://<pod-host>.ts.net:8443`; the API uses HTTPS `https://<pod-host>.ts.net/v1`. A private template must have **no published ports** and requires Tailnet authorization, `SGLANG_API_KEY` and (for Full) WebUI admin credentials.
+In the **RunPod dashboard**, choose a template and start a Pod: **Lean** = API only, **Full** = API + OpenWebUI; **Public** = RunPod HTTPS, **Tailnet** = Tailscale-only.
 
-The commands below are **optional** local alternatives. A CLI-created Pod may **override the RunPod template's ENV**, so use the corresponding CLI/host options for such launches.
-
-
-### Private Full (recommended for sensitive access)
+Alternatively, launch from your terminal:
 
 ```bash
-QWEN38_NETWORK_MODE=tailnet qwen38fast 1h --network tailnet
-# The launcher prints the Pod ID, API URL, and (Full) HTTPS WebUI URL.
-# Login is required in OpenWebUI.
+qwen38pi                       # Public Lean
+qwen38fast                     # Public Full
+qwen38pi --network tailnet     # Private Lean
+qwen38fast --network tailnet   # Private Full
 ```
 
-The launcher creates a unique Tailnet hostname by default. Your Tailnet policy must permit the client to connect on TCP 443 and 8443. The Full admin username defaults to `admin@qwen38.example.com`; the generated local password is in `~/.runpod/qwen38-webui-password` (file mode 0600). You can override both as described below.
+The launcher prints the connection URL. Private Pods require Tailscale access: API at `https://<pod-host>.ts.net/v1`, and OpenWebUI (Full) at `https://<pod-host>.ts.net:8443`. API requests require the matching Bearer key; OpenWebUI requires login.
 
-### Private Lean, Public Full and Public Lean
+### Local OpenAI endpoint (optional)
 
-```bash
-QWEN38_NETWORK_MODE=tailnet qwen38pi 1h --network tailnet
-qwen38fast 1h          # PUBLIC mode unless overridden by env
-qwen38pi 1h            # PUBLIC API-only mode unless overridden
-qwen38fast status      # status and current spend
-```
-
-**Do not use `qwen38fast stop` or `qwen38pi stop` in a shared RunPod account:** they terminate **all Pods visible to that account**. Instead use the precise ID you intend to stop:
-
-```bash
-runpodctl pod list
-runpodctl pod delete YOUR_EXACT_POD_ID
-runpodctl pod list
-```
-
-The `1h` argument above is **not an automatic termination guarantee**. Billing continues until RunPod actually terminates the Pod.
-
-### Fixed local OpenAI endpoint (optional)
-
-The proxy listens on `http://127.0.0.1:8388/v1`. It reads `~/.runpod/current-pod` and `~/.runpod/current-endpoint.json` and routes to the chosen public **or** Tailnet URL. Configure your client once (see [`pi/models.runpod.json`](pi/models.runpod.json)); run `qwen38-proxy` manually unless you deliberately installed the proxy LaunchAgent.
-
-**Important:** the local proxy reads `~/.runpod/qwen38.key`. It must contain the **same value** as the selected RunPod API Secret (`LLM_API_KEY` by default, `LLAMA_API_KEY` with the legacy override). The default RunPod-secret mode does **not** automatically copy that secret to your Mac. Optionally set `QWEN38_SGLANG_CLIENT_KEY_FILE` to a securely stored matching file for launcher readiness/TTFI probes. Never paste a live token into chat, Git, console logs or shell history.
-
-For authenticated HTTP status testing, the correct external API returns `401` without a Bearer and `200` with a valid one. HTTPS/TLS should verify normally; do not add `-k`.
+The local proxy provides `http://127.0.0.1:8388/v1` for compatible clients (example: [pi configuration](pi/models.runpod.json)). Store the **same API key** as your RunPod `LLM_API_KEY` (or existing `LLAMA_API_KEY`) in `~/.runpod/qwen38.key`. For CLI-specific options, see [environment reference](docs/ENV_REFERENCE.md).
 
 ## Environment variables
 
@@ -298,7 +216,7 @@ Advanced options—RAM admission factors, benchmark repetitions, Secrets configu
 - **Public versus private:** public RunPod proxies are reachable from the Internet and rely on application authentication. Private templates publish no RunPod ports; Tailnet Serve requires working ACL/grants *and* valid TLS, plus API/WebUI authentication.
 - **Secrets:** default RunPod Secret references keep the launcher from expanding local API/HF/Tailscale secret values in `--env`. In `local` mode, the CLI request can carry plaintext secrets via arguments/control plane. SGLang also exposes its key in process argv to privileged Pod users. A rented GPU host and its provider remain in the trust boundary; RAM/tmpfs is **not** end-to-end encryption.
 - **Persistence:** runtime/credential state is designed for RAM by default, but this should not be interpreted as a guarantee about host-level snapshots, provider diagnostics or all application caches.
-- **Stop/TTL risk:** `qwen38fast stop`, `qwen38pi stop` and the old `runpod-reaper` are **account-wide**. The launcher uses a requested `Nh` runtime window, **not** a guaranteed RunPod billing or auto-stop guarantee. Monitor cost and delete **the exact Pod ID**. Do not enable the legacy reaper in mixed-project RunPod accounts.
+- **Account-wide cleanup / billing:** On macOS, `./setup.sh` starts the legacy `runpod-reaper`. It and `qwen38fast stop` / `qwen38pi stop` can delete **other projects' Pods in the same RunPod account**. Requested `Nh` durations are **not guaranteed auto-shutdowns**. Monitor billing and manage Pods in the RunPod dashboard. See [cost controls](docs/COST_CONTROL.md).
 - **Performance:** benchmark numbers depend on GPU, image digest, region, cache state and load. Avoid treating individual cold-start samples as general averages or comparing unknown Community/Secure datacenters causally.
 
 Read [security and credential model](docs/SECURITY.md), [cost controls](docs/COST_CONTROL.md) and the [GPU evidence standard](docs/GPU_RUN_EVIDENCE_STANDARD.md) before production-sensitive usage.
