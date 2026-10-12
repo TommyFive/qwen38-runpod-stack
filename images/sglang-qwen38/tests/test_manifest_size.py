@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("qwen38_manifest_size", ROOT / "manifest-size.py")
+spec = importlib.util.spec_from_file_location("qwen38_manifest_size", ROOT / "tools/manifest-size.py")
 manifest_size = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manifest_size)
 

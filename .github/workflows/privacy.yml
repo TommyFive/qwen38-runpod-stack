@@ -1,0 +1,33 @@
+name: Repository privacy
+on:
+  pull_request:
+  push:
+permissions:
+  contents: read
+jobs:
+  privacy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - name: Scan current source and new commit metadata
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$BASE" && "$BASE" != 0000000000000000000000000000000000000000 ]]; then
+            python3 scripts/privacy-check.py --commits "$BASE..$HEAD"
+          else
+            # A newly published branch may contain legacy ancestors. The full
+            # historical cleanup is separately gated; inspect the new tip now.
+            python3 scripts/privacy-check.py --commits "$HEAD^..$HEAD"
+          fi
+      - name: Install pinned secret scanner
+        run: |
+          set -euo pipefail
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/zricethezav/gitleaks/v8@v8.30.1
+      - name: Scan all current files for secrets
+        run: '"$RUNNER_TEMP/bin/gitleaks" dir --redact --no-banner .'

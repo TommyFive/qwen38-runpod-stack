@@ -37,10 +37,10 @@ class TargetTests(unittest.TestCase):
     def test_tailnet_endpoint(self):
         self.marker.write_text(json.dumps({
             "pod_id": "test-pod",
-            "api_url": "https://qwen38-test.tailc8dece.ts.net/v1",
+            "api_url": "https://qwen38-test.example.ts.net/v1",
         }))
         self.assertEqual(PROXY.upstream_target("test-pod"),
-                         ("qwen38-test.tailc8dece.ts.net", 443))
+                         ("qwen38-test.example.ts.net", 443))
 
     def test_runpod_endpoint(self):
         self.marker.write_text(json.dumps({
@@ -52,11 +52,11 @@ class TargetTests(unittest.TestCase):
 
     def test_invalid_marker_is_fail_closed(self):
         values = (
-            "http://qwen38-test.tailc8dece.ts.net/v1",
+            "http://qwen38-test.example.ts.net/v1",
             "https://evil.example/v1",
-            "https://qwen38-test.tailc8dece.ts.net:8000/v1",
-            "https://qwen38-test.tailc8dece.ts.net/other",
-            "https://user@qwen38-test.tailc8dece.ts.net/v1",
+            "https://qwen38-test.example.ts.net:8000/v1",
+            "https://qwen38-test.example.ts.net/other",
+            "https://user@qwen38-test.example.ts.net/v1",
         )
         for value in values:
             with self.subTest(value=value):
@@ -69,7 +69,7 @@ class TargetTests(unittest.TestCase):
     def test_stale_marker_ignored_for_other_pod(self):
         self.marker.write_text(json.dumps({
             "pod_id": "old-pod",
-            "api_url": "https://old-host.tailc8dece.ts.net/v1",
+            "api_url": "https://old-host.example.ts.net/v1",
         }))
         self.assertEqual(PROXY.upstream_target("new-pod"),
                          ("new-pod-8000.proxy.runpod.net", 443))

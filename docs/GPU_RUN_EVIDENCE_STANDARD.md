@@ -25,9 +25,9 @@ Required keys — always record explicit `unknown` and WHY when not verifiable:
 ## Collection procedure
 
 1. Before Pod launch, verify `runpodctl pod list` is empty (in currently single-project account), CI/repo SHA, current four template mappings, RunPod Secret reference, short key expiry, and exact-ID termination plan. Require owner approval for spending.
-2. Record **requested** cloud class and the actual fallback. Save UTC launcher stdout/stderr as **0600** under `~/.runpod/trace-runs/<pod-id>/*` on Mac mini. Never use `set -x` with secrets or upload raw credential-bearing environment/system logs into Git.
+2. Record **requested** cloud class and the actual fallback. Save UTC launcher stdout/stderr as **0600** under `~/.runpod/trace-runs/<pod-id>/*` on Local workstation. Never use `set -x` with secrets or upload raw credential-bearing environment/system logs into Git.
 3. As soon as RunPod returns Pod ID, start exact-ID scoped cleanup guard. Record `createdAt`, `costPerHr`, `runtimeStatus`, GPU hardware, image identity, and all **nonsecret** metadata. Determine actual Secure/Community from authenticated Pod/machine metadata only when supported; if only bill rate known, label `rate-inferred`.
-4. Capture RunPod **system** and **container** logs via `runpodctl pod logs <exact-id> --source system|container` with UTC and timestamps. Fetch local Pod `QWEN38_COLDSTART` markers and relevant filtered SGLang/OpenWebUI startup evidence by permitted Tailnet SSH. Save raw originals only on Mac mini as restricted 0600 files (never in Git if secret-bearing); generate a **redacted** evidence summary for GitHub.
+4. Capture RunPod **system** and **container** logs via `runpodctl pod logs <exact-id> --source system|container` with UTC and timestamps. Fetch local Pod `QWEN38_COLDSTART` markers and relevant filtered SGLang/OpenWebUI startup evidence by permitted Tailnet SSH. Save raw originals only on Local workstation as restricted 0600 files (never in Git if secret-bearing); generate a **redacted** evidence summary for GitHub.
 5. Try to obtain actual machine Datacenter ID and region via authorized RunPod metadata, preserving the source. If this needs a credentialed request not approved by tooling, record `unknown (permission unavailable)` rather than circumvent safety controls.
 6. Validate only missing functional gates; **do not rerun previously accepted tok/s benchmarks** absent regression. When running custom images, use the same schema, even for failed container starts, so the baseline cohort remains comparable.
 7. Delete the verified exact Pod ID, cancel the exact-ID guard, assert no running Pods and RunPod spend rate 0. Include termination evidence. No auto-TTL guarantee exists in RunPod CLI 2.15.0.
@@ -43,8 +43,8 @@ Required keys — always record explicit `unknown` and WHY when not verifiable:
 
 ## Existing baseline evidence
 
-- [Integrated GPU runs and accepted live smokes](../INTEGRATION_SMOKE_20261010.md)
-- [Community-requested Full cold-start run](../INTEGRATION_FULL_COMMUNITY_20261010.md)
+- [Integrated GPU runs and accepted live smokes](INTEGRATION_SMOKE_20261010.md)
+- [Community-requested Full cold-start run](INTEGRATION_FULL_COMMUNITY_20261010.md)
 - [#23 deferred observability](https://github.com/TommyFive/qwen38-runpod-stack/issues/23)
 - [#10 standardized throughput benchmark](https://github.com/TommyFive/qwen38-runpod-stack/issues/10)
 

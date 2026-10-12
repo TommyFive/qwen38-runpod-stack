@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-CHECKER = Path(__file__).resolve().parents[1] / "check-public.py"
+CHECKER = Path(__file__).resolve().parents[1] / "tools/check-public.py"
 spec = importlib.util.spec_from_file_location("ghcr_public_check", CHECKER)
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)

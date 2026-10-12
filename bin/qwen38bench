@@ -14,6 +14,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 
 PROMPT = (
     "Write a detailed technical explanation of how speculative decoding works "
@@ -123,6 +124,7 @@ def main():
     ap.add_argument("--isl", type=int, default=8192)
     ap.add_argument("--osl", type=int, default=1024)
     ap.add_argument("--runs", type=int, default=3)
+    ap.add_argument("--api-base", help="Verified HTTPS Tailnet API base, e.g. https://pod.tailnet.ts.net/v1 (no public RunPod proxy)")
     ap.add_argument("--key-file", default=os.environ.get(
         "QWEN38_API_KEY_FILE", str(Path.home() / ".runpod/qwen38.key")))
     args = ap.parse_args()
@@ -131,8 +133,21 @@ def main():
 
     key_path = Path(args.key_file).expanduser()
     key = key_path.read_text().strip() if key_path.is_file() else ""
-    pod = args.pod_id or running_pod()
-    api = f"https://{pod}-8000.proxy.runpod.net/v1"
+    if args.api_base:
+        url = urlsplit(args.api_base)
+        if (url.scheme != "https" or not url.hostname or
+            not url.hostname.endswith(".ts.net") or
+            url.username is not None or url.password is not None or
+            url.port not in (None, 443) or url.path != "/v1" or
+            url.query or url.fragment or args.pod_id):
+            ap.error("--api-base must be a direct HTTPS *.ts.net/v1 address; do not combine with pod_id")
+        if not key:
+            ap.error("--api-base needs a matching SGLang Bearer key via --key-file")
+        pod = "tailnet-only"
+        api = args.api_base
+    else:
+        pod = args.pod_id or running_pod()
+        api = f"https://{pod}-8000.proxy.runpod.net/v1"
     try:
         with get(f"{api}/models", key) as r:
             model = json.load(r)["data"][0]["id"]

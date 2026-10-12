@@ -33,7 +33,9 @@ jobs:
             echo 'Unisolated pip install found in SGLang bootstrap' >&2
             exit 1
           fi
+          # shellcheck disable=SC2016 # Match literal shell source, do not expand it.
           grep -Fq '"$UV_BIN" venv --python /usr/bin/python3 "$WEBUI_VENV"' scripts/bootstrap-sglang-openwebui.sh
+          # shellcheck disable=SC2016 # Match literal shell source, do not expand it.
           grep -Fq '"$UV_BIN" pip install --python "$WEBUI_VENV/bin/python"' scripts/bootstrap-sglang-openwebui.sh
       - name: Security / privacy contracts
         shell: bash

@@ -39,10 +39,12 @@ class StorageTests(unittest.TestCase):
 
     def test_mountinfo_decodes_paths_and_nearest_mount(self):
         filename = self.base / "mountinfo"
+        mount = self.base.resolve() / "mock space"
+        escaped = str(mount).replace(" ", r"\040")
         filename.write_text("1 0 0:1 / / rw - overlay overlay rw\n"
-                            "2 1 0:2 / /tmp/mock\\040space rw - tmpfs tmpfs rw\n")
-        self.assertEqual(ms.mount_info("/tmp/mock space/model", str(filename)),
-                         ("/tmp/mock space", "tmpfs"))
+                            f"2 1 0:2 / {escaped} rw - tmpfs tmpfs rw\n")
+        self.assertEqual(ms.mount_info(str(mount / "model"), str(filename)),
+                         (str(mount), "tmpfs"))
 
     def test_storage_mode_default_ram_and_reject_bad_values(self):
         os.environ.pop("MODEL_STORAGE")

@@ -5,7 +5,6 @@
   "image_repository": "ghcr.io/tommyfive/qwen38-sglang",
   "image_tag": "v0.2.0",
   "image_digest": "sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd",
-  "original_candidate_tag": "candidate-cloudzy-4ad22cd0b56b",
   "platform": "linux/amd64",
   "upstream_sglang_commit": "5f55db35e926d50676f75b812640ea2410b0fe0e",
   "source_build_commit": "4ad22cd0b56b083b0e487af69f46d94fb9498e73",

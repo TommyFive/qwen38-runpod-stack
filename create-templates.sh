@@ -94,7 +94,7 @@ fi
 # older private-registry templates are intentionally not touched here.
 # If GHCR is still private, stop before creating unusable test templates.
 if [[ "$IMAGE_VARIANT" == custom ]]; then
-  python3 "$HERE/images/sglang-qwen38/check-public.py" --quiet || {
+  python3 "$HERE/images/sglang-qwen38/tools/check-public.py" --quiet || {
     echo "GHCR custom image is not yet anonymously pullable. Change Package settings -> Danger Zone -> Change visibility -> Public, then retry." >&2
     exit 1
   }

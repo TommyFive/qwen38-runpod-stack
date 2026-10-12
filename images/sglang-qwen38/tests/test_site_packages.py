@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-TARGET = Path(__file__).resolve().parents[1] / "inspect-site-packages.py"
+TARGET = Path(__file__).resolve().parents[1] / "tools/inspect-site-packages.py"
 spec = importlib.util.spec_from_file_location("qwen38_pkg_sizes", TARGET)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)

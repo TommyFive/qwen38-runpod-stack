@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-SCRIPT = Path(__file__).resolve().parents[1] / "watch-build.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "tools/watch-build.py"
 spec = importlib.util.spec_from_file_location("watch_build", SCRIPT)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
@@ -122,3 +122,22 @@ class WatchdogTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class DurableTelemetryTests(unittest.TestCase):
+    def test_local_jsonl_append_fsync_and_private_mode(self):
+        import json
+        import stat
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / 'resources.jsonl'
+            with mock.patch.object(mod.os, 'fsync') as sync:
+                mod.record_sample({'disk_free_gib': 12}, output)
+                mod.record_sample({'disk_free_gib': 11}, output)
+                self.assertEqual(sync.call_count, 2)
+            self.assertEqual([json.loads(x)['disk_free_gib'] for x in output.read_text().splitlines()], [12, 11])
+            self.assertEqual(stat.S_IMODE(output.stat().st_mode), 0o600)
+
+    def test_token_alone_does_not_publish_to_historical_pr(self):
+        with mock.patch.dict('os.environ', {'GH_TOKEN':'non-secret-test', 'QWEN38_STATUS_PR':''}):
+            with mock.patch.object(mod.urllib.request, 'urlopen') as request:
+                self.assertIsNone(mod.github_comment('numeric telemetry'))
+                request.assert_not_called()
