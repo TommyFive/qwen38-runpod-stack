@@ -63,10 +63,16 @@ class V2BRemovalReleaseAudit(unittest.TestCase):
 
     def test_release_clearly_distinguishes_two_baselines(self):
         text=(ROOT/"docs/releases/v0.2.2.md").read_text()
-        for token in ("PROPOSED","original upstream","minimal-v1","minimal-v2 B",
-                      "not supported by evidence","1,192","11 byte-identical pairs",
-                      "1,203","2,203,696,500","OpenWebUI is NOT baked"):
+        for token in ("Official SGLang upstream", "minimal-v1", "minimal-v2 B",
+                      "1,192", "1,203", "2,203,696,500",
+                      "All 11 CUDA library paths",
+                      "not bundled in the Docker image",
+                      "v0.2.2-removal-inventory/removed-rust-files-v1-to-v2b.tsv",
+                      "v0.2.2-removal-inventory/deduplicated-cuda-libraries-v1-to-v2b.tsv",
+                      "v0.2.2-removal-inventory/upstream-all-extra-direct-declarations.tsv"):
             self.assertIn(token,text)
+        for stale in ("PROPOSED", "PENDING", "NOT YET", "APPROVAL", "BEFORE RELEASE"):
+            self.assertNotIn(stale, text.upper())
 
 if __name__=="__main__":
     unittest.main()
