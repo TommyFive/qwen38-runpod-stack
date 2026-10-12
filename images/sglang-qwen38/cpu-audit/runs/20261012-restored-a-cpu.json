@@ -1,0 +1,106 @@
+{
+  "cuda": {
+    "libcublas.so.13": {
+      "bytes": 54177976,
+      "is_symlink": false,
+      "system_sha256": "25cde432108543626df85d887c730bf2cab96803ca16f9654e4abc8d2b45833e",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcublas.so.13",
+      "wheel_sha256": "25cde432108543626df85d887c730bf2cab96803ca16f9654e4abc8d2b45833e"
+    },
+    "libcublasLt.so.13": {
+      "bytes": 541607888,
+      "is_symlink": false,
+      "system_sha256": "1489aeb75d55ee55782798343ac66f57771d561cc1fe1e0491568deefa0e6515",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcublasLt.so.13",
+      "wheel_sha256": "1489aeb75d55ee55782798343ac66f57771d561cc1fe1e0491568deefa0e6515"
+    },
+    "libcufft.so.12": {
+      "bytes": 286542352,
+      "is_symlink": false,
+      "system_sha256": "0933f68bb7e3bf90f86d70bc87cd2f69027f7757e89e5de5e19ec33a53fd8d3a",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcufft.so.12",
+      "wheel_sha256": "0933f68bb7e3bf90f86d70bc87cd2f69027f7757e89e5de5e19ec33a53fd8d3a"
+    },
+    "libcurand.so.10": {
+      "bytes": 132698328,
+      "is_symlink": false,
+      "system_sha256": "b53732a66b302b11926e00f762e2c2ba67058347ff93cf4ae709de45e93e06da",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcurand.so.10",
+      "wheel_sha256": "b53732a66b302b11926e00f762e2c2ba67058347ff93cf4ae709de45e93e06da"
+    },
+    "libcusolver.so.12": {
+      "bytes": 141152872,
+      "is_symlink": false,
+      "system_sha256": "c571d524fc5571e6c8a5784d51f75fbe8cf17590463c397a06e48428cb926c48",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcusolver.so.12",
+      "wheel_sha256": "c571d524fc5571e6c8a5784d51f75fbe8cf17590463c397a06e48428cb926c48"
+    },
+    "libcusolverMg.so.12": {
+      "bytes": 103956840,
+      "is_symlink": false,
+      "system_sha256": "46ec08743afd10232075105a731f23ab94998e6d06b7399144edf55a0c827d91",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcusolverMg.so.12",
+      "wheel_sha256": "46ec08743afd10232075105a731f23ab94998e6d06b7399144edf55a0c827d91"
+    },
+    "libcusparse.so.12": {
+      "bytes": 162565256,
+      "is_symlink": false,
+      "system_sha256": "09339f848f60bb1111a61ee0fe91ed0c25132b7ff63298244d7ac14e61b58466",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libcusparse.so.12",
+      "wheel_sha256": "09339f848f60bb1111a61ee0fe91ed0c25132b7ff63298244d7ac14e61b58466"
+    },
+    "libnvperf_host.so": {
+      "bytes": 32405040,
+      "is_symlink": false,
+      "system_sha256": "efac1e754623c6cf52dbd7748451b94c9dedcae0a54e4666ec5d22db60068db3",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvperf_host.so",
+      "wheel_sha256": "efac1e754623c6cf52dbd7748451b94c9dedcae0a54e4666ec5d22db60068db3"
+    },
+    "libnvperf_target.so": {
+      "bytes": 5304944,
+      "is_symlink": false,
+      "system_sha256": "93ba51d66be962f38a6e6cbb25d587b40b8d2218b49ec619ebebbe8f4f4bf128",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvperf_target.so",
+      "wheel_sha256": "93ba51d66be962f38a6e6cbb25d587b40b8d2218b49ec619ebebbe8f4f4bf128"
+    },
+    "libnvrtc.alt.so.13": {
+      "bytes": 109821488,
+      "is_symlink": false,
+      "system_sha256": "c1e3f9b5194970fb1de865620a67a5c7e7ea199425df8df5963bd883f843acb6",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvrtc.alt.so.13",
+      "wheel_sha256": "c1e3f9b5194970fb1de865620a67a5c7e7ea199425df8df5963bd883f843acb6"
+    },
+    "libnvrtc.so.13": {
+      "bytes": 109338064,
+      "is_symlink": false,
+      "system_sha256": "a49e67e8e74590f1e98de55c39c6287efd3f59e3c3797464d7bbe0fe01349b11",
+      "target": "/opt/sglang/lib/python3.12/site-packages/nvidia/cu13/lib/libnvrtc.so.13",
+      "wheel_sha256": "a49e67e8e74590f1e98de55c39c6287efd3f59e3c3797464d7bbe0fe01349b11"
+    }
+  },
+  "cuda_pair_bytes": 1679571048,
+  "imports": {
+    "flashinfer": {
+      "duration_seconds": 2.74,
+      "version": "0.6.17"
+    },
+    "sglang": {
+      "duration_seconds": 6.27,
+      "version": "0.0.0.dev1+g5f55db35e.d20261010"
+    },
+    "torch": {
+      "duration_seconds": 2.199,
+      "version": "2.13.0+cu130"
+    },
+    "transformers": {
+      "duration_seconds": 0,
+      "version": "5.12.1"
+    }
+  },
+  "mode": "rust",
+  "rust_intermediates": 0,
+  "evidence_kind": "independent post-VPS read-only no-network container check",
+  "tested_image": "ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e",
+  "test_driver_commit": "1d9f072d4cf73a49e4d540b85da7b55422eaf683",
+  "validation_scope": "early A-only; baseline comparison still pending"
+}
