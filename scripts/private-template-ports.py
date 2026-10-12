@@ -37,7 +37,13 @@ def runpod_api_key(config_path=None):
             raise PortSafetyError("RunPod config ownership/permissions unsafe")
         if tomllib is not None:
             with path.open("rb") as handle:
-                value = tomllib.load(handle).get("apiKey", "")
+                config = tomllib.load(handle)
+                # Viper/runpodctl writes the native key in lower case.
+                # Keep support for the historical mixed-case spelling.
+                keys = [k for k in ("apikey", "apiKey") if k in config]
+                if len(keys) != 1:
+                    raise PortSafetyError("RunPod config has missing/ambiguous API key field")
+                value = config[keys[0]]
         else:
             # Minimal, strict parser of the native runpodctl root-level TOML
             # string key; no third-party parser or shell eval on Python 3.9.
@@ -49,18 +55,48 @@ def runpod_api_key(config_path=None):
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 name, _, literal = line.partition("=")
-                if name.strip() == "apiKey":
+                if name.strip() in ("apikey", "apiKey"):
                     literal = literal.strip()
                     if literal.startswith('"'):
                         value = json.loads(literal)
                     elif literal.startswith("'") and literal.endswith("'"):
                         value = literal[1:-1]
                     break
-        if isinstance(value, str) and value:
+        if isinstance(value, str) and value.strip() and value == value.strip():
             return value
     except (OSError, ValueError, UnicodeDecodeError):
         pass
     raise PortSafetyError("RunPod API credential unavailable in environment/native config")
+
+
+def preflight(config_path=None):
+    """Check credentials before provisioning; secure an owned native config in place.
+
+    Only strips group/other access on a regular, current-user-owned file.
+    Never follows symlinks, changes ownership or prints the credential.
+    An explicit RUNPOD_API_KEY needs no native-file permissions.
+    """
+    if os.environ.get("RUNPOD_API_KEY"):
+        runpod_api_key()
+        return
+    path = Path(config_path) if config_path is not None else Path.home() / ".runpod/config.toml"
+    fd = None
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        meta = os.fstat(fd)
+        if not stat.S_ISREG(meta.st_mode) or meta.st_uid != os.getuid():
+            raise PortSafetyError("RunPod config ownership/type unsafe; not modifying it")
+        mode = stat.S_IMODE(meta.st_mode)
+        if mode & 0o077:
+            os.fchmod(fd, mode & ~0o077)
+            print("Secured RunPod config permissions (group/other access removed).",
+                  file=sys.stderr)
+    except OSError:
+        raise PortSafetyError("RunPod config unavailable/unsafe; not modifying it") from None
+    finally:
+        if fd is not None:
+            os.close(fd)
+    runpod_api_key(config_path)
 
 
 def request(method, template_id, payload=None):
@@ -130,12 +166,24 @@ def repair(template_id):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("action", choices=("verify", "repair"))
-    p.add_argument("template_id")
+    p.add_argument("action", choices=("verify", "repair", "preflight"))
+    p.add_argument("template_id", nargs="?")
     p.add_argument("--delete-on-failure", action="store_true")
     a = p.parse_args()
     if a.delete_on_failure and a.action != "repair":
         p.error("--delete-on-failure only for repair")
+    if a.action == "preflight":
+        if a.template_id:
+            p.error("preflight does not accept a template ID")
+        try:
+            preflight()
+            print("PASS: RunPod template hardening credentials ready")
+            return 0
+        except PortSafetyError as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 1
+    if not a.template_id:
+        p.error("template ID required for repair/verify")
     try:
         (repair if a.action == "repair" else verify)(a.template_id)
         return 0
