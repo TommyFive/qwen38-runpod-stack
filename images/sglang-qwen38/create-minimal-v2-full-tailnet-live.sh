@@ -94,7 +94,13 @@ if [[ -z "$RUNPODCTL" && -x /opt/homebrew/bin/runpodctl ]]; then
   RUNPODCTL=/opt/homebrew/bin/runpodctl
 fi
 [[ -n "$RUNPODCTL" && -x "$RUNPODCTL" ]] || { echo "runpodctl unavailable" >&2; exit 64; }
-python3 "$PORTS" preflight >&2 || { echo "API credentials failed preflight; no template made" >&2; exit 1; }
+python3 - "$PORTS" <<'PREFLIGHT' || { echo "API credentials failed preflight; no template made" >&2; exit 1; }
+import importlib.util,sys
+spec=importlib.util.spec_from_file_location("qwen38_port_safety",sys.argv[1])
+mod=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+mod.preflight()
+PREFLIGHT
 EXISTING="$("$RUNPODCTL" template list --type user -o json | python3 -c '
 import json,sys
 data=json.load(sys.stdin)
