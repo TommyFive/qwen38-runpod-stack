@@ -500,7 +500,7 @@ provision_uv_runtime() {
     local uv_dir="${QWEN38_UV_RUNTIME_DIR:-/tmp/qwen38-uv-runtime}"
     install -d -m 700 "$uv_dir" || return 1
     UV_BIN="$uv_dir/uv"
-    if [[ -x "$UV_BIN" ]] && "$UV_BIN" --version 2>/dev/null | grep -qx 'uv 0.12.10'; then
+    if [[ -x "$UV_BIN" ]] && "$UV_BIN" --version 2>/dev/null | grep -Eq '^uv 0[.]12[.]10([[:space:]]|$)'; then
         echo "QWEN38_WEBUI_UV status=reused version=0.12.10"
         return 0
     fi
@@ -546,7 +546,7 @@ PY_UV_RUNTIME
     then
         return 1
     fi
-    "$UV_BIN" --version 2>/dev/null | grep -qx 'uv 0.12.10'
+    "$UV_BIN" --version 2>/dev/null | grep -Eq '^uv 0[.]12[.]10([[:space:]]|$)'
 }
 
 wait_for_webui_ready() {

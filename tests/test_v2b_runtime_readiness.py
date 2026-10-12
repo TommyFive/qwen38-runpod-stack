@@ -25,6 +25,15 @@ class V2BRuntimeReadiness(unittest.TestCase):
         self.assertIn("os.replace(tmp, target)",code)
         self.assertIn("uv-0.12.10-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",code)
 
+    def test_pinned_uv_version_accepts_official_architecture_suffix(self):
+        s=BOOT.read_text()
+        self.assertEqual(s.count("grep -Eq '^uv 0[.]12[.]10([[:space:]]|$)'"),2)
+        for sample,expected in (("uv 0.12.10 (x86_64-unknown-linux-gnu)",0),
+                                ("uv 0.12.10",0),("uv 0.12.11",1)):
+            result=subprocess.run(["grep","-Eq","^uv 0[.]12[.]10([[:space:]]|$)"],
+                                   input=sample+"\n",capture_output=True,text=True)
+            self.assertEqual(result.returncode,expected,sample)
+
     def test_source_has_no_unconditional_uv_or_webui_install(self):
         s=BOOT.read_text()
         self.assertLess(s.index('if [[ "$SERVE_WEBUI" == 1 ]]; then\n  # Public OpenWebUI'),
