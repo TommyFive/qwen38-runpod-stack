@@ -15,7 +15,7 @@ spec.loader.exec_module(checker)
 class PublicPullCheckTests(unittest.TestCase):
     def setUp(self):
         self.blob = json.dumps({"schemaVersion": 2, "layers": [
-            {"digest": "sha256:" + "a" * 64, "size": 1} for _ in range(31)
+            {"digest": "sha256:" + "a" * 64, "size": 1} for _ in range(8)
         ]}).encode()
         self.expected = "sha256:" + hashlib.sha256(self.blob).hexdigest()
 
@@ -31,7 +31,7 @@ class PublicPullCheckTests(unittest.TestCase):
             return self.blob, {"Docker-Content-Digest": self.expected}
 
         with patch.object(checker, "PINNED", self.expected), patch.object(checker, "get_json", fake_get):
-            self.assertEqual(checker.verify_anonymous(), 31)
+            self.assertEqual(checker.verify_anonymous(), 8)
         self.assertEqual(len(calls), 2)
 
     def test_wrong_manifest_rejected(self):
@@ -57,7 +57,7 @@ class PublicPullCheckTests(unittest.TestCase):
             (b'{"token":"public-token"}', {}),
             (short, {"Docker-Content-Digest": digest})
         ]):
-            with self.assertRaisesRegex(RuntimeError, "31-layer"):
+            with self.assertRaisesRegex(RuntimeError, "8-layer"):
                 checker.verify_anonymous()
 
 

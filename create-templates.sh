@@ -12,25 +12,26 @@ PORTS_HELPER="${QWEN38_PORTS_HELPER:-$HERE/scripts/private-template-ports.py}"
 # Use --image official (or QWEN38_IMAGE_VARIANT=official) to retain upstream.
 IMAGE_VARIANT="${QWEN38_IMAGE_VARIANT:-custom}"
 IMAGE_SWITCH_EXPLICIT=0
-RESUME=0
 [[ -z "${QWEN38_IMAGE_VARIANT+x}" ]] || IMAGE_SWITCH_EXPLICIT=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --resume) RESUME=1; shift ;;
     --image)
       [[ $# -ge 2 ]] || { echo "Usage: ./create-templates.sh --image custom|official" >&2; exit 64; }
       IMAGE_VARIANT="$2"; IMAGE_SWITCH_EXPLICIT=1; shift 2 ;;
     --help|-h)
-      echo "Usage: ./create-templates.sh [--image custom|official] [--resume]"
-      echo "Default: custom (immutable, GPU-tested GHCR minimal-v1)."
+      echo "Usage: ./create-templates.sh [--image custom|official]"
+      echo "Default: custom (GPU-tested GHCR minimal-v2 B v0.2.2)."
       echo "official: upstream lmsysorg/sglang:dev-qwen38-27b-dflash2."
-      echo "--resume safely reuses matching templates, repairs tailnet ports, and creates missing ones."
       echo "Also supports QWEN38_IMAGE_VARIANT and legacy QWEN38_IMAGE_REF."
       exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 64 ;;
   esac
 done
 MODEL_STORAGE="${QWEN38_MODEL_STORAGE:-ram}"
+WEBUI_PASSWORD_SECRET_NAME="${QWEN38_WEBUI_PASSWORD_SECRET_NAME:-QWEN38_WEBUI_ADMIN_PASSWORD}"
+WEBUI_ADMIN_EMAIL="${QWEN38_WEBUI_ADMIN_EMAIL:-admin@qwen38.example.com}"
+[[ "$WEBUI_PASSWORD_SECRET_NAME" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]] || { echo "Invalid WEBUI password secret name" >&2; exit 64; }
+[[ "$WEBUI_ADMIN_EMAIL" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || { echo "Invalid WEBUI admin email" >&2; exit 64; }
 HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME-HF_TOKEN}"
 # Engine-neutral RunPod Secret name. Reuse the old Secret during migration with
 # QWEN38_API_SECRET_NAME=LLAMA_API_KEY (does NOT alter the A40 project).
@@ -45,7 +46,7 @@ MODEL_RAM_DIR="${QWEN38_MODEL_RAM_DIR:-/dev/shm/qwen38-hf}"
 MODEL_SSD_DIR="${QWEN38_MODEL_SSD_DIR:-/workspace/hf}"
 case "$MODEL_STORAGE" in ram|ssd) ;; *) echo "MODEL_STORAGE must be ram or ssd" >&2; exit 64 ;; esac
 # Both choices preserve the Qwen38 authentication, model and network configuration.
-CUSTOM_IMAGE="ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd"
+CUSTOM_IMAGE="ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
 OFFICIAL_IMAGE="lmsysorg/sglang:dev-qwen38-27b-dflash2"
 if [[ -n "${QWEN38_IMAGE_REF:-}" ]]; then
   case "$QWEN38_IMAGE_REF" in
@@ -59,20 +60,19 @@ if [[ -n "${QWEN38_IMAGE_REF:-}" ]]; then
   IMAGE_VARIANT="$ref_variant"
 fi
 case "$IMAGE_VARIANT" in
-  custom) IMAGE="$CUSTOM_IMAGE"; TEMPLATE_PREFIX="qwen38-v0.2.0" ;;
+  custom) IMAGE="$CUSTOM_IMAGE"; TEMPLATE_PREFIX="qwen38-v0.2.2" ;;
   official) IMAGE="$OFFICIAL_IMAGE"; TEMPLATE_PREFIX="qwen38-official" ;;
   *) echo "Image must be custom or official" >&2; exit 64 ;;
 esac
 MODEL="${QWEN38_MODEL:-sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4}"
 # RAM-first models and the DFlash2 draft download to /dev/shm, not SSD.
-# User-requested default: ALL four templates (Full/Lean × Public/Tailnet) 20 GiB.
-# Only Custom Lean has been live-tested at 20 GiB so far; Full and official
-# at this smaller capacity still need validation.
+# 30 GiB GPU-tested for minimal-v2 B Full and Lean (official keeps 20 GiB).
 DEFAULT_DISK_GB=20
+[[ "$IMAGE_VARIANT" == custom ]] && DEFAULT_DISK_GB=30
 if [[ "$MODEL_STORAGE" == ssd ]]; then
   # Main/draft weights (~24 GiB) and caches need significantly more disk.
-  # Switching to SSD at template creation automatically chooses 100 GiB.
-  DEFAULT_DISK_GB=100
+  # Switching to SSD at template creation automatically chooses 150 GiB.
+  DEFAULT_DISK_GB=150
 fi
 FULL_DISK_GB="${QWEN38_FULL_DISK_GB:-$DEFAULT_DISK_GB}"
 LEAN_DISK_GB="${QWEN38_LEAN_DISK_GB:-$DEFAULT_DISK_GB}"
@@ -81,7 +81,7 @@ for disk in "$FULL_DISK_GB" "$LEAN_DISK_GB"; do
     echo "Container disk must be between 20 and 500 GiB" >&2; exit 64;
   }
   if [[ "$MODEL_STORAGE" == ssd ]] && ((10#$disk < 50)); then
-    echo "MODEL_STORAGE=ssd requires at least 50 GiB for BOTH Full and Lean; set QWEN38_FULL_DISK_GB and QWEN38_LEAN_DISK_GB (100 GiB default)." >&2
+    echo "MODEL_STORAGE=ssd requires at least 50 GiB for BOTH Full and Lean; set QWEN38_FULL_DISK_GB and QWEN38_LEAN_DISK_GB (150 GiB recommended)." >&2
     exit 64
   fi
 done
@@ -99,13 +99,6 @@ if [[ "$IMAGE_VARIANT" == custom ]]; then
     exit 1
   }
 fi
-
-# Fail before any remote mutation. An owned native config with mode 0644 is
-# safely tightened to 0600; owner/type/symlink mismatches fail closed.
-python3 "$PORTS_HELPER" preflight >&2 || {
-  echo "RunPod port-hardening preflight failed; no templates created." >&2
-  exit 1
-}
 
 mk() { # name ports labels serve_webui network_mode disk_gib
   local BS TS SH BENCH ENV
@@ -127,66 +120,10 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     "DEBUG":"0", "COLDSTART_TRACE":"1",
     "RUNTIME_LOG_DIR":"/dev/shm/qwen38-runtime",
     "SGLANG_API_KEY":"{{ RUNPOD_SECRET_"+sys.argv[12]+" }}",
+    **({"WEBUI_ADMIN_EMAIL":sys.argv[13], "WEBUI_ADMIN_PASSWORD":"{{ RUNPOD_SECRET_"+sys.argv[14]+" }}"} if sys.argv[4]=="1" else {}),
     **({"TS_AUTHKEY":"{{ RUNPOD_SECRET_TS_AUTHKEY }}"} if sys.argv[5]=="tailnet" else {}),
     **({"HF_TOKEN":"{{ RUNPOD_SECRET_"+sys.argv[11]+" }}"} if sys.argv[11] else {})
-  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME" "$API_SECRET_NAME")
-
-  if [[ "$RESUME" == 1 ]]; then
-    # List only user-owned templates. Never silently adopt a name collision or
-    # overwrite stale/modified templates. Credentials were checked above.
-    local existing_id existing_details
-    existing_id=$(runpodctl template list --type user -o json 2>/dev/null | python3 -c 'import sys,json,re
-name=sys.argv[1]
-items=json.load(sys.stdin)
-if not isinstance(items,list):
-    sys.exit("Unexpected RunPod template list shape")
-ids=[x.get("id") for x in items if isinstance(x,dict) and x.get("name")==name]
-if len(ids)>1 or (ids and (not isinstance(ids[0],str) or not re.fullmatch(r"[A-Za-z0-9_.-]{5,100}",ids[0]))):
-    sys.exit("Duplicate/invalid existing template IDs; resolve manually: "+name)
-print(ids[0] if ids else "")
-' "$1") || {
-      echo "Could not safely list existing templates; stopped without creating $1." >&2
-      return 1
-    }
-    if [[ -n "$existing_id" ]]; then
-      existing_details=$(runpodctl template get "$existing_id" -o json 2>/dev/null) || {
-        echo "Could not read existing template $existing_id; stopped." >&2
-        return 1
-      }
-      # A stale template cannot be reused as a new configuration. Exact env
-      # comparison includes embedded helper versions without printing secrets.
-      if ! printf '%s' "$existing_details" | python3 -c 'import json,sys
-tid,name,image,disk,env,mode,public_ports=sys.argv[1:]
-try:
-    d=json.load(sys.stdin)
-    ports=d.get("ports",[])
-    valid=(isinstance(d,dict) and d.get("id")==tid and d.get("name")==name
-       and d.get("imageName")==image and d.get("containerDiskInGb")==int(disk)
-       and d.get("env")==json.loads(env)
-       and isinstance(ports,list))
-    if mode=="runpod":
-        valid=valid and ports==public_ports.split(",")
-    if not valid:
-        raise ValueError()
-except (ValueError,TypeError,KeyError):
-    sys.exit(1)
-' "$existing_id" "$1" "$IMAGE" "$6" "$ENV" "$5" "$2"; then
-        echo "Existing template $existing_id differs from requested image/disk/env/ports." >&2
-        echo "Refusing to reuse or overwrite it. Inspect RunPod or use a different template name." >&2
-        return 1
-      fi
-      if [[ "$5" == tailnet ]]; then
-        # Also completes the previously interrupted repair, if needed.
-        python3 "$PORTS_HELPER" repair "$existing_id" >&2 || {
-          echo "Existing tailnet template $existing_id is NOT verified portless." >&2
-          return 1
-        }
-      fi
-      echo "Reusing verified template $existing_id ($1)" >&2
-      printf '%s\n' "$existing_id"
-      return 0
-    fi
-  fi
+  }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME" "$API_SECRET_NAME" "$WEBUI_ADMIN_EMAIL" "$WEBUI_PASSWORD_SECRET_NAME")
 
   # CLI/backend may reject large --env on CREATE (observed HTTP 500).
   # Provision no-secret skeleton then UPDATE only that new template.
@@ -198,14 +135,35 @@ except (ValueError,TypeError,KeyError):
     args+=(--ports "$2" --port-labels "$3")
   fi
   args+=(--docker-start-cmd 'bash,-c,umask 077; echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh' -o json)
-  local template_id
-  template_id=$(runpodctl "${args[@]}" 2>/dev/null | python3 -c 'import sys,json
+  local template_id="" attempt
+  # Provider CREATE can fail transiently. Retry only when the name is absent.
+  for attempt in 1 2 3; do
+    if template_id=$(runpodctl "${args[@]}" 2>/dev/null | python3 -c 'import sys,json
 try:
     d=json.load(sys.stdin)
     assert d.get("id") and d.get("name")==sys.argv[1]
     print(d["id"])
 except (ValueError,KeyError,TypeError,AssertionError):
-    sys.exit("RunPod skeleton creation failed (response suppressed)")' "$1") || return 1
+    sys.exit("RunPod skeleton creation failed (response suppressed)")
+' "$1"); then
+      break
+    fi
+    template_id=""
+    if ! runpodctl template list --type user -o json | python3 -c 'import json,sys
+items=json.load(sys.stdin)
+name=sys.argv[1]
+sys.exit(1 if any(x.get("name")==name for x in items) else 0)
+' "$1"; then
+      echo "Template $1 may already exist after a provider error; refusing duplicate creation" >&2
+      return 1
+    fi
+    if [[ "$attempt" == 3 ]]; then
+      echo "Template creation failed after 3 verified no-duplicate attempts" >&2
+      return 1
+    fi
+    sleep 2
+  done
+  [[ -n "$template_id" ]] || return 1
 
   local updated
   if ! updated=$(runpodctl template update "$template_id" --env "$ENV" -o json 2>/dev/null); then
@@ -232,11 +190,11 @@ if d.get("id")!=sys.argv[1] or d.get("env",{}).get("COLDSTART_TRACE")!="1" or d.
 
 echo "Full $IMAGE_VARIANT template (SGLang + OpenWebUI, PUBLIC RunPod ports):"
 id=$(mk ${TEMPLATE_PREFIX}-full-public \
-  '8000/http,8080/http,22/tcp' '8000=SGLang API,8080=OpenWebUI,22=SSH' 1 runpod "$FULL_DISK_GB")
+  '8000/http,8080/http' '8000=SGLang API,8080=OpenWebUI' 1 runpod "$FULL_DISK_GB")
 echo "  QWEN38_TEMPLATE=$id"
 echo "Lean $IMAGE_VARIANT template (SGLang API, PUBLIC RunPod ports):"
 id=$(mk ${TEMPLATE_PREFIX}-lean-public \
-  '8000/http,22/tcp' '8000=SGLang API,22=SSH' 0 runpod "$LEAN_DISK_GB")
+  '8000/http' '8000=SGLang API' 0 runpod "$LEAN_DISK_GB")
 echo "  QWEN38_TEMPLATE_PI=$id"
 echo "Full tailnet-only template (NO published RunPod ports):"
 id=$(mk ${TEMPLATE_PREFIX}-full-tailnet \
@@ -249,11 +207,11 @@ echo "  QWEN38_TEMPLATE_TAILNET_PI=$id"
 echo "For tailnet-only templates, verify 'runpodctl template get <id>' has NO public ports."
 echo "Private templates reference existing RunPod Secret TS_AUTHKEY; all templates reference $API_SECRET_NAME for SGLang."
 echo "All templates reference RunPod Secret HF_TOKEN by default (override QWEN38_HF_SECRET_NAME)."
-echo "Direct template-only launches require SGLANG_API_KEY and, for public OpenWebUI,"
-echo "WEBUI_ADMIN_EMAIL plus WEBUI_ADMIN_PASSWORD (>=16 chars) in pod environment."
+echo "Full templates use RunPod Secret $WEBUI_PASSWORD_SECRET_NAME and WEBUI_ADMIN_EMAIL."
+echo "Resolved admin passwords must be >=16 characters; otherwise Full fails closed."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
 echo "Image variant: $IMAGE_VARIANT; image: $IMAGE; disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."
 echo "No private GHCR registry credentials attached to new templates; public images pull anonymously."
-echo "NOTE: 20 GiB defaults require MODEL_STORAGE=ram; SSD downloads need >=50 GiB, default 100 GiB."
+echo "NOTE: Custom RAM-first defaults to 30 GiB; SSD downloads need >=50 GiB, default 150 GiB."
 echo "Switch source: ./create-templates.sh --image official|custom (creates distinct templates)."
 echo "Recreate all four templates after each bootstrap/helper change."

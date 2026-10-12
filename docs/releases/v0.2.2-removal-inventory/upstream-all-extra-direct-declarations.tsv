@@ -1,0 +1,26 @@
+upstream_optional_extra	direct_requirement_declaration
+diffusion	addict==2.4.0
+diffusion	av==16.1.0
+diffusion	cache-dit==1.3.0
+diffusion	cloudpickle==3.1.2
+diffusion	diffusers==0.37.0
+diffusion	imageio==2.36.0
+diffusion	imageio-ffmpeg==0.5.1
+diffusion	moviepy>=2.0.0
+diffusion	msgpack
+diffusion	nvidia-modelopt
+diffusion	opencv-python-headless==4.10.0.84
+diffusion	PyYAML==6.0.1
+diffusion	remote-pdb==2.1.0
+diffusion	runai_model_streamer>=0.15.7
+diffusion	scikit-image==0.25.2
+diffusion	st_attn==0.0.7 ; platform_machine != 'aarch64' and platform_machine != 'arm64'
+diffusion	trimesh>=4.0.0
+diffusion	vsa==0.0.4 ; platform_machine != 'aarch64' and platform_machine != 'arm64'
+diffusion	websockets
+diffusion	xatlas
+http2	granian>=2.6.0
+tracing	opentelemetry-api
+tracing	opentelemetry-exporter-otlp
+tracing	opentelemetry-exporter-otlp-proto-grpc
+tracing	opentelemetry-sdk
