@@ -109,7 +109,8 @@ if [[ "$BENCHMARK_BLOCKING" == 1 ]]; then
     [[ -n "${BENCHMARK_B64:-}" ]] || { echo "ERROR: blocking benchmark requires BENCHMARK_B64" >&2; exit 64; }
     # Full/Tailnet live tests must never report readiness with no WebUI admin.
     if [[ "$SERVE_WEBUI" == 1 ]]; then
-        [[ -n "${WEBUI_ADMIN_EMAIL:-}" && ${#WEBUI_ADMIN_PASSWORD} -ge 16 ]] || {
+        admin_password_value="${WEBUI_ADMIN_PASSWORD:-}"
+        [[ -n "${WEBUI_ADMIN_EMAIL:-}" && ${#admin_password_value} -ge 16 ]] || {
             echo "ERROR: blocking Full mode requires WebUI admin email/password (>=16 chars)" >&2; exit 64;
         }
     fi
