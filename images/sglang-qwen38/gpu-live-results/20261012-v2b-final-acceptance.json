@@ -1,0 +1,93 @@
+{
+  "api_authentication": {
+    "negative_without_key_http_code": 401,
+    "positive_authenticated_in_pod_benchmark": true
+  },
+  "benchmark": {
+    "blocking_gate_passed": true,
+    "runs_total": 15,
+    "status": "pass",
+    "token_count_source": "server_usage",
+    "workloads": [
+      {
+        "median_decode_tokens_per_second": 132.69,
+        "median_ttft_ms": 64.6,
+        "runs": 5,
+        "workload": "technical"
+      },
+      {
+        "median_decode_tokens_per_second": 187.09,
+        "median_ttft_ms": 64.1,
+        "runs": 5,
+        "workload": "code"
+      },
+      {
+        "median_decode_tokens_per_second": 190.78,
+        "median_ttft_ms": 63.2,
+        "runs": 5,
+        "workload": "code_edit"
+      }
+    ]
+  },
+  "branch": "feature/minimal-v2-gpu-full-tailnet-live-test",
+  "checked_utc": "2026-10-12T08:39:35+00:00",
+  "cloud": "SECURE",
+  "coding_quality": {
+    "status": "not_tested"
+  },
+  "cost": {
+    "balance_after_usd": 3.2962450844,
+    "balance_before_usd_reference": 5.2053357372,
+    "note": "Balance debit approximation; official RunPod invoice may differ",
+    "observed_balance_delta_usd_estimate": 1.909,
+    "provider_rate_usd_per_hour": 2.49
+  },
+  "gpu": "RTX PRO 6000 Blackwell 96 GiB SM120",
+  "image": "ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+  "limitations": [
+    "Full/OpenWebUI not accepted",
+    "no standalone coding/quality regression",
+    "no matched v1 GPU benchmark",
+    "no new paid Pod started for follow-up"
+  ],
+  "log_evidence": {
+    "benchmark.json": {
+      "bytes": 8791,
+      "sha256": "cb3b4e156d0b0da2a53ff1d55f0f6442fcd0e45f51ac96c3e95c65e564faf674"
+    },
+    "benchmark.log": {
+      "bytes": 346,
+      "sha256": "38adbd58bda29326f292457c0d9f7d76018e681f400ce6198a088303a27ef2d5"
+    },
+    "bootstrap.log": {
+      "bytes": 30554,
+      "sha256": "06ed6aea9734f41e8ab6880ceda29e7c0618a70be9a7b8981723a08ed691bd49"
+    },
+    "events.jsonl": {
+      "bytes": 913,
+      "sha256": "6741cf3e6dc6e104d0089bf073985bb20e9bb902add84db85cc3362b9fcd4fa7"
+    },
+    "runpod-redacted.log": {
+      "bytes": 61598,
+      "sha256": "27cbab44d417adcc0bb0452ba17eeb5a355a2f5c18b31c78aff1b8c71645f6e7"
+    },
+    "sglang.log": {
+      "bytes": 84839,
+      "sha256": "e719dbb7f7ea8bd6ba0d6ee428e6ee41a43e527bf9bf4694d70a9656ddfdeb89"
+    }
+  },
+  "openwebui": {
+    "https_status": 502,
+    "reason": "uv executable missing from image/bootstrap",
+    "status": "failed"
+  },
+  "pod_id": "8ifu7b1s3z9bib",
+  "pod_status": "verified_deleted_provider_404_and_not_in_pod_list",
+  "project": "[REDACTED:entropy:29]",
+  "status": "partial_pass",
+  "tailnet": {
+    "public_ports": 0,
+    "status": "connected"
+  },
+  "watchdog_status": "terminated"
+}
