@@ -18,11 +18,13 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          if [[ -n "$BASE" && "$BASE" != 0000000000000000000000000000000000000000 ]]; then
+          if [[ -n "$BASE" && "$BASE" != 0000000000000000000000000000000000000000 ]] \
+            && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             python3 scripts/privacy-check.py --commits "$BASE..$HEAD"
           else
-            # A newly published branch may contain legacy ancestors. The full
-            # historical cleanup is separately gated; inspect the new tip now.
+            # A newly published branch or force-pushed branch may have no
+            # reachable before SHA. Historical cleanup is separately gated;
+            # inspect the new tip and always scan the complete current tree.
             python3 scripts/privacy-check.py --commits "$HEAD^..$HEAD"
           fi
       - name: Install pinned secret scanner
