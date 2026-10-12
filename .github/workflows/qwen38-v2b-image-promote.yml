@@ -1,0 +1,104 @@
+name: Promote Qwen38 minimal-v2B v0.2.2 image
+
+# Tag promotion only: reuses the previously GPU-tested immutable manifest.
+# No image build, layer download, GPU Pod or RunPod template change.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: qwen38-v022-image-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote-v022:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      SOURCE: ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7
+      TARGET: ghcr.io/tommyfive/qwen38-sglang:v0.2.2
+      EXPECTED_SOURCE_DIGEST: 820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7
+      EXPECTED_CONFIG: sha256:bedd7b0eca419aefb4448d8e553894a04967bed7f8f36e3b9ccaefb7e04954a5
+      EXPECTED_COMPRESSED_BYTES: "10703739835"
+    steps:
+      - name: Read and verify already-tested manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect --raw "$SOURCE" > "$RUNNER_TEMP/source.json"
+          python3 - <<'PY'
+          import hashlib, json, os
+          p=os.environ["RUNNER_TEMP"]+"/source.json"
+          data=open(p,"rb").read()
+          image=json.loads(data)
+          assert hashlib.sha256(data).hexdigest()==os.environ["EXPECTED_SOURCE_DIGEST"], "source OCI digest changed"
+          assert image.get("config",{}).get("digest")==os.environ["EXPECTED_CONFIG"], "wrong image config"
+          layers=image.get("layers",[])
+          assert len(layers)==8, "wrong layer count"
+          assert sum(x["size"] for x in layers)==int(os.environ["EXPECTED_COMPRESSED_BYTES"]), "wrong compressed size"
+          assert all(x["digest"].startswith("sha256:") for x in layers)
+          print("GPU-tested minimal-v2B manifest matches exact expected 8-layer image")
+          PY
+      - name: Authenticate for GHCR package promotion
+        shell: bash
+        env:
+          GH_ACTOR: ${{ github.actor }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+      - name: Promote unchanged OCI content under versioned tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if docker buildx imagetools inspect --raw "$TARGET" > "$RUNNER_TEMP/existing.json" 2>/dev/null; then
+            echo "Existing release tag detected: verifying without overwriting."
+          else
+            docker buildx imagetools create --prefer-index=false --tag "$TARGET" "$SOURCE"
+          fi
+          docker buildx imagetools inspect --raw "$TARGET" > "$RUNNER_TEMP/promoted.json"
+          python3 - <<'PY'
+          import hashlib,json,os
+          d=os.environ["RUNNER_TEMP"]
+          a=open(d+"/source.json","rb").read()
+          b=open(d+"/promoted.json","rb").read()
+          src,dst=json.loads(a),json.loads(b)
+          assert dst.get("mediaType")==src.get("mediaType"), "manifest media type mismatch"
+          assert dst.get("config")==src.get("config"), "image config changed"
+          def layers(x): return [(v["digest"],v["size"],v["mediaType"]) for v in x["layers"]]
+          assert layers(dst)==layers(src), "layer digests, sizes, or media types changed"
+          assert len(dst["layers"])==8
+          dst_digest="sha256:"+hashlib.sha256(b).hexdigest()
+          print("RELEASE_IMAGE_PROMOTED_VERIFIED",dst_digest,"8 exact source layers","10,703,739,835 bytes")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+            out.write("## v0.2.2 exact tested image content verified\n\n")
+            out.write("Target: `"+os.environ['TARGET']+"`  \n")
+            out.write(f"Target digest: \`{dst_digest}\`  \n")
+            out.write("Identical config digest and all 8 original layer digests/sizes. No image build or paid GPU.\n")
+          PY
+      - name: Validate promoted registry blob references (no downloads)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,urllib.request
+          data=json.load(open(os.environ["RUNNER_TEMP"]+"/promoted.json"))
+          repository="tommyfive/qwen38-sglang"
+          url="https://ghcr.io/token?service=ghcr.io&scope=repository:"+repository+":pull"
+          with urllib.request.urlopen(url,timeout=20) as r:
+            token=json.load(r)["token"]
+          blobs=[data["config"]["digest"]]+[x["digest"] for x in data["layers"]]
+          for digest in blobs:
+            req=urllib.request.Request(
+              "https://ghcr.io/v2/"+repository+"/blobs/"+digest,
+              headers={"Authorization":"Bearer "+token},method="HEAD")
+            with urllib.request.urlopen(req,timeout=20) as r:
+              if r.status!=200:raise RuntimeError("blob unavailable in destination package")
+          print("All",len(blobs),"OCI blobs independently HEAD-verified in public v0.2.2 destination package")
+          PY
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io || true
