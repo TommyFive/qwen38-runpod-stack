@@ -1,0 +1,16 @@
+{
+  "status": "PASS",
+  "candidates": [
+    "rust",
+    "rust-cuda"
+  ],
+  "modules": [
+    "flashinfer",
+    "sglang",
+    "torch",
+    "transformers"
+  ],
+  "cuda_pairs": 11,
+  "cuda_duplicate_logical_bytes": 1679571048,
+  "scope": "CPU-only; GPU JIT/kernel/runtime validation NOT performed"
+}
