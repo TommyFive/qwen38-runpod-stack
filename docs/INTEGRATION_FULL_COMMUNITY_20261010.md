@@ -7,18 +7,18 @@
 | Field | Value / evidence |
 |---|---|
 | Exact Git commit | `bffa632233d8c5877890f211192e8150009619e1` (Draft PR #19), isolated worktree `/tmp/qwen38-pr19-live-test1`; the normal integration worktree was not switched |
-| Base integration branch | `integration/issues-7-11-20261010`, unchanged in normal Mac mini checkout during the launch |
-| Pod ID | `pmtnuoiw1gzimp` (**deleted**) |
+| Base integration branch | `integration/issues-7-11-20261010`, unchanged in normal Local workstation checkout during the launch |
+| Pod ID | `historical-resource-13` (**deleted**) |
 | GPU | 1× NVIDIA RTX PRO 6000 Blackwell Server Edition |
-| Template | `aa7z98qnzs` — Private Full, zero published RunPod ports, `SERVE_WEBUI=1` |
+| Template | `historical-resource-9` — Private Full, zero published RunPod ports, `SERVE_WEBUI=1` |
 | Image | `lmsysorg/sglang:dev-qwen38-27b-dflash2`, RunPod digest `sha256:616a3e97f45191af975896cfa644279096cb31bd408a071c2e99ca7209c3cafe` |
 | Requested cloud | **COMMUNITY** (`RUNPOD_CLOUD=COMMUNITY` passed to launcher; no secure fallback message) |
 | Cloud evidence | Pod reported **$1.69/h**, equal to RunPod catalog **Community $1.69/h** for this GPU; catalog Secure price **$2.49/h**. **Cloud is classified COMMUNITY by request + billed GPU rate; direct `cloudType` is not returned by this version of `runpodctl pod get`.** |
-| Datacenter / region | **Unknown / not API-verified**, do not infer from Tailscale relay or country of Mac mini. A future Secure comparison should aim for the same datacenter or control for region. |
+| Datacenter / region | **Unknown / not API-verified**, do not infer from Tailscale relay or country of Local workstation. A future Secure comparison should aim for the same datacenter or control for region. |
 | Test overrides | `MODEL_STORAGE=ram`, `MODEL_RAM_PEAK_FACTOR=1.75`, `MODEL_RAM_RELEASE_AFTER_LOAD=1`, `DEBUG=1`, `BENCHMARK=0`, `COLDSTART_TRACE=1`, `NETWORK_MODE=tailnet` |
 | Admission | 22.76 GiB main+draft; 57.74 GiB free tmpfs; 47.83 GiB required with test multiplier 1.75; 116.27 GiB finite cgroup RAM available; preflight passed. Production default multiplier remains **2.5**, release remains **OFF** by default. |
 | Pod price | $1.69/h GPU rate (reported current account rate included incidental spend ~$1.711/h). Account balance moved from ~$10.626 to ~$10.100; about **$0.53** cost (provisional, may settle later). |
-| Cleanup | Exact-ID `runpodctl pod delete pmtnuoiw1gzimp` successful; RunPod then returned `[]`, account spending rate $0/h, temporary 45-minute exact-ID guard canceled. |
+| Cleanup | Exact-ID `runpodctl pod delete historical-resource-13` successful; RunPod then returned `[]`, account spending rate $0/h, temporary 45-minute exact-ID guard canceled. |
 
 ## Chronological evidence — all timestamps UTC
 
@@ -67,7 +67,7 @@
 - After cleanup, tmpfs usage ~**7.9 GiB**, including **~7.0 GiB at `/dev/shm/qwen38-hf/xdg/uv/archive-v0`** from the OpenWebUI install/package cache. The 22.73 GiB model weight blobs were released, but the full stack's `uv` cache remains an important additional RAM consumer.
 
 **Not passed / not proven:**
-- **Tailnet HTTPS 443 and 8443 time out** from the Mac mini even with `--noproxy '*'` and explicit DNS-to-tailnet IPv4 mapping; local `nc` to both ports also times out. A pod self-tailnet-IP HTTPS check timed out too. Mac mini Tailscale peer ping succeeded by **peer-relay** (~199–200ms) and native SSH worked. Serve configuration alone is **not proof of external access**. Root cause unverified: ACL/port policy vs userspace Serve/routing vs network path. **Issue #20**. No ACLs were changed, no public ports exposed.
+- **Tailnet HTTPS 443 and 8443 time out** from the Local workstation even with `--noproxy '*'` and explicit DNS-to-tailnet IPv4 mapping; local `nc` to both ports also times out. A pod self-tailnet-IP HTTPS check timed out too. Local workstation Tailscale peer ping succeeded by **peer-relay** (~199–200ms) and native SSH worked. Serve configuration alone is **not proof of external access**. Root cause unverified: ACL/port policy vs userspace Serve/routing vs network path. **Issue #20**. No ACLs were changed, no public ports exposed.
 - Actual authenticated OpenWebUI sign-in and chat after session creation **not verified**: credential-bearing probe was denied by remote security tooling; admin provisioning and negative auth checks did pass.
 - Full OpenWebUI mode tested, but not Public Full, Secure Cloud or SSD. `DEBUG=0`, `COLDSTART_TRACE=0` and different model/draft combinations remain untested.
 - `/workspace/smoke-storage.sh` was not present; bootstrap emitted a harmless missing-optional-script warning and continued.
@@ -75,7 +75,7 @@
 
 ## Saved evidence
 
-Private, `0600` evidence files on the Mac mini:
+Private, `0600` evidence files on the Local workstation:
 - `~/.runpod/qwen38-pr19-test1-system.jsonl` — 98,390 bytes RunPod system/image events.
 - `~/.runpod/qwen38-pr19-test1-coldstart.jsonl` — 1,306 bytes host-independent pod marker sequence.
 - `~/.runpod/qwen38-pr19-test1-release.log` — 197 bytes.

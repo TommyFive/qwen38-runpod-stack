@@ -19,7 +19,7 @@ class V2BRemovalReleaseAudit(unittest.TestCase):
         self.assertTrue(self.data["result_v2b_image"].endswith("820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"))
 
     def test_all_1192_removed_rust_paths_reconcile_with_pruner(self):
-        spec=importlib.util.spec_from_file_location("prune",ROOT/"images/sglang-qwen38/cpu-audit/prune-candidate.py")
+        spec=importlib.util.spec_from_file_location("prune",ROOT/"images/sglang-qwen38/tools/audit/prune-candidate.py")
         prune=importlib.util.module_from_spec(spec)
         spec.loader.exec_module(prune)
         with (INVENTORY/"removed-rust-files-v1-to-v2b.tsv").open() as f:
@@ -37,7 +37,7 @@ class V2BRemovalReleaseAudit(unittest.TestCase):
         self.assertEqual(self.data["actual_rust_removal"]["count"],1192)
 
     def test_all_11_cuda_pairs_match_prune_allowlist_and_original_hashes(self):
-        spec=importlib.util.spec_from_file_location("prune",ROOT/"images/sglang-qwen38/cpu-audit/prune-candidate.py")
+        spec=importlib.util.spec_from_file_location("prune",ROOT/"images/sglang-qwen38/tools/audit/prune-candidate.py")
         prune=importlib.util.module_from_spec(spec)
         spec.loader.exec_module(prune)
         with (INVENTORY/"deduplicated-cuda-libraries-v1-to-v2b.tsv").open() as f:

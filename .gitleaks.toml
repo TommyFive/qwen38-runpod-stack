@@ -1,0 +1,7 @@
+title = "Qwen38 current-source secret scan"
+[extend]
+useDefault = true
+[[allowlists]]
+description = "Explicit non-secret test sentinels only; no file-wide exclusions"
+regexTarget = "secret"
+regexes = ['''^SENTINEL_[A-Z_]+_[a-f0-9]+$''']

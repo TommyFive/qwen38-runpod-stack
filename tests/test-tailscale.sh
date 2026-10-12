@@ -38,7 +38,7 @@ if "up" in args:
     with open(os.environ["TEST_CALL_LOG"], "a") as log:
         log.write("UP " + " ".join(args) + "\n")
 elif "status" in args:
-    print(json.dumps({"Self":{"DNSName":"qwen38-ci.tailc8dece.ts.net."}}))
+    print(json.dumps({"Self":{"DNSName":"qwen38-ci.example.ts.net."}}))
 elif "serve" in args:
     with open(os.environ["TEST_CALL_LOG"], "a") as log:
         log.write("SERVE " + " ".join(args) + "\n")
@@ -83,7 +83,7 @@ SERVE_WEBUI=1
 ts_start
 printf '%s\n' "$TS_DAEMON_PID" > "$TMP/daemon.pid"
 [[ "$TS_ACTIVE" == 1 ]]
-[[ "$TS_DNS_NAME" == qwen38-ci.tailc8dece.ts.net ]]
+[[ "$TS_DNS_NAME" == qwen38-ci.example.ts.net ]]
 if find "$TS_SECRET_DIR" -type f | grep -q .; then echo "FAIL: temporary secret file not deleted" >&2; exit 1; fi
 [[ -z "${TS_AUTHKEY:-}" ]]
 ts_serve

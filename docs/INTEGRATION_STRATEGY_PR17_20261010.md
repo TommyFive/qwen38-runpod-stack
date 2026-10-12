@@ -1,6 +1,6 @@
 # PR #17: Final integration strategy and release gates (2026-10-10)
 
-> **LATEST POSITIVE AUTH ACCEPTANCE (2026-10-11): CONDITIONAL GO for scoped PR #17.** Real Pod `cg3pbcn7ua3oim` proved valid Bearer API HTTP 200 **from external MacBook** plus successful OpenWebUI admin signin HTTP 200 and a subsequent authorized chats read HTTP 200; the prior two P0/P1 identity gates now **PASS**. See [per-Pod evidence](runs/20261010T170415Z_cg3pbcn7ua3oim.md). Public Lean GPU and comprehensive feature combinations are *not* independently verified, explicitly retained as a scope limitation. Account-global reaper and advanced cold-start optimization remain accepted/deferred. **Pod is still running by owner's instruction; do not stop it.** Final CI + explicit main merge request remain required. Historical NO-GO text below refers to the earlier pre-positive-auth state and is superseded.\n\n> **UPDATED RELEASE VERDICT (2026-10-11): NO-GO / HOLD.** See [final release review](RELEASE_REVIEW_PR17_20261011.md), based on integration `ad481c4e`. The formerly confirmed tailnet ACL timeout and Tailscale certificate-state problem are **fixed and verified live** on Pod `s5titot9ae0zzv`: trusted TLS 443/8443, native SSH, private portless templates, negative API/WebUI auth tests all pass. **Outstanding release gates:** independent *external* positive SGLang valid-Bearer call, positive OpenWebUI admin session, explicit residual coverage acceptance, final GO and merge authorization. The initial strategy and old root-cause text below are historical where superseded; do not act on the dedicated-tag suggestion. No paid Pod running after exact-ID cleanup.
+> **LATEST POSITIVE AUTH ACCEPTANCE (2026-10-11): CONDITIONAL GO for scoped PR #17.** Real Pod `historical-resource-5` proved valid Bearer API HTTP 200 **from external Admin workstation** plus successful OpenWebUI admin signin HTTP 200 and a subsequent authorized chats read HTTP 200; the prior two P0/P1 identity gates now **PASS**. See [per-Pod evidence](runs/20261010T170415Z_historical-resource-5.md). Public Lean GPU and comprehensive feature combinations are *not* independently verified, explicitly retained as a scope limitation. Account-global reaper and advanced cold-start optimization remain accepted/deferred. **Pod is still running by owner's instruction; do not stop it.** Final CI + explicit main merge request remain required. Historical NO-GO text below refers to the earlier pre-positive-auth state and is superseded.\n\n> **UPDATED RELEASE VERDICT (2026-10-11): NO-GO / HOLD.** See [final release review](RELEASE_REVIEW_PR17_20261011.md), based on integration `ad481c4e`. The formerly confirmed tailnet ACL timeout and Tailscale certificate-state problem are **fixed and verified live** on Pod `historical-resource-6`: trusted TLS 443/8443, native SSH, private portless templates, negative API/WebUI auth tests all pass. **Outstanding release gates:** independent *external* positive SGLang valid-Bearer call, positive OpenWebUI admin session, explicit residual coverage acceptance, final GO and merge authorization. The initial strategy and old root-cause text below are historical where superseded; do not act on the dedicated-tag suggestion. No paid Pod running after exact-ID cleanup.
 
 > **Status:** Proposed merge criteria; no merge into `main` without explicit
 > owner approval. This is a **reconstructed, consolidated strategy** based on
@@ -16,9 +16,9 @@
 - Source PRs #12–#16 were consolidated/superseded; #19 (optional RAM release,
   default `0`) merged into integration. The main branch remains untouched.
 - Both offline GitHub workflows passed on the audited head.
-- Mac mini local checkout matched that commit with clean Git status; installed
+- Local workstation local checkout matched that commit with clean Git status; installed
   `qwen38fast`, bootstrap and model-storage helper did **not** match checkout
-  bytes. This local helper drift was resolved on the Mac mini
+  bytes. This local helper drift was resolved on the Local workstation
   using targeted file installs, not `setup.sh`; the old reaper remains off.
 - Live validation so far: RTX PRO 6000 Private Lean, Private Full and Public Full/SSD,
   authenticated SGLang + DFlash2 inference, RAM-backed main+draft, native
@@ -33,7 +33,7 @@
 
 | Gate | Required proof | Current status | Priority |
 |---|---|---|---|
-| **G1: Tailnet HTTPS Serve #20** | Trusted TLS and SGLang API Bearer 401/200; WebUI admin login, native SSH, zero public ports | **PASS** on live Pod `cg3pbcn7ua3oim` and prior TLS Pod: correct TLS and 401 negative; external MacBook valid-Bearer `/v1/models` 200, positive WebUI signin 200 plus protected chats 200 | P0 |
+| **G1: Tailnet HTTPS Serve #20** | Trusted TLS and SGLang API Bearer 401/200; WebUI admin login, native SSH, zero public ports | **PASS** on live Pod `historical-resource-5` and prior TLS Pod: correct TLS and 401 negative; external Admin workstation valid-Bearer `/v1/models` 200, positive WebUI signin 200 plus protected chats 200 | P0 |
 | **G2: Four template/config parity** | Read-only metadata GET for all existing public/private Full/Lean IDs; validate network mode, ports (private `[]`), embedded bootstrap/helper SHA or byte identity, RunPod Secret references and defaults; no credentials logged | **PASS (template parity 2026-10-10):** all four existing IDs read via RunPod, public port configs correct, private ports empty, all RunPod Secret references kept, bootstrap/storage/TS/benchmark helpers refreshed in place and byte SHA verified | P1 |
 | **G3: Auth/privacy positive and negative flows** | No anonymous API; authenticated public UI; positive real login; sanitized logs | **PASS for scoped release**: external API wrong/missing token 401, valid Bearer 200; positive HTTPS WebUI signin and authenticated protected read 200, signup disabled and anonymous chat 401. Public Lean dedicated GPU remains **untested**, not called PASS | P1 |
 | **G4: Storage/settings integration** | RAM and cgroup preflight, main/draft on verified tmpfs, opt-in SSD and failure pathways, release-after-inference guarded and default OFF; read-only audit of generated paths and no silent fallback | RAM + release-opt-in and Public Full **SSD snapshot root** passed live; DEBUG=0/COLDSTART_TRACE=0/BENCHMARK=0 selected in paid SSD cohort. Full combinatorial switch matrix not exhaustively live checked | P1 |
@@ -52,7 +52,7 @@ Owner's operating assumption (2026-10-10): this RunPod account is **only**
 used for QWEN38 pods, with no unrelated pods to protect. Existing
 `qwen38fast stop` / `qwen38pi stop` can delete all account pods. The legacy
 reaper also selects from all pods, has global 1h age logic, and is **not
-currently installed** as a LaunchAgent on audited Mac mini. `setup.sh`
+currently installed** as a LaunchAgent on audited Local workstation. `setup.sh`
 would activate it. Installed CLI 2.15.0 cannot be relied upon for
 `--terminate-after`; requested 2h/4h runtimes are **not** guaranteed TTL.
 For supervised paid tests, target exact Pod ID for termination, verify no

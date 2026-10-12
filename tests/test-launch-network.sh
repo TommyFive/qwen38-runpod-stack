@@ -12,7 +12,7 @@ export QWEN38_TEST_REAL_PYTHON="$(command -v python3)"
 export PATH="$TMP/bin:$PATH"
 cat > "$TMP/bin/python3" <<'PY_WRAPPER'
 #!/usr/bin/env bash
-if [[ "${1:-}" == */images/sglang-qwen38/check-public.py ]]; then
+if [[ "${1:-}" == */images/sglang-qwen38/tools/check-public.py ]]; then
     exit 0
 fi
 exec "$QWEN38_TEST_REAL_PYTHON" "$@"
@@ -162,13 +162,13 @@ export QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh"
 export QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
 export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
 export QWEN38_COLDSTART_TRACE=0
-export QWEN38_TAILNET_DOMAIN=tailc8dece.ts.net
+export QWEN38_TAILNET_DOMAIN=example.ts.net
 unset TS_AUTHKEY || true
 unset QWEN38_HF_SECRET_NAME || true
 # Verify the default HF_TOKEN secret reference, not a test-only override.
 bash "$ROOT/bin/qwen38fast" --pi --network tailnet > "$TMP/tailnet.out"
 grep -Fq 'https://' "$TMP/tailnet.out"
-grep -Fq '.tailc8dece.ts.net/v1' "$TMP/tailnet.out"
+grep -Fq '.example.ts.net/v1' "$TMP/tailnet.out"
 grep -Fq 'no guaranteed auto-stop' "$TMP/tailnet.out"
 grep -Fq 'runpodctl pod delete pod-ci' "$TMP/tailnet.out"
 if grep -Fq 'then RunPod terminates it itself' "$ROOT/bin/qwen38fast"; then
@@ -180,13 +180,13 @@ python3 - "$HOME/.runpod/current-endpoint.json" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
 assert d["api_url"].startswith("https://qwen38-")
-assert d["api_url"].endswith(".tailc8dece.ts.net/v1")
+assert d["api_url"].endswith(".example.ts.net/v1")
 PY
 
 echo "=== tailnet full stack with deferred web UI ==="
 bash "$ROOT/bin/qwen38fast" --network tailnet > "$TMP/tailnet-full.out"
 grep -Fq 'https://' "$TMP/tailnet-full.out"
-grep -Fq '.tailc8dece.ts.net:8443' "$TMP/tailnet-full.out"
+grep -Fq '.example.ts.net:8443' "$TMP/tailnet-full.out"
 
 echo "=== public CLI without TS_AUTHKEY ==="
 unset TS_AUTHKEY

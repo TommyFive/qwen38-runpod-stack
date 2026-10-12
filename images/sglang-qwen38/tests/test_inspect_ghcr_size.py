@@ -3,7 +3,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-FILE = Path(__file__).resolve().parents[1] / "inspect-ghcr-size.py"
+FILE = Path(__file__).resolve().parents[1] / "tools/inspect-registry.py"
 spec = importlib.util.spec_from_file_location("qwen38_ghcr_inspect", FILE)
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
@@ -45,3 +45,18 @@ class GhcrInspectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class RegistryRedirectTests(unittest.TestCase):
+    def test_head_redirect_preserves_method_and_drops_auth(self):
+        req = mod.urllib.request.Request('https://ghcr.io/v2/example/blobs/sha256:abc',
+                                        headers={'Authorization':'Bearer fake'}, method='HEAD')
+        redirected = mod.BlobRedirect().redirect_request(req, None, 307, 'redirect', {},
+                        'https://pkg-containers.githubusercontent.com/blob')
+        self.assertEqual(redirected.get_method(), 'HEAD')
+        self.assertIsNone(redirected.get_header('Authorization'))
+
+    def test_unknown_or_plaintext_redirect_is_rejected(self):
+        req = mod.urllib.request.Request('https://ghcr.io/token')
+        for target in ('https://attacker.example/blob', 'http://pkg-containers.githubusercontent.com/blob'):
+            with self.assertRaises(RuntimeError):
+                mod.BlobRedirect().redirect_request(req, None, 307, '', {}, target)

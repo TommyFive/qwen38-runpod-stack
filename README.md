@@ -32,7 +32,7 @@ ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e
 The full list of removed Rust build artifacts, eleven SHA-identical CUDA copies replaced with symlinks and skipped optional upstream dependencies is in the [v0.2.2 release notes](docs/releases/v0.2.2.md). The custom image is public and pullable without GHCR credentials. Validate without downloading layers:
 
 ```bash
-python3 images/sglang-qwen38/check-public.py
+python3 images/sglang-qwen38/tools/check-public.py
 ```
 
 ### Create and launch RunPod templates
@@ -62,7 +62,7 @@ QWEN38_API_SECRET_NAME=LLAMA_API_KEY ./create-templates.sh --image custom
 
 New launchers auto-select `qwen38-v0.2.2-*` templates and inherit their API Secret reference. Custom and official image families are never mixed. Manual `QWEN38_TEMPLATE*` environment overrides must refer to matching modes and images. Full OpenWebUI and `uv` are **installed on demand at runtime**, not part of the immutable Docker image. Lean installs neither. Templates only affect **new** Pods, and template creation has no GPU charges.
 
-**Release evidence:** [Full + Lean RTX PRO 6000 benchmark](images/sglang-qwen38/gpu-live-results/20261012-v2b-rc1-live-acceptance.md) · [US-KS-2 Docker cold-start evidence](images/sglang-qwen38/gpu-live-results/20261012-v2b-rc1-US-KS-2-coldstart-evidence.md). Throughput benchmarks do not assert standalone coding correctness.
+**Release evidence:** [Full + Lean RTX PRO 6000 benchmark](images/sglang-qwen38/VALIDATION.md) · [US-KS-2 Docker cold-start evidence](images/sglang-qwen38/VALIDATION.md). Throughput benchmarks do not assert standalone coding correctness.
 
 ## Contents
 
@@ -320,7 +320,7 @@ Read [security and credential model](docs/SECURITY.md), [cost controls](docs/COS
 | [Cold-start tracing](docs/COLD_START.md) | `qwen38cold` event/report format and honest time-to-first-inference measurement |
 | [Performance](docs/PERFORMANCE.md) | Checkpoint quantization choices, GPU/decoding discussion |
 | [Integration smoke](docs/INTEGRATION_SMOKE_20261010.md) | Historical GPU test matrix; later success is in the dated run records |
-| [Final positive-auth GPU run](docs/runs/20261010T170415Z_cg3pbcn7ua3oim.md) | Release `v0.1.0` final Private Full HTTPS/WebUI authorization proof |
+| [Final positive-auth GPU run](docs/runs/20261010T170415Z_historical-resource-5.md) | Release `v0.1.0` final Private Full HTTPS/WebUI authorization proof |
 | [Release `v0.1.0`](https://github.com/TommyFive/qwen38-runpod-stack/releases/tag/v0.1.0) | Versioned initial integrated release |
 
 The repo has automated bootstrap/privacy/storage/Tailscale tests and benchmark regression CI. Run them locally before proposing behavior changes; CI does **not** rent GPUs or validate network ACLs.

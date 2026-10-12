@@ -86,7 +86,7 @@ granted to the repository; all 31 compressed layers matched the tested image.
 **GHCR package visibility is now Public**, independently of the GitHub source
 repository and Actions permissions. Anonymous access to the exact tested
 image manifest (31 layers) was verified on 2026-10-11 using
-`images/sglang-qwen38/check-public.py`. Each new Custom template creation
+`images/sglang-qwen38/tools/check-public.py`. Each new Custom template creation
 checks that same immutable digest and fails closed on registry errors.
 Public image access **does not** expose or grant SGLang, HF or Tailscale
 runtime secrets.

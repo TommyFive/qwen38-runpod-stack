@@ -1,7 +1,7 @@
 # Tailnet HTTPS Serve — Issue #20: verified ACL root cause (2026-10-10)
 
-> **FINAL POSITIVE AUTH VERIFIED 2026-10-11:** External MacBook Air source `100.89.203.30` successfully made a **valid-Bearer SGLang HTTPS GET /v1/models HTTP 200** at 17:12:06Z; **OpenWebUI admin signin HTTP 200** at 17:11:18Z followed by a protected chats API HTTP 200 at 17:11:18.880Z. Both were on trusted Tailnet HTTPS served by live GPU Pod `cg3pbcn7ua3oim`; see [complete run record](runs/20261010T170415Z_cg3pbcn7ua3oim.md). This **closes the authentication acceptance gap** remaining from the first two TLS test Pods. Keep historical checklists for provenance only; do not redeploy old dedicated Pod tag proposals. The current Pod remains **RUNNING**, charged $2.49/h; owner will stop it manually.\n
-> **LIVE FIX VERIFIED 2026-10-10** — Owner's Tailnet-wide `src:* → tag:runpod-llm → tcp:8080,443,8443` grant and memory-only `tailscaled --state=mem: --statedir=/dev/shm/.../state` are deployed. [Pod `s5titot9ae0zzv`](runs/20261010T163129Z_s5titot9ae0zzv.md) proved trusted HTTPS on both ports (valid TLS certificate), native SSH, no published RunPod ports, and negative API/UI auth (401), including in-Pod authorized model metadata 200. **The original ACL/TLS defect is fixed.** Remaining blocker: independently validate *external* 200 with valid Bearer plus positive WebUI admin login. Refer to [final review](RELEASE_REVIEW_PR17_20261011.md). Historical design and rejection text below is superseded; do **not** create a new tag or restrict the owner-approved wildcard grant on the basis of that text.
+> **FINAL POSITIVE AUTH VERIFIED 2026-10-11:** External Admin workstation source `192.0.2.10` successfully made a **valid-Bearer SGLang HTTPS GET /v1/models HTTP 200** at 17:12:06Z; **OpenWebUI admin signin HTTP 200** at 17:11:18Z followed by a protected chats API HTTP 200 at 17:11:18.880Z. Both were on trusted Tailnet HTTPS served by live GPU Pod `historical-resource-5`; see [complete run record](runs/20261010T170415Z_historical-resource-5.md). This **closes the authentication acceptance gap** remaining from the first two TLS test Pods. Keep historical checklists for provenance only; do not redeploy old dedicated Pod tag proposals. The current Pod remains **RUNNING**, charged $2.49/h; owner will stop it manually.\n
+> **LIVE FIX VERIFIED 2026-10-10** — Owner's Tailnet-wide `src:* → tag:runpod-llm → tcp:8080,443,8443` grant and memory-only `tailscaled --state=mem: --statedir=/dev/shm/.../state` are deployed. [Pod `historical-resource-6`](runs/20261010T163129Z_historical-resource-6.md) proved trusted HTTPS on both ports (valid TLS certificate), native SSH, no published RunPod ports, and negative API/UI auth (401), including in-Pod authorized model metadata 200. **The original ACL/TLS defect is fixed.** Remaining blocker: independently validate *external* 200 with valid Bearer plus positive WebUI admin login. Refer to [final review](RELEASE_REVIEW_PR17_20261011.md). Historical design and rejection text below is superseded; do **not** create a new tag or restrict the owner-approved wildcard grant on the basis of that text.
 
 ## Live reproduction and conclusion
 
@@ -12,7 +12,7 @@ after testing), native Tailscale SSH and local applications worked, while
 HTTPS Serve ports 443 and 8443 timed out.
 
 Read-only `tailscale debug netmap` from the Pod showed the **inbound**
-packet-filter rules allowed the authorized Mac mini client to reach **TCP/22**
+packet-filter rules allowed the authorized Local workstation client to reach **TCP/22**
 but **not TCP/443 or TCP/8443**. An unrelated wide Tailnet selector allowed
 TCP/8080. The Pod had a broad `tag:tagged-devices` identity shared with
 other infrastructure. These are actual enforced rules distributed by the
@@ -21,7 +21,7 @@ Tailnet control plane — `tailscale serve status` displaying handlers does
 of a bug in SGLang, TLS generation, RunPod public networking, or the relay.
 
 Testing over HTTPS with an explicit hostname/SNI-to-tailnet-IP mapping via
-`curl --resolve` bypassed a separate Mac mini MagicDNS lookup problem,
+`curl --resolve` bypassed a separate Local workstation MagicDNS lookup problem,
 but both TCP connections still timed out. Local unauthenticated SGLang
 `/v1/models` returned **401** and OpenWebUI `/api/config` returned
 **200**. Tailscale SSH over 22 worked. No public RunPod ports were enabled.
@@ -42,14 +42,14 @@ other production VPN/VPS/router devices.
 1. In the Tailscale admin policy, define a **dedicated**
    `tag:qwen38-pod` (owners restricted to the Tailnet admins or approved
    automation identity).
-2. Add a scoped grant from explicitly authorized clients (e.g. Mac mini and
-   MacBook Tailnet IPv4/32 or a managed client group) **only** to
+2. Add a scoped grant from explicitly authorized clients (e.g. Local workstation and
+   Admin workstation Tailnet IPv4/32 or a managed client group) **only** to
    `tag:qwen38-pod` on `tcp:443` and `tcp:8443`. Leave existing SSH
    grants/policy intact.
 3. Create a **tag-scoped, ephemeral** Tailscale auth key for
    `tag:qwen38-pod`; update the existing RunPod Secret **`TS_AUTHKEY`**
    through its secret-management UI. Never put a plaintext key in GitHub,
-   PRs, terminal history, the Mac mini launcher environment, or template
+   PRs, terminal history, the Local workstation launcher environment, or template
    JSON. Four existing RunPod templates already use the Secret reference.
 4. Recreate **only an explicitly approved disposable Pod** to receive
    the new tag and policy. Existing Pod identity is not retroactively
@@ -106,7 +106,7 @@ Official documentation:
 - [x] WebUI HTTPS `/api/config` returns 200, `auth=true`, `enable_signup=false`; anonymous chats 401.
 - [x] Certificate and ACME state files present under `/dev/shm` tmpfs (fix #29).
 - [x] Exact-ID Pod cleanup confirmed, no running charged Pods; both current integration workflows green at last audited source head.
-- [x] **Independent external** MacBook Tailnet HTTPS API query with **valid Bearer** returned HTTP 200 at 17:12:06Z (live GPU Pod `cg3pbcn7ua3oim`).
+- [x] **Independent external** Admin workstation Tailnet HTTPS API query with **valid Bearer** returned HTTP 200 at 17:12:06Z (live GPU Pod `historical-resource-5`).
 - [x] **Positive** trusted HTTPS OpenWebUI admin signin returned HTTP 200 at 17:11:18Z, followed by protected chats GET 200 from the same authenticated client.
 - [x] Owner asked to proceed with the integration merge after both positive tests; verify final CI and PR metadata immediately before main merge.
 

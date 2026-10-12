@@ -1,8 +1,8 @@
 # Integrated RunPod GPU smoke — issues #7, #8, #9, #10, #11
 
-> **FINAL PR #17 SECURITY GATE PASS (2026-10-11):** Paid Private Full Pod `cg3pbcn7ua3oim` confirmed independent externally authenticated Tailnet API `/v1/models` **HTTP 200** (valid Bearer from MacBook Air, 17:12:06Z) and OpenWebUI admin login **HTTP 200** (17:11:18Z) followed by authorized chat-list **HTTP 200**. Earlier anonymous/wrong-token 401, TLS 443/8443 and Tailscale SSH are preserved. [Timestamped record](runs/20261010T170415Z_cg3pbcn7ua3oim.md). Earlier incomplete-check statements below are historical; do not mark Public Lean GPU or all optional combinations as independently tested. **OWNER WILL STOP THIS STILL-RUNNING POD manually; do not stop it for release merging.**
+> **FINAL PR #17 SECURITY GATE PASS (2026-10-11):** Paid Private Full Pod `historical-resource-5` confirmed independent externally authenticated Tailnet API `/v1/models` **HTTP 200** (valid Bearer from Admin workstation, 17:12:06Z) and OpenWebUI admin login **HTTP 200** (17:11:18Z) followed by authorized chat-list **HTTP 200**. Earlier anonymous/wrong-token 401, TLS 443/8443 and Tailscale SSH are preserved. [Timestamped record](runs/20261010T170415Z_historical-resource-5.md). Earlier incomplete-check statements below are historical; do not mark Public Lean GPU or all optional combinations as independently tested. **OWNER WILL STOP THIS STILL-RUNNING POD manually; do not stop it for release merging.**
 
-> **LATEST VERDICT 2026-10-11:** The Tailscale TCP/443+8443 ACL denial and `no TailscaleVarRoot` TLS failure described in earlier test sections are **fixed and verified** on [live Pod `s5titot9ae0zzv`](runs/20261010T163129Z_s5titot9ae0zzv.md). Valid HTTPS, native SSH, SGLang 401 without/wrong Bearer, OpenWebUI auth=true/signup=false and anonymous chats 401 pass. The two remaining release checks are an independent **external valid-Bearer 200** and a **positive admin login**; see [final release GO/NO-GO](RELEASE_REVIEW_PR17_20261011.md). Historical failure narratives below remain as first-run diagnostics, not current operational state.
+> **LATEST VERDICT 2026-10-11:** The Tailscale TCP/443+8443 ACL denial and `no TailscaleVarRoot` TLS failure described in earlier test sections are **fixed and verified** on [live Pod `historical-resource-6`](runs/20261010T163129Z_historical-resource-6.md). Valid HTTPS, native SSH, SGLang 401 without/wrong Bearer, OpenWebUI auth=true/signup=false and anonymous chats 401 pass. The two remaining release checks are an independent **external valid-Bearer 200** and a **positive admin login**; see [final release GO/NO-GO](RELEASE_REVIEW_PR17_20261011.md). Historical failure narratives below remain as first-run diagnostics, not current operational state.
 
 > **Release-gate reclassification (owner decision, 2026-10-10):**
 > Tailscale HTTPS Serve #20 is still a mandatory blocker. Safe project-scoped
@@ -16,11 +16,11 @@
 ## Test 3 — Public Full, explicit SSD mode (2026-10-10)
 
 A second **Secure-rate** RTX PRO 6000 ($2.49/h) was launched using
-existing Public Full template `9zmcmzwu4b`, with explicit
+existing Public Full template `historical-resource-7`, with explicit
 `MODEL_STORAGE=ssd`, `DEBUG=0`, `COLDSTART_TRACE=0`,
 `BENCHMARK=0`, `MODEL_RAM_RELEASE_AFTER_LOAD=0`, and
 `ENABLE_SSH=1` only for controlled storage audit. Pod
-`l659ydnqbh66gn` was **deleted by exact ID**. RunPod reported no
+`historical-resource-11` was **deleted by exact ID**. RunPod reported no
 remaining running Pods; the exact-ID fallback guard was canceled.
 
 **Storage: PASS.** Bootstrap reported `Storage mode: ssd,
@@ -55,14 +55,14 @@ was not separately exhaustively audited.
 ## Test 2 — Private Full Secure, live ACL root-cause confirmation (2026-10-10)
 
 **New live findings:** RunPod Secure RTX PRO 6000, actual $2.49/h, pod
-`xyijp8lpaauxqq` (targeted-deleted, 0 active after cleanup). All four
+`historical-resource-12` (targeted-deleted, 0 active after cleanup). All four
 existing template IDs were synchronized **in place** to the same exact
 repository bootstrap/Tailscale/storage/benchmark helpers and verified
 to preserve RunPod Secret references. Both private templates have zero
-public ports. Mac mini checkout updated to `58ecc266` and installed helpers
+public ports. Local workstation checkout updated to `58ecc266` and installed helpers
 were synchronized **without `setup.sh`** (legacy global reaper still disabled).
 
-On the live Pod, the Tailscale `PacketFilterRules` admitted Mac mini -> Pod
+On the live Pod, the Tailscale `PacketFilterRules` admitted Local workstation -> Pod
 **TCP/22 only**, with a broad Tailnet -> Pod **TCP/8080** rule; **no
 443/8443 admission**. Native SSH via Tailnet IPv4 worked; forced-hostname
 HTTPS TCP 443/8443 timed out. Thus #20's **root cause is the actual Tailnet
@@ -103,7 +103,7 @@ This non-blocking performance evidence is tracked in #23.
 **Wichtig:** Der ursprüngliche Text unterhalb dieses Abschnitts war der
 Testplan *vor* dem ersten GPU-Start. Die folgende Live-Matrix ist die
 maßgebliche, aktuelle Bewertung. Tests liefen auf 1× RTX PRO 6000
-($1.69/h), privatem Lean-Template syb1a3cqr6, DEBUG=1, RunPod Secrets
+($1.69/h), privatem Lean-Template historical-resource-10, DEBUG=1, RunPod Secrets
 und ohne veröffentlichte Ports. Alle bisherigen Test-Pods wurden
 gezielt beendet; 0 aktive Pods nach dem letzten Test.
 
@@ -138,7 +138,7 @@ Full release review: [RELEASE_REVIEW_PR17_20261011.md](RELEASE_REVIEW_PR17_20261
 
 ### Operative Eckpunkte
 
-Der Benchmark-Bericht liegt auf dem Mac mini unter
+Der Benchmark-Bericht liegt auf dem Local workstation unter
 ~/.runpod/qwen38-live04-benchmark.json (0600). Alle vier existierenden
 Template-IDs wurden aktualisiert, nicht neu angelegt. Die ursprünglichen
 PRs #12–#16 wurden als **superseded by PR #17** geschlossen, da alle
@@ -241,7 +241,7 @@ export QWEN38_TAILNET_DOMAIN='YOUR-TAILNET.ts.net'
 
 The example starts a **paid** pod only when explicitly un-commented. All
 changes to a remote production VPS or VPN host remain out of scope. Never
-build/compile on Salty/Rusty/Cloudzy or another VPN production host.
+build/compile on production VPN hosts or another VPN production host.
 
 **RAM caveat:** `MODEL_STORAGE=ram` is not just a cache preference. For
 main **plus** DFlash2/DSpark draft, the helper requires space for 2.5× weight

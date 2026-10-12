@@ -4,7 +4,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[1]
 DIGEST="820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
 class TemplatesV022(unittest.TestCase):
     def test_registry_verifier_pins_eight_layer_release(self):
-        s=(ROOT/"images/sglang-qwen38/check-public.py").read_text()
+        s=(ROOT/"images/sglang-qwen38/tools/check-public.py").read_text()
         self.assertIn(DIGEST,s)
         self.assertIn("len(layers) != 8",s)
     def test_launcher_and_generator_pinned_same_digest_and_version(self):

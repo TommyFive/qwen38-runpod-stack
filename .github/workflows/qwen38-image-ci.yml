@@ -32,7 +32,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
-          python3 images/sglang-qwen38/audit-image-config.py
+          python3 images/sglang-qwen38/tools/audit-image-config.py
   image-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -57,20 +57,8 @@ jobs:
       - name: Lint build entrypoint and Python syntax
         run: |
           set -euo pipefail
-          bash -n images/sglang-qwen38/build-image.sh
-          bash -n images/sglang-qwen38/create-candidate-template.sh
-          bash -n images/sglang-qwen38/cloudzy/bootstrap-and-start.sh
-          bash -n images/sglang-qwen38/cloudzy/start-from-mac.sh
-          bash -n images/sglang-qwen38/cloudzy/monitor-from-mac.sh
-          bash -n images/sglang-qwen38/cloudzy/run-build.sh
-          python3 -m py_compile images/sglang-qwen38/manifest-size.py
-          python3 -m py_compile images/sglang-qwen38/check-public.py
-          python3 -m py_compile images/sglang-qwen38/audit-image-config.py
-          python3 -m py_compile images/sglang-qwen38/inspect-ghcr-size.py
-          python3 -m py_compile images/sglang-qwen38/inspect-site-packages.py
-          python3 -m py_compile images/sglang-qwen38/cloudzy/observer.py
-          python3 -m py_compile images/sglang-qwen38/prepare-source.py
-          python3 -m py_compile images/sglang-qwen38/tests/test_prepare_source.py
+          find images/sglang-qwen38 -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+          python3 -m compileall -q images/sglang-qwen38
       - name: Verify pinned build overlay (offline, no Docker/GPU)
         run: |
           set -euo pipefail

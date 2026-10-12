@@ -287,7 +287,7 @@ if [[ "$NETWORK_MODE" == tailnet ]]; then
     TAILNET_DOMAIN="${TAILNET_DOMAIN#.}"
     TAILNET_DOMAIN="${TAILNET_DOMAIN%.}"
     if [[ ! "$TAILNET_DOMAIN" =~ ^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$ ]]; then
-        echo "Set QWEN38_TAILNET_DOMAIN, e.g. tailc8dece.ts.net" >&2; exit 1
+        echo "Set QWEN38_TAILNET_DOMAIN, e.g. example.ts.net" >&2; exit 1
     fi
     if [[ -z "$TEMPLATE_ID_TAILNET" || -z "$TEMPLATE_ID_TAILNET_PI" ]]; then
         echo "Tailnet template IDs missing; run ./create-templates.sh" >&2; exit 1

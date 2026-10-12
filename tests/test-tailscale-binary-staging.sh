@@ -33,7 +33,7 @@ if "up" in args:
     p=next((v.split("=",1)[1][5:] for v in args if v.startswith("--auth-key=file:")),None)
     assert p and open(p).read().strip()==os.environ["TEST_EXPECTED_AUTH"]
 elif "status" in args:
-    print(json.dumps({"Self":{"DNSName":"qwen38-test.tailc8dece.ts.net."}}))
+    print(json.dumps({"Self":{"DNSName":"qwen38-test.example.ts.net."}}))
 elif "serve" in args:
     pass
 else:
@@ -78,7 +78,7 @@ daemon_pid="$TS_DAEMON_PID"
 [[ -S "$TS_SOCKET" ]]
 [[ -d "$TS_RUNTIME_DIR/state" ]]
 [[ "$(stat -f -c %T "$TS_RUNTIME_DIR/state")" == tmpfs ]]
-[[ "$TS_DNS_NAME" == "qwen38-test.tailc8dece.ts.net" ]]
+[[ "$TS_DNS_NAME" == "qwen38-test.example.ts.net" ]]
 [[ ! -e "$TS_BIN_DIR/tailscale.tar.gz" ]]
 [[ ! -e "$TS_BIN_DIR/tailscale.sha256" ]]
 [[ -z "${TS_AUTHKEY:-}" ]]

@@ -17,10 +17,10 @@ and proper future implementation in [#18](https://github.com/TommyFive/qwen38-ru
 | Component | Actual behavior | Limitation |
 |---|---|---|
 | `qwen38fast stop` / `qwen38pi stop` | Uses `runpodctl pod list` and deletes **all returned Pod IDs** | Account-wide, not current-pod-only |
-| `bin/rp` | Adds a server-side `--terminate-after` *only if supported by CLI* | RunPod CLI 2.15.0 on Mac mini lacks this option; requested `2h`/`4h` is **not guaranteed** |
+| `bin/rp` | Adds a server-side `--terminate-after` *only if supported by CLI* | RunPod CLI 2.15.0 on Local workstation lacks this option; requested `2h`/`4h` is **not guaranteed** |
 | `bin/runpod-reaper` | Enumerates account pods and deletes those past global default 1h age, except `keep-` names | Account-wide, not a per-pod TTL; may conflict with 4h request |
 | `setup.sh` | Installs/loads proxy **and legacy reaper** LaunchAgents on macOS | Do not assume reaper is safely scoped or currently running |
-| Mac mini at audit | Reaper LaunchAgent **absent**; `runpodctl 2.15.0` noninteractive API worked | No active local reaper protection demonstrated |
+| Local workstation at audit | Reaper LaunchAgent **absent**; `runpodctl 2.15.0` noninteractive API worked | No active local reaper protection demonstrated |
 
 `RUNPOD_MAX_AGE_HOURS` and `rp 6h ...` are requested runtime windows;
 they are **not an SLA, auto-delete guarantee or billing limit** in the

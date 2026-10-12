@@ -10,7 +10,7 @@ export QWEN38_TEST_REAL_PYTHON="$(command -v python3)"
 export HOME="$TMP/home" PATH="$TMP/bin:$PATH" PYTHONPATH="$TMP/mocks"
 cat > "$TMP/bin/python3" <<'PY_WRAPPER'
 #!/usr/bin/env bash
-if [[ "${1:-}" == */images/sglang-qwen38/check-public.py ]]; then exit 0; fi
+if [[ "${1:-}" == */images/sglang-qwen38/tools/check-public.py ]]; then exit 0; fi
 exec "$QWEN38_TEST_REAL_PYTHON" "$@"
 PY_WRAPPER
 chmod +x "$TMP/bin/python3"
