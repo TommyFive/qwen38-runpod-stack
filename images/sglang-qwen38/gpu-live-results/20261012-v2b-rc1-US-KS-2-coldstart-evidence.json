@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "record_type": "evidence-backed historical cold-start telemetry",
+  "measurement_date": "2026-10-12",
+  "pod_id": "7rwwhciymmqr77",
+  "pod_name": "qwen38-v2b-rc1-261012-c36f28",
+  "infrastructure": {
+    "provider": "RunPod",
+    "location": "US-KS-2",
+    "cloud": "Secure Cloud",
+    "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "gpu_count": 1,
+    "cpu": "AMD EPYC 9335 32-Core Processor",
+    "allocated_vcpus": 16,
+    "allocated_memory_gb": 283,
+    "container_disk_gb": 30
+  },
+  "image": "ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+  "evidence": {
+    "logs (18).txt": {
+      "role": "provider Docker system events, first cold pull and subsequent cached restarts",
+      "sha256": "33451326b5b7a137d867f97f9fd61c958db4aaf66606a7bf3561f63fda1c0b61",
+      "lines": 4995
+    },
+    "logs (17).txt": {
+      "role": "container log: later warm restart and successful Full bootstrap",
+      "sha256": "2d24226e6b182dc513653cddb77d2d291e0380e4f82dca4a1b36dc9ac8e22a13",
+      "lines": 482
+    },
+    "image(20261012-113000).png": {
+      "role": "RunPod UI screenshot: US-KS-2, Secure Cloud, AMD EPYC 9335, 16 vCPU, 283 GB RAM, 30 GB disk, GPU",
+      "sha256": "8c0001a36741b930e93b22555240739e185666c74db97da86f487a8c522099ed",
+      "pixels": "688x563"
+    }
+  },
+  "first_cold_image_pull": {
+    "timestamps_utc": {
+      "pod_create": "2026-10-12T11:28:18Z",
+      "pull_start": "2026-10-12T11:28:19Z",
+      "first_layer_download_complete": "2026-10-12T11:28:19Z",
+      "first_nonempty_extract": "2026-10-12T11:29:12Z",
+      "last_layer_download_complete": "2026-10-12T11:30:57Z",
+      "last_layer_pull_complete": "2026-10-12T11:31:29Z",
+      "image_ready": "2026-10-12T11:31:29Z",
+      "first_container_start": "2026-10-12T11:31:32Z"
+    },
+    "durations_seconds": {
+      "pull_start_to_last_download_complete": 158,
+      "first_nonempty_extract_to_last_layer_complete": 137,
+      "pull_start_to_image_ready": 190,
+      "latest_download_complete_to_image_ready": 32,
+      "pod_create_to_first_container_start": 194
+    },
+    "layers_count": 8,
+    "cached_layers_reported": 0,
+    "layer_timings": [
+      {
+        "id": "811ba24a0a46",
+        "displayed_size": "1.096GB",
+        "download_complete_utc": "11:29:12",
+        "extract_begin_utc": "11:29:12",
+        "pull_complete_utc": "11:29:30"
+      },
+      {
+        "id": "bf8d0582c21b",
+        "displayed_size": "1.424GB",
+        "download_complete_utc": "11:29:55",
+        "extract_begin_utc": "11:29:55",
+        "pull_complete_utc": "11:30:05"
+      },
+      {
+        "id": "58c5909db254",
+        "displayed_size": "1.99GB",
+        "download_complete_utc": "11:30:38",
+        "extract_begin_utc": "11:30:38",
+        "pull_complete_utc": "11:30:49"
+      },
+      {
+        "id": "bba4c4fa8bc7",
+        "displayed_size": "1.423GB",
+        "download_complete_utc": "11:28:45",
+        "extract_begin_utc": "11:30:49",
+        "pull_complete_utc": "11:31:02"
+      },
+      {
+        "id": "d06795969af1",
+        "displayed_size": "1.772GB",
+        "download_complete_utc": "11:30:31",
+        "extract_begin_utc": "11:31:02",
+        "pull_complete_utc": "11:31:15"
+      },
+      {
+        "id": "1b7d52170636",
+        "displayed_size": "2.243GB",
+        "download_complete_utc": "11:30:57",
+        "extract_begin_utc": "11:31:15",
+        "pull_complete_utc": "11:31:24"
+      },
+      {
+        "id": "90eb9e17f661",
+        "displayed_size": "756.4MB",
+        "download_complete_utc": "11:28:31",
+        "extract_begin_utc": "11:31:24",
+        "pull_complete_utc": "11:31:29"
+      },
+      {
+        "id": "4f4fb700ef54",
+        "displayed_size": "32B",
+        "download_complete_utc": "11:28:19",
+        "extract_begin_utc": "11:31:29",
+        "pull_complete_utc": "11:31:29"
+      }
+    ]
+  },
+  "later_cached_full_restart": {
+    "type": "image-cached container restart, not contiguous with first image pull",
+    "image_cached_utc": "2026-10-12T11:42:34Z",
+    "container_start_utc": "2026-10-12T11:42:34Z",
+    "markers_utc": {
+      "bootstrap_start": "2026-10-12T11:42:35.281Z",
+      "main_download_start": "2026-10-12T11:42:38.256Z",
+      "main_download_end": "2026-10-12T11:44:22.360Z",
+      "sglang_start": "2026-10-12T11:44:22.447Z",
+      "health_generate_ready": "2026-10-12T11:45:51.809Z",
+      "benchmark_gate_complete": "2026-10-12T11:46:46.706Z",
+      "openwebui_install_start": "2026-10-12T11:46:46.729Z",
+      "openwebui_install_end": "2026-10-12T11:47:37.704Z"
+    },
+    "durations_seconds": {
+      "model_download": 104.104,
+      "sglang_start_to_authenticated_health": 89.362,
+      "bootstrap_start_to_authenticated_health": 196.528,
+      "health_to_benchmark_gate_complete": 54.897,
+      "openwebui_install_to_ready": 50.975,
+      "cached_container_start_to_authenticated_health": 197.809,
+      "cached_container_start_to_openwebui_ready": 303.704
+    },
+    "environment": {
+      "model": "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4",
+      "draft": "incoai/Qwen3.8-27B-DFlash2",
+      "model_plus_draft_gib": 22.76,
+      "model_storage": "tmpfs RAM",
+      "cuda_version": "13.0.3",
+      "compute_capability": "12.0",
+      "spec": "dflash2",
+      "max_len": 262144,
+      "memory_fraction": 0.85,
+      "uv_version": "0.12.10",
+      "openwebui_version": "0.11.4"
+    },
+    "checks": {
+      "blocking_benchmark": "3 workloads, 5 runs each; gate passed",
+      "webui_status": "ready",
+      "webui_installed_packages": 260
+    },
+    "max_observed_metrics": {
+      "gpu_used_mib": 87465,
+      "tmpfs_peak_used_gib": 30.619
+    }
+  },
+  "methodology_notes": [
+    "Two attached text logs describe different phases of the same Pod. The system log covers the initial uncached image pull and several restarts; the container log begins only at the final warm restart at 11:42:35 UTC.",
+    "Do not add the first cold pull duration to the last warm-restart inference timing and present it as an observed end-to-end cold boot.",
+    "Per-layer downloads and sequential extraction overlap; do not sum intervals or treat first-to-last download as a speed-test of GHCR throughput.",
+    "The initial provider log has timestamps rounded to whole seconds, so durations are accurate to approximately 1 second.",
+    "Cloud and datacenter location originate in screenshot, not runtime log. Machine instance ID was not provided; region/host causality cannot be established from one Pod.",
+    "Source logs and screenshot were supplied in the ChatGPT conversation. Repository publishes hashes, derived measurement data, and redacted summaries, not entire raw logs.",
+    "Successful server benchmark covers throughput/API, not independently scored coding correctness."
+  ]
+}
