@@ -23,6 +23,7 @@
 #   MODEL_STORAGE   ram (default), ssd opt-in
 #   MODEL_RAM_RELEASE_AFTER_LOAD  0 (default), 1 opt-in release after inference
 #   BENCHMARK       0 (default), 1 bounded authenticated offline benchmark
+#   BENCHMARK_BLOCKING 0 (default), 1 requires complete benchmark before OpenWebUI
 #   BENCHMARK_B64   bundled Python benchmark when enabled
 #   COLDSTART_TRACE 1 (default), 0 disables timing milestones
 set -uo pipefail
@@ -99,8 +100,20 @@ MAMBA_RATIO="${MAMBA_RATIO:-4.59}"
 API_KEY="${SGLANG_API_KEY}"
 ENABLE_SSH="${ENABLE_SSH:-0}"
 BENCHMARK="${BENCHMARK:-0}"
+BENCHMARK_BLOCKING="${BENCHMARK_BLOCKING:-0}"
 COLDSTART_TRACE="${COLDSTART_TRACE:-1}"
 [[ "$BENCHMARK" == 0 || "$BENCHMARK" == 1 ]] || { echo "ERROR: BENCHMARK must be 0 or 1" >&2; exit 64; }
+[[ "$BENCHMARK_BLOCKING" == 0 || "$BENCHMARK_BLOCKING" == 1 ]] || { echo "ERROR: BENCHMARK_BLOCKING must be 0 or 1" >&2; exit 64; }
+if [[ "$BENCHMARK_BLOCKING" == 1 ]]; then
+    [[ "$BENCHMARK" == 1 ]] || { echo "ERROR: BENCHMARK_BLOCKING requires BENCHMARK=1" >&2; exit 64; }
+    [[ -n "${BENCHMARK_B64:-}" ]] || { echo "ERROR: blocking benchmark requires BENCHMARK_B64" >&2; exit 64; }
+    # Full/Tailnet live tests must never report readiness with no WebUI admin.
+    if [[ "$SERVE_WEBUI" == 1 ]]; then
+        [[ -n "${WEBUI_ADMIN_EMAIL:-}" && ${#WEBUI_ADMIN_PASSWORD} -ge 16 ]] || {
+            echo "ERROR: blocking Full mode requires WebUI admin email/password (>=16 chars)" >&2; exit 64;
+        }
+    fi
+fi
 [[ "$COLDSTART_TRACE" == 0 || "$COLDSTART_TRACE" == 1 ]] || { echo "ERROR: COLDSTART_TRACE must be 0 or 1" >&2; exit 64; }
 MODEL_RAM_RELEASE_AFTER_LOAD="${MODEL_RAM_RELEASE_AFTER_LOAD:-0}"
 [[ "$MODEL_RAM_RELEASE_AFTER_LOAD" == 0 || "$MODEL_RAM_RELEASE_AFTER_LOAD" == 1 ]] || { echo "ERROR: MODEL_RAM_RELEASE_AFTER_LOAD must be 0 or 1" >&2; exit 64; }
@@ -411,6 +424,66 @@ if [[ "$COLDSTART_TRACE" == 1 ]]; then
     disown || true
 fi
 
+# Opt-in GPU live-test barrier: the complete authenticated server-side
+# benchmark runs before OpenWebUI installation/startup or any external tests.
+# Ordinary production templates retain BENCHMARK_BLOCKING=0 and the original
+# independent background benchmark behavior.
+if [[ "$BENCHMARK" == 1 && "$BENCHMARK_BLOCKING" == 1 ]]; then
+    if [[ "${BENCHMARK_REPORT_PATH:-/dev/shm/qwen38-benchmark.json}" != /dev/shm/* ||
+          "${BENCHMARK_REPORT_PATH:-}" == *"/../"* ]]; then
+        echo "ERROR: blocking benchmark report must be inside /dev/shm" >&2; exit 70
+    fi
+    if ! printf '%s' "$BENCHMARK_B64" | base64 -d > "$RUNTIME_LOG_DIR/benchmark_sglang.py"; then
+        echo "ERROR: invalid blocking benchmark worker" >&2; exit 70
+    fi
+    chmod 600 "$RUNTIME_LOG_DIR/benchmark_sglang.py"
+    export MODEL_ID MODEL_PATH SERVED_NAME MAX_LEN SPEC MEM_FRAC MAMBA_RATIO
+    export BENCHMARK_REPORT_PATH="${BENCHMARK_REPORT_PATH:-/dev/shm/qwen38-benchmark.json}"
+    echo "QWEN38_BENCHMARK_GATE status=started"
+    cold_mark benchmark_gate_start
+    if ! python3 "$RUNTIME_LOG_DIR/benchmark_sglang.py" > "$RUNTIME_LOG_DIR/benchmark.log" 2>&1; then
+        echo "ERROR: blocking server benchmark did not complete successfully" >&2
+        echo "QWEN38_BENCHMARK_GATE status=failed"
+        exit 71
+    fi
+    # A mere exit status or partially written JSON is insufficient. Require
+    # all 3 workloads, 5 configured measurements each, actual server token
+    # usage, finite throughput and TTFT before proceeding to Full/OpenWebUI.
+    if ! python3 - "$BENCHMARK_REPORT_PATH" "${BENCHMARK_RUNS:-3}" <<'BENCH_GATE'
+import json, math, pathlib, sys
+p=pathlib.Path(sys.argv[1])
+n=int(sys.argv[2])
+report=json.loads(p.read_text())
+works=report.get("workloads")
+if (report.get("status")!="completed" or not report.get("completed_utc")
+    or not isinstance(works,list) or len(works)!=3
+    or [w.get("id") for w in works]!=["technical","code","code_edit"]):
+    raise SystemExit("incomplete server benchmark report")
+for work in works:
+    runs=work.get("measurements")
+    if not isinstance(runs,list) or len(runs)!=n:
+        raise SystemExit("benchmark workload measurement count mismatch")
+    for r in runs:
+        if (r.get("token_count_source")!="server_usage"
+            or not isinstance(r.get("completion_tokens"),int)
+            or r["completion_tokens"] < 2):
+            raise SystemExit("missing actual SGLang completion token counts")
+        for field in ("ttft_seconds","decode_tokens_per_second"):
+            value=r.get(field)
+            if not isinstance(value,(int,float)) or not math.isfinite(value) or value<=0:
+                raise SystemExit("missing/non-finite benchmark timing")
+print("BENCHMARK_GATE_VERIFIED workloads=3 runs_per_workload="+str(n),flush=True)
+BENCH_GATE
+    then
+        echo "ERROR: blocking benchmark report failed acceptance verification" >&2
+        echo "QWEN38_BENCHMARK_GATE status=failed"
+        exit 72
+    fi
+    echo "QWEN38_BENCHMARK_GATE status=completed"
+    cold_mark benchmark_gate_complete
+    unset BENCHMARK_B64
+fi
+
 if [[ "$SERVE_WEBUI" == 1 ]]; then
   # Public OpenWebUI must have a preprovisioned administrator. In particular,
   # allowing first-user signup on an internet-facing port is NOT acceptable.
@@ -479,7 +552,7 @@ else
   echo "--- SERVE_WEBUI=0, skipping OpenWebUI, SGLang API only"
 fi
 BENCH_PID=""
-if [[ "$BENCHMARK" == 1 ]]; then
+if [[ "$BENCHMARK" == 1 && "$BENCHMARK_BLOCKING" == 0 ]]; then
     if [[ -z "${BENCHMARK_B64:-}" ]]; then
         echo "WARNING: benchmark requested without bundled worker"
     elif printf '%s' "$BENCHMARK_B64" | base64 -d > "$RUNTIME_LOG_DIR/benchmark_sglang.py"; then
