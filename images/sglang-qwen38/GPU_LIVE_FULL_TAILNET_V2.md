@@ -10,20 +10,20 @@
 | v1 (matched control) | `ghcr.io/tommyfive/qwen38-sglang@sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd` |
 | A (only if B regression/diagnostics require it) | `ghcr.io/tommyfive/qwen38-minimal-v2-checkpoint@sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e` |
 
-Do **not** change existing `qwen38-v0.2.0-*-tailnet` templates or v1 production GHCR tags. New names are `qwen38-gpulive-20261012-<candidate>-full-tailnet-bench5-debug`, specifically one per immutable image. No production image builds or deployment happen in this procedure.
+Do **not** change existing `qwen38-v0.2.0-*-tailnet` templates or v1 production GHCR tags. New names are `qwen38-gpulive-261012-<variant>-full-tailnet-b5-debug (v2b, v2a or v1; each <50 characters)`, specifically one per immutable image. No production image builds or deployment happen in this procedure.
 
 ## RunPod preparation complete (2026-10-12; cost-free)
 
-Two **new** separately named Full/Tailnet templates were created and verified directly from the Mac mini using RunPod CLI 2.15.0. Their secret-bearing environment was never printed; only the expected names/flags, decoded bootstrap SHA256 and portless state were checked. **No GPU Pod was launched**.
+Two **new** separately named Full/Tailnet templates were created and verified directly from the Mac mini using RunPod CLI 2.15.0. Their secret-bearing environment was never printed; only the expected names/flags, decoded bootstrap SHA256 and portless state were checked. **No GPU Pod was launched**. **RunPod web UI requires a name strictly shorter than 50 characters**. The two original CLI-created 51-/52-character templates (`k4utchus1j`, `87895wpehk`) were deleted **after** the shorter replacement IDs were independently verified identical in all ENV, image, disk and port settings and RunPod reported zero running Pods.
 
 | Role | RunPod template ID | Image | RAM-first container SSD | RunPod published ports |
 |---|---|---|---:|---|
-| **B, first GPU run** | `k4utchus1j` | Candidate B, pinned manifest `sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7` | 30 GiB | **None** |
-| v1, matched reference | `87895wpehk` | GPU-tested v1, pinned manifest `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd` | 30 GiB | **None** |
+| **B, first GPU run** | `1su0uo8eqi` | Candidate B, pinned manifest `sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7` | 30 GiB | **None** |
+| v1, matched reference | `7yvdfkurtd` | GPU-tested v1, pinned manifest `sha256:1dc683600229c0c34d8df7eb322c6cbf36f677c22d216625df1e3892ae32a7fd` | 30 GiB | **None** |
 
 Both verified live with `DEBUG=1`, `BENCHMARK=1`, `BENCHMARK_BLOCKING=1`, `SERVE_WEBUI=1`, `NETWORK_MODE=tailnet`, `BENCHMARK_RUNS=5`, `BENCHMARK_MAX_TOKENS=512`, `BENCHMARK_TIMEOUT_SECONDS=1800`. Embedded bootstrap SHA256 in **both** remote templates: `068d4b032980ccafa95649447ec519ddce6086e80f6d656874eb4bdfd631f60a`.
 
-**Pending before paid GPU launch:** Confirm that the RunPod Secret `QWEN38_WEBUI_ADMIN_PASSWORD` exists and resolves to a strong (at least 16-character) password. The RunPod CLI cannot list provider Secret availability. Other needed Secret names are `LLAMA_API_KEY`, `TS_AUTHKEY` and `HF_TOKEN`; their existence at Pod runtime must also be confirmed. This is a Secret-availability check, not a requirement to expose secret values. If the password Secret is missing, create it in the RunPod console. The exact runtime bootstrap will refuse an unresolved password.
+**Secret update (user-confirmed):** The user confirmed creating RunPod Secret `QWEN38_WEBUI_ADMIN_PASSWORD` with a strong value on 2026-10-12. The RunPod CLI cannot enumerate Secrets or prove runtime substitution; the Full bootstrap still fails closed for unresolved/missing/too-short passwords. `LLAMA_API_KEY`, `TS_AUTHKEY` and `HF_TOKEN` also remain runtime dependencies. Never disclose, print or commit these Secret values.
 
 ## 1. Secret and template prerequisites (cost-free)
 
