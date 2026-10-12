@@ -1,0 +1,64 @@
+{
+  "status": "PASS",
+  "checked": "2026-10-12",
+  "host_context": "approved disposable CPU-only Linux/amd64; no GPU",
+  "test_directory": "/opt/qwen38-verify",
+  "exit_codes": {
+    "00-install": 0,
+    "01-pull": 0,
+    "01b-early-b": 0,
+    "01c-early-a": 0,
+    "02-validation": 0,
+    "03-release-recovery": 0
+  },
+  "cpu": {
+    "status": "PASS",
+    "completed_utc": "2026-10-12T02:28:08Z",
+    "tested": [
+      "minimal-v1",
+      "minimal-v2 A rust",
+      "minimal-v2 B rust-cuda"
+    ],
+    "imports": [
+      "torch",
+      "flashinfer",
+      "sglang",
+      "transformers"
+    ],
+    "cross_image_version_parity": "PASS",
+    "cuda_sha256_parity": "PASS",
+    "cuda_pair_count": 11,
+    "removed_rust_intermediates_in_A_B": true,
+    "deleted_duplicate_cuda_bytes_logical_in_B": 1679571048,
+    "complete_cpu_log_sha256": "61dd3041e166e077619f727a377d74103d6b303ae5625ae6d911bc448bd487ee"
+  },
+  "release_restore": {
+    "status": "PASS",
+    "completed_utc": "2026-10-12T03:00:59Z",
+    "complete_recovery_log_sha256": "96f0357e917000af2a349bf7a90456be33b41fd58521bfc0ae5d46696f35332b",
+    "downloaded_and_verified_parts": 25,
+    "complete_OCI_layouts_restored": 2,
+    "archives_safe_tar_members_each": 16,
+    "candidates": [
+      {
+        "mode": "rust-cuda",
+        "asset_parts_verified": 12,
+        "manifest": "sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+        "manifest_and_blobs_sha256_verified": true,
+        "layers": 8,
+        "layer_bytes": 10703739835,
+        "completed_utc": "2026-10-12T02:43:20Z"
+      },
+      {
+        "mode": "rust",
+        "asset_parts_verified": 13,
+        "manifest": "sha256:ec013c2e20528a92d61b6a7a0352ba081e166ef99025a5fbb4be06572381bb1e",
+        "manifest_and_blobs_sha256_verified": true,
+        "layers": 8,
+        "layer_bytes": 11842557123,
+        "completed_utc": "2026-10-12T03:00:59Z"
+      }
+    ]
+  },
+  "remaining": "GPU SM120 NVFP4+DFlash2 correctness/security/cold-start/model quality and performance. No production promotion. Full raw recovery transcript remains stored on the disposable host; hash recorded above."
+}
