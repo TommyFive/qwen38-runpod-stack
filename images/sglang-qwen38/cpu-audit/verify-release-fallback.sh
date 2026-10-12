@@ -60,6 +60,25 @@ for mode in rust-cuda rust; do
   [[ "$(ls release-"$mode".part-?? | wc -l | tr -d ' ')" == "$count" ]] || exit 33
   printf '=== ALL %s %s ASSETS INDEPENDENTLY VERIFIED ===\n' "$count" "$mode"
 
+  # Reject any archive member outside its expected OCI layout before
+  # extracting as root, even if the Release part hashes are authentic.
+  cat release-"$mode".part-?? | tar -tf - | python3 -c '
+import pathlib,sys
+prefix="oci-split-"+sys.argv[1]
+n=0
+for name in sys.stdin:
+    name=name.strip()
+    p=pathlib.PurePosixPath(name)
+    if not name or name.startswith("/") or ".." in p.parts or not (
+        name.rstrip("/") == prefix or name.startswith(prefix+"/")
+    ):
+        raise ValueError("Unsafe TAR archive member: "+name)
+    n+=1
+if n < 3:
+    raise ValueError("Unexpectedly small OCI archive")
+print("SAFE_TAR_MEMBERS",prefix,n,flush=True)
+' "$mode"
+
   dst="$OUT/restored-$mode"
   if [[ ! -f "$dst/.archive-extracted-ok" ]]; then
     mkdir -p "$dst"
