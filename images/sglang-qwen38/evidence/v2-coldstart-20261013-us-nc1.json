@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "measurement_date": "2026-10-13",
+  "run_id": "v2b-20261013-us-nc1-full-coldstart",
+  "record_type": "one continuous initial uncached OCI pull and Full-mode bootstrap; historical observation",
+  "image": "ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+  "image_variant": "custom minimal-v2 B / v0.2.2, same immutable OCI image as 2026-10-12 test",
+  "infrastructure": {
+    "provider": "RunPod",
+    "datacenter": "US-NC-1",
+    "cloud": "Secure Cloud",
+    "gpu": "NVIDIA RTX PRO 6000",
+    "gpu_count": 1,
+    "processor": "AMD EPYC 9355 32-Core Processor",
+    "allocated_vcpu": 16,
+    "pod_ram_gb_displayed": 188,
+    "container_disk_gb_displayed": 30,
+    "source": "user-provided RunPod Details screenshot"
+  },
+  "settings_observed": {
+    "network_mode": "Tailnet / user-space Tailscale (inferred from successful Tailnet setup log)",
+    "model_id": "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4",
+    "speculative_mode": "dflash2",
+    "max_len": 262144,
+    "mem_frac": 0.85,
+    "storage": "tmpfs RAM",
+    "debug": 0,
+    "full_webui_installation": true,
+    "benchmark_gate_observed": false
+  },
+  "source_evidence": [
+    {
+      "file": "logs (14)(1).txt",
+      "type": "RunPod provider pull/extract event log",
+      "sha256": "37dc45138d863662117b04910ae4b184d3bfd8e4fe4547182a9876a102567900",
+      "line_count": 1748,
+      "bytes": 81746
+    },
+    {
+      "file": "logs (13)(1).txt",
+      "type": "container/bootstrap QWEN38_COLDSTART log",
+      "sha256": "71dba6d382ec0443e4d99860db4fcf22df64132ef9cc82fb316a2e4497564965",
+      "line_count": 34,
+      "bytes": 3652
+    },
+    {
+      "file": "image(20261013-055404).png",
+      "type": "RunPod datacenter/pod screenshot",
+      "sha256": "f4ace9b805dc6a58f2a411bd477e050eb7d168765046daa8f4214d6eb9f74ee5",
+      "dimensions_px": [
+        1344,
+        1054
+      ],
+      "bytes": 135582
+    }
+  ],
+  "provider_timeline_utc": {
+    "first_create_and_pull": "2026-10-13T05:52:54Z",
+    "last_download_completed": "2026-10-13T05:53:20Z",
+    "first_nonempty_extraction": "2026-10-13T05:53:09Z",
+    "image_download_and_extract_ready": "2026-10-13T05:54:19Z",
+    "first_container_start": "2026-10-13T05:54:20Z"
+  },
+  "provider_intervals_seconds": {
+    "first_pull_to_last_download_complete": 26,
+    "first_nonempty_extract_to_image_ready": 70,
+    "last_download_to_image_ready": 59,
+    "first_pull_to_image_ready": 85,
+    "first_create_to_first_container_start": 86
+  },
+  "layers": [
+    {
+      "id": "811ba24a0a46",
+      "download_complete_utc": "2026-10-13T05:53:09Z",
+      "first_extract_utc": "2026-10-13T05:53:09Z",
+      "pull_complete_utc": "2026-10-13T05:53:22Z"
+    },
+    {
+      "id": "bf8d0582c21b",
+      "download_complete_utc": "2026-10-13T05:53:11Z",
+      "first_extract_utc": "2026-10-13T05:53:22Z",
+      "pull_complete_utc": "2026-10-13T05:53:31Z"
+    },
+    {
+      "id": "58c5909db254",
+      "download_complete_utc": "2026-10-13T05:53:17Z",
+      "first_extract_utc": "2026-10-13T05:53:31Z",
+      "pull_complete_utc": "2026-10-13T05:53:42Z"
+    },
+    {
+      "id": "bba4c4fa8bc7",
+      "download_complete_utc": "2026-10-13T05:53:12Z",
+      "first_extract_utc": "2026-10-13T05:53:42Z",
+      "pull_complete_utc": "2026-10-13T05:53:54Z"
+    },
+    {
+      "id": "d06795969af1",
+      "download_complete_utc": "2026-10-13T05:53:20Z",
+      "first_extract_utc": "2026-10-13T05:53:54Z",
+      "pull_complete_utc": "2026-10-13T05:54:05Z"
+    },
+    {
+      "id": "1b7d52170636",
+      "download_complete_utc": "2026-10-13T05:53:19Z",
+      "first_extract_utc": "2026-10-13T05:54:05Z",
+      "pull_complete_utc": "2026-10-13T05:54:14Z"
+    },
+    {
+      "id": "90eb9e17f661",
+      "download_complete_utc": "2026-10-13T05:53:03Z",
+      "first_extract_utc": "2026-10-13T05:54:14Z",
+      "pull_complete_utc": "2026-10-13T05:54:19Z"
+    },
+    {
+      "id": "4f4fb700ef54",
+      "download_complete_utc": "2026-10-13T05:52:54Z",
+      "first_extract_utc": "2026-10-13T05:54:19Z",
+      "pull_complete_utc": "2026-10-13T05:54:19Z"
+    }
+  ],
+  "layer_evidence": {
+    "count": 8,
+    "download_complete_markers": 8,
+    "pull_complete_markers": 8,
+    "already_exists_markers": 0,
+    "manifest_digest_confirmed": true,
+    "remark": "downloads and extractions overlap; layer Extracting lines represent provider progress, not individual containers"
+  },
+  "bootstrap_timeline_utc": {
+    "bootstrap_start": "2026-10-13T05:54:21.117Z",
+    "tailnet_connected": "2026-10-13T05:54:23.003Z",
+    "network_probe_start": "2026-10-13T05:54:23.611Z",
+    "network_probe_end": "2026-10-13T05:54:23.697Z",
+    "model_download_start": "2026-10-13T05:54:23.757Z",
+    "model_download_end": "2026-10-13T05:54:34.254Z",
+    "sglang_start": "2026-10-13T05:54:34.315Z",
+    "sglang_process_started": "2026-10-13T05:54:34.334Z",
+    "openwebui_install_start": "2026-10-13T05:54:34.355Z",
+    "sglang_health_generate_ready": "2026-10-13T05:55:51.698Z",
+    "openwebui_install_end": "2026-10-13T05:56:06.533Z",
+    "bootstrap_end": "2026-10-13T05:56:06.536Z"
+  },
+  "bootstrap_intervals_seconds": {
+    "main_and_draft_ram_download": 10.497,
+    "sglang_start_to_generation_health": 77.383,
+    "openwebui_install_start_to_end": 92.178,
+    "container_start_to_generation_health": 91.698,
+    "container_start_to_webui_install_end": 106.533,
+    "initial_pull_to_generation_health": 177.698,
+    "initial_pull_to_webui_install_end": 192.533,
+    "bootstrap_to_generation_health": 90.581,
+    "bootstrap_to_end": 105.419
+  },
+  "comparison_previous_run": {
+    "date": "2026-10-12",
+    "datacenter": "US-KS-2",
+    "cloud": "Secure Cloud",
+    "gpu": "NVIDIA RTX PRO 6000",
+    "processor": "AMD EPYC 9335",
+    "allocated_vcpu": 16,
+    "ram_gb_displayed": 283,
+    "first_pull_to_image_ready_seconds": 190,
+    "first_pull_to_last_download_seconds": 158,
+    "first_nonempty_extract_to_ready_seconds": 137,
+    "pull_duration_difference_seconds": -105,
+    "relative_change_percent": -55.263,
+    "caveat": "Earlier successful Full runtime segment was a separate cached restart; do not compare or sum to the new contiguous cold boot."
+  },
+  "caveats": [
+    "The new 2026-10-13 provider and bootstrap logs follow a single, contiguous initial pull-to-container-to-inference sequence.",
+    "Provider event timestamps are rounded to seconds; bootstrap events include milliseconds.",
+    "The UI trace only records openwebui_install_end; it contains no QWEN38_WEBUI status=ready, HTTP /health 200, positive login or actual UI chat verification. Do not call it externally proven WebUI-ready.",
+    "The SGLang health_generate_ready marker reflects internal generation health, not independently measured first token to external user.",
+    "The network probe printed 0.0 MB/s, but checkpoint download then succeeded in 10.497 s. Probe is not a reliable bandwidth measurement.",
+    "Parallel SGLang and optional OpenWebUI start means phase durations cannot simply be added.",
+    "Only one observation in each region; differences may arise from physical host, cache, registry mirror, networking, disk and provisioning conditions; no causal region effect established.",
+    "No standalone coding quality benchmark was run in the provided traces.",
+    "Uploaded raw logs and screenshot stay in user conversation; only derived values and source hashes are published; private pod ID, Tailnet DNS hostname and secret values are deliberately excluded.",
+    "Reporting timestamps refer to UTC; China Standard Time is UTC+8."
+  ]
+}
