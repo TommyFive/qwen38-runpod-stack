@@ -18,6 +18,12 @@ so original timestamps remain machine-comparable.
 4. Subsequent v2 B run: corrected external bootstrap, Lean and Full each passed
    15 measured completions; OpenWebUI health/auth endpoints passed. This is the
    v0.2.2 release evidence. Image content was not rebuilt to fix the bootstrap.
+5. **13 October 2026, US-NC-1:** the published v0.2.2 image digest was observed
+   across one **continuous first uncached pull → initial Full bootstrap**. Provider
+   image pull/extraction **85 s**; pull start to internal SGLang generation-health
+   **177.698 s**; pull start to OpenWebUI installation-end **192.533 s**.
+   This is a start trace, **not** a fresh 15-run benchmark, a positive WebUI login,
+   or independent user-facing model latency measurement.
 
 | Evidence file | Content |
 |---|---|
@@ -25,6 +31,8 @@ so original timestamps remain machine-comparable.
 | [v2-cpu-validation.json](evidence/v2-cpu-validation.json) | Complete baseline/A/B CPU records, parity checks, recovery logs and hashes; old “remaining” fields are time-scoped historical statements |
 | [v2-gpu-acceptance.json](evidence/v2-gpu-acceptance.json) | Separate initial partial and subsequent Lean/Full acceptance; no merging of incompatible outcomes |
 | [v2-coldstart.json](evidence/v2-coldstart.json) | Subsequent uncached pull and separate cached restart, layer timings and source checksums |
+| [2026-10-13 US-NC-1 cold-start report](evidence/v2-coldstart-20261013-us-nc1.md) | **New v0.2.2 first-pull→health continuous trace**, 8 layer timestamps, US-NC-1 screenshot hardware and comparison cautions |
+| [2026-10-13 structured telemetry](evidence/v2-coldstart-20261013-us-nc1.json) | Machine-readable timestamp intervals and SHA-256 of the uploaded logs/screenshot |
 | [v2-sglang-benchmark.json](evidence/v2-sglang-benchmark.json) | Initial GPU run's 15 raw server-usage-derived measurements, model revision and settings; not the later Full/Lean benchmark |
 
 All retained JSON measurements are historical observations, not synthetic new
@@ -135,6 +143,21 @@ cached container-to-WebUI-ready 303.704 s. Do not add 190 seconds to these and
 call the result a measured continuous cold boot. Peak observed GPU use 87,465 MiB,
 tmpfs 30.619 GiB; main+draft 22.76 GiB. Source timestamps rounded to seconds imply
 approximately 1-second precision for provider phases.
+
+**New continuous v0.2.2 Full cold boot, 2026-10-13 US-NC-1 (Secure Cloud):**
+8-layer uncached pull **05:52:54–05:54:19 UTC = 85 s**, initial container starts
+05:54:20, model+draft RAM download **10.497 s**, SGLang start to internal
+generation-health **77.383 s**. First image activity → internal generation-health
+**177.698 s**. Optional WebUI install runs **concurrently** with SGLang, from
+05:54:34.355 to 05:56:06.533 (**92.178 s**); pull start → WebUI install-end
+**192.533 s**. Full positive UI login/HTTP readiness was **not logged**.
+Screenshot hardware: RTX PRO 6000, AMD EPYC 9355, 16 vCPU, 188 GB RAM,
+30 GB disk. Compared with US-KS-2's prior **190 s** uncached image pull,
+this is **105 s faster (55.3%)**, but unmatched physical host, download routes,
+registry/cache and hardware do **not** establish regional or image optimization
+causality. The prior successful Full segment came from a different cached
+restart, not a continuous first boot. See the
+[complete US-NC-1 trace](evidence/v2-coldstart-20261013-us-nc1.md).
 
 Use `tools/analyze-coldstart.py` with archived provider/container markers. A fair
 future comparison needs matched GPU SKU, cloud/region, storage, models/revisions,
