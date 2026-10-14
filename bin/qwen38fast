@@ -64,7 +64,9 @@ DEBUG="${QWEN38_DEBUG:-0}"
 ENABLE_SSH="${QWEN38_ENABLE_SSH:-0}"
 NETWORK_MODE="${QWEN38_NETWORK_MODE:-runpod}"
 TS_ENABLE_SSH="${TS_ENABLE_SSH:-1}"
-TS_HOSTNAME="${TS_HOSTNAME:-}"
+# The selected RunPod template is authoritative. Never read TS_HOSTNAME
+# from the caller's shell, as --env replaces template environment at launch.
+TS_HOSTNAME=""
 TS_AUTHKEY="${TS_AUTHKEY:-}"
 CREDENTIAL_MODE="${QWEN38_CREDENTIAL_MODE:-runpod_secrets}"
 HF_SECRET_NAME="${QWEN38_HF_SECRET_NAME-HF_TOKEN}"
@@ -134,7 +136,7 @@ while [[ $# -gt 0 ]]; do
         --ssd-dir) MODEL_SSD_DIR="$2"; shift 2 ;;
         --benchmark) BENCHMARK=1; shift ;;
         --network) NETWORK_MODE="$2"; shift 2 ;;
-        --ts-hostname) TS_HOSTNAME="$2"; shift 2 ;;
+        --ts-hostname) echo "--ts-hostname cannot override the RunPod template; edit TS_HOSTNAME in the selected template" >&2; exit 64 ;;
         --pi)      PI_MODE=1; POD_NAME="qwen38pi"; shift ;;
         *)         echo "unknown option: $1" >&2; exit 1 ;;
     esac
@@ -278,9 +280,6 @@ if [[ "$NETWORK_MODE" == tailnet ]]; then
     if [[ "$CREDENTIAL_MODE" == local && -z "$TS_AUTHKEY" ]]; then
         echo "NETWORK_MODE=tailnet requires TS_AUTHKEY in local credential mode" >&2; exit 1
     fi
-    if [[ -z "$TS_HOSTNAME" ]]; then
-        TS_HOSTNAME="qwen38-$(python3 -c 'import secrets; print(secrets.token_hex(5))')"
-    fi
     if [[ -z "$TAILNET_DOMAIN" ]] && command -v tailscale >/dev/null 2>&1; then
         TAILNET_DOMAIN="$(tailscale status --json 2>/dev/null | python3 -c 'import json,sys; d=(json.load(sys.stdin).get("Self") or {}).get("DNSName","").rstrip("."); print(d.partition(".")[2])' 2>/dev/null || true)"
     fi
@@ -329,6 +328,26 @@ except (ValueError,TypeError,AssertionError):
     sys.exit("Explicit template ID conflicts with selected image: unset QWEN38_TEMPLATE* or select the matching template")
 ' "$TEMPLATE_ID" "$EXPECTED_IMAGE" "$IMAGE_VARIANT" || exit 64
 fi
+# --env replaces the ENTIRE template environment. Preserve the selected
+# template's hostname; neither shell TS_HOSTNAME nor CLI flags can override it.
+# Tailnet launches need a stable label to construct the endpoint URL.
+TS_HOSTNAME="$(runpodctl template get "$TEMPLATE_ID" -o json | python3 -c '
+import json,re,sys
+try:
+    d=json.load(sys.stdin)
+    assert d.get("id")==sys.argv[1]
+    env=d.get("env")
+    assert isinstance(env,dict) and env.get("NETWORK_MODE")==sys.argv[2]
+    hostname=env.get("TS_HOSTNAME")
+    assert isinstance(hostname,str)
+    assert not hostname or re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",hostname)
+    if sys.argv[2]=="tailnet" and not hostname:
+        raise ValueError("missing explicit hostname for Tailnet URL")
+    print(hostname)
+except (ValueError,TypeError,AttributeError,AssertionError):
+    sys.exit("Selected template TS_HOSTNAME is missing/invalid (or empty for Tailnet); configure it in RunPod")
+' "$TEMPLATE_ID" "$NETWORK_MODE")" || exit 64
+
 # Auto-resolved release templates may reuse a legacy RunPod Secret name.
 # --env replaces all template ENV: inherit the template's *reference name*
 # rather than silently swapping LLAMA_API_KEY for the different LLM_API_KEY.

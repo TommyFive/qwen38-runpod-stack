@@ -29,7 +29,7 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `QWEN38_TEMPLATE_TAILNET_PI` | Discover matching image variant's private Lean template | Override private Lean ID, still subject to live portless verification |
 | `QWEN38_NETWORK_MODE` | `runpod` | `runpod` = public RunPod proxy; `tailnet` = private portless template |
 | `QWEN38_TAILNET_DOMAIN` | detect from local Tailscale | Your `*.ts.net` tailnet DNS suffix; required if detection fails |
-| `TS_HOSTNAME` | Templates: `llm`; local CLI launcher: generated random label | Tailscale-only hostname (not the RunPod Pod name). Empty enables automatic naming; concurrent `llm` Pods may receive a suffix. |
+| `TS_HOSTNAME` | Selected RunPod template (generated default: `llm`) | Tailscale-only hostname (not the RunPod Pod name). CLI copies the selected template value into Pod ENV rather than generating/overriding it; Tailnet CLI launches require nonempty value. Concurrent Pods may receive a suffix. |
 | `TS_ENABLE_SSH` | `1` | Enable **native** Tailscale SSH on a connected Pod; `0` disables |
 | `TS_AUTHKEY` | unset | Used by the **opt-in local-credential** mode; default RunPod-secret mode references secret `TS_AUTHKEY` instead |
 | `QWEN38_CREDENTIAL_MODE` | `runpod_secrets` | `runpod_secrets` (default) or `local`; legacy local mode exposes credentials to the RunPod CLI ENV call |
@@ -160,7 +160,7 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | `NETWORK_MODE` | `runpod` | `runpod` or `tailnet`; **requires correct matching published port configuration** |
 | `SGLANG_API_KEY` | **required** | Engine-specific Pod variable for SGLang Bearer authentication; new Qwen38 template references RunPod Secret `LLM_API_KEY` (legacy selector: `LLAMA_API_KEY`) |
 | `TS_AUTHKEY` | empty | Tailnet enrollment, required in private mode; recommended RunPod Secret reference |
-| `TS_HOSTNAME`, `TS_ENABLE_SSH` | Templates: `llm`, `1`; CLI launcher: generated, `1` | Pod-side Tailscale hostname and native SSH toggle (not the RunPod Pod name) |
+| `TS_HOSTNAME`, `TS_ENABLE_SSH` | Selected template hostname (generated default: `llm`), `1` | CLI preserves template hostname in Pod ENV; no launcher hostname override |
 | `MODEL_ID`, `SERVED_NAME` | required model, `qwen38-uncensored` | HF model ID and OpenAI-visible model name |
 | `SPEC`, `MAX_LEN` | `dflash2`, `262144` | Speculative decoding mode (`none`, `mtp`, `dflash2`, `dspark`) and context window |
 | `MEM_FRAC`, `MAMBA_RATIO` | `0.85`, `4.59` | SGLang GPU memory fraction and Mamba ratio |
@@ -187,7 +187,7 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 
 **Internal/generated variables are not configuration switches:** for example `BOOTSTRAP_B64`, `TAILSCALE_RUNTIME_B64`, `STORAGE_HELPER_B64`, `BENCHMARK_B64`, `QWEN38_STATE_DIR`, `MODEL_PATH`, `DRAFT_PATH` and the auto-populated `HF_*_CACHE` variables are passed/derived by the launcher or storage helper. Do not set them manually to bypass guardrails.
 
-**CLI overrides (rather than ENV):** `qwen38fast [1h|4h] --gpu pro6000|b200|b300|5090 --spec dflash2|mtp|dspark|none --model REPO --max-len N --storage ram|ssd --ram-dir PATH --ssd-dir PATH --network runpod|tailnet --ts-hostname NAME --benchmark`. The currently supported checkpoint/quantization path is primarily tested with **RTX PRO 6000 Blackwell**, NVFP4 and DFlash2; other GPUs/settings need their own tests.
+**CLI overrides (rather than ENV):** `qwen38fast [1h|4h] --gpu pro6000|b200|b300|5090 --spec dflash2|mtp|dspark|none --model REPO --max-len N --storage ram|ssd --ram-dir PATH --ssd-dir PATH --network runpod|tailnet --benchmark`. The currently supported checkpoint/quantization path is primarily tested with **RTX PRO 6000 Blackwell**, NVFP4 and DFlash2; other GPUs/settings need their own tests.
 
 
 ## Source of truth
