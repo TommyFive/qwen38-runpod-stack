@@ -113,7 +113,7 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     "MAX_LEN":"262144", "SPEC":"dflash2", "MEM_FRAC":"0.85",
     "MAMBA_RATIO":"4.59", "SERVE_WEBUI":sys.argv[4],
     "ENABLE_SSH":"0", "NETWORK_MODE":sys.argv[5], "TS_ENABLE_SSH":"1",
-    "TS_HOSTNAME":"",  # Empty: let tailscale-runtime.sh generate the usual qwen38-<container-id> name.
+    "TS_HOSTNAME":"llm",  # Default Tailscale hostname for generated templates, not the RunPod Pod name.
     "STORAGE_HELPER_B64":sys.argv[6], "BENCHMARK_B64":sys.argv[7],
     "MODEL_STORAGE":sys.argv[8], "MODEL_RAM_DIR":sys.argv[9],
     "MODEL_SSD_DIR":sys.argv[10], "BENCHMARK":"0",

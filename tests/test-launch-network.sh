@@ -95,7 +95,7 @@ elif args[:2] == ["template", "update"]:
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
-    assert "TS_HOSTNAME" in env and env["TS_HOSTNAME"]=="", "visible but blank TS_HOSTNAME preserves automatic naming"
+    assert env.get("TS_HOSTNAME")=="llm", "all generated templates must set TS_HOSTNAME=llm"
     if env["SERVE_WEBUI"]=="1":
         assert env["WEBUI_ADMIN_PASSWORD"]=="{{ RUNPOD_SECRET_QWEN38_WEBUI_ADMIN_PASSWORD }}"
         assert "@" in env["WEBUI_ADMIN_EMAIL"]
@@ -109,7 +109,8 @@ elif args[:2] == ["template", "update"]:
     with open(os.environ["TEST_EVENTS"], "a") as f:
         f.write(json.dumps({"kind":"template","name":name,"mode":env["NETWORK_MODE"],
                             "has_ports":public,"serve_webui":env["SERVE_WEBUI"],
-                            "api_secret_ref":env["SGLANG_API_KEY"]})+"\n")
+                            "api_secret_ref":env["SGLANG_API_KEY"],
+                            "ts_hostname":env["TS_HOSTNAME"]})+"\n")
     print(json.dumps({"id":tid,"env":env}))
 else:
     raise SystemExit(f"Unexpected runpodctl arguments: {args[:3]}")
@@ -201,6 +202,7 @@ events=[json.loads(line) for line in open(sys.argv[1])]
 templates=[x for x in events if x["kind"]=="template"]
 pods=[x for x in events if x["kind"]=="pod"]
 assert len(templates)==4, templates
+assert all(x["ts_hostname"]=="llm" for x in templates), "all Custom templates must use llm"
 assert len([x for x in templates if x["mode"]=="tailnet" and not x["has_ports"]])==2
 assert len(pods)==3, pods
 assert all(p["disk_gib"]==30 for p in pods), "custom v0.2.2 RAM-first Full and Lean use 30 GiB"
@@ -231,6 +233,7 @@ import json,sys
 events=[json.loads(line) for line in open(sys.argv[1])]
 legacy_templates=[e for e in events if e["kind"]=="template"][4:]
 assert len(legacy_templates)==4, legacy_templates
+assert all(e["ts_hostname"]=="llm" for e in legacy_templates)
 assert all(e["api_secret_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}" for e in legacy_templates)
 assert events[-1]["kind"]=="pod"
 assert events[-1]["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLAMA_API_KEY }}"
@@ -253,6 +256,7 @@ import json,sys
 items=[json.loads(line) for line in open(sys.argv[1]) if line.strip()]
 official=[x for x in items if x.get("kind")=="template" and x.get("name","").startswith("qwen38-official-")]
 assert len(official)==4, official
+assert all(x["ts_hostname"]=="llm" for x in official), "Official templates must use llm"
 assert sum(x["mode"]=="tailnet" and not x["has_ports"] for x in official)==2
 assert sum(x["mode"]=="runpod" and x["has_ports"] for x in official)==2
 print("official templates: 4 distinct modes, all RAM-first 20 GiB")
