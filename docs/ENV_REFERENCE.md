@@ -29,7 +29,7 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `QWEN38_TEMPLATE_TAILNET_PI` | Discover matching image variant's private Lean template | Override private Lean ID, still subject to live portless verification |
 | `QWEN38_NETWORK_MODE` | `runpod` | `runpod` = public RunPod proxy; `tailnet` = private portless template |
 | `QWEN38_TAILNET_DOMAIN` | detect from local Tailscale | Your `*.ts.net` tailnet DNS suffix; required if detection fails |
-| `TS_HOSTNAME` | generated random label | Optional explicit Tailnet/MagicDNS Pod hostname |
+| `TS_HOSTNAME` | Templates: `llm`; local CLI launcher: generated random label | Tailscale-only hostname (not the RunPod Pod name). Empty enables automatic naming; concurrent `llm` Pods may receive a suffix. |
 | `TS_ENABLE_SSH` | `1` | Enable **native** Tailscale SSH on a connected Pod; `0` disables |
 | `TS_AUTHKEY` | unset | Used by the **opt-in local-credential** mode; default RunPod-secret mode references secret `TS_AUTHKEY` instead |
 | `QWEN38_CREDENTIAL_MODE` | `runpod_secrets` | `runpod_secrets` (default) or `local`; legacy local mode exposes credentials to the RunPod CLI ENV call |
@@ -160,7 +160,7 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | `NETWORK_MODE` | `runpod` | `runpod` or `tailnet`; **requires correct matching published port configuration** |
 | `SGLANG_API_KEY` | **required** | Engine-specific Pod variable for SGLang Bearer authentication; new Qwen38 template references RunPod Secret `LLM_API_KEY` (legacy selector: `LLAMA_API_KEY`) |
 | `TS_AUTHKEY` | empty | Tailnet enrollment, required in private mode; recommended RunPod Secret reference |
-| `TS_HOSTNAME`, `TS_ENABLE_SSH` | generated, `1` | Pod-side Tailnet hostname and native SSH toggle |
+| `TS_HOSTNAME`, `TS_ENABLE_SSH` | Templates: `llm`, `1`; CLI launcher: generated, `1` | Pod-side Tailscale hostname and native SSH toggle (not the RunPod Pod name) |
 | `MODEL_ID`, `SERVED_NAME` | required model, `qwen38-uncensored` | HF model ID and OpenAI-visible model name |
 | `SPEC`, `MAX_LEN` | `dflash2`, `262144` | Speculative decoding mode (`none`, `mtp`, `dflash2`, `dspark`) and context window |
 | `MEM_FRAC`, `MAMBA_RATIO` | `0.85`, `4.59` | SGLang GPU memory fraction and Mamba ratio |
