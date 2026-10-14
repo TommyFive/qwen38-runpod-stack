@@ -56,14 +56,17 @@ elif args[:2] == ["template", "list"]:
     print(json.dumps(res))
 elif args[:2] == ["template", "get"]:
     tid = args[2]
+    # A selected template's hostname is authoritative even when it differs
+    # from the generator default or the launching shell's TS_HOSTNAME.
+    hostname = os.environ.get("QWEN38_TEST_TEMPLATE_HOSTNAME",
+                              "template-lean" if tid == "private-pi" else "llm")
+    mode = "tailnet" if tid in ("private-full", "private-pi") or "tailnet" in tid else "runpod"
+    result = {"id":tid,"ports":[],"portsConfig":[],
+              "env":{"NETWORK_MODE":mode, "TS_HOSTNAME":hostname,
+                     "SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLM_API_KEY }}"}}
     if tid.startswith("template-qwen38-official-"):
-        print(json.dumps({"id":tid,"imageName":"lmsysorg/sglang:dev-qwen38-27b-dflash2",
-           "ports":[],"portsConfig":[],
-           "env":{"NETWORK_MODE":"tailnet" if "tailnet" in tid else "runpod",
-                  "SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLM_API_KEY }}"}}))
-    else:
-        print(json.dumps({"id": tid, "ports": [], "portsConfig": [],
-                          "env": {"NETWORK_MODE": "tailnet"}}))
+        result["imageName"]="lmsysorg/sglang:dev-qwen38-27b-dflash2"
+    print(json.dumps(result))
 elif args[:2] == ["template", "create"]:
     name = args[args.index("--name") + 1]
     public = "--ports" in args
@@ -155,6 +158,8 @@ QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "
 grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=' "$TMP/templates.output"
 
 echo "=== tailnet CLI launch mock ==="
+# A shell setting must never override the selected RunPod template hostname.
+export TS_HOSTNAME=ignored-from-shell
 export QWEN38_TEMPLATE_TAILNET=private-full
 export QWEN38_TEMPLATE_TAILNET_PI=private-pi
 export QWEN38_TEMPLATE=legacy-full
@@ -170,7 +175,7 @@ unset QWEN38_HF_SECRET_NAME || true
 # Verify the default HF_TOKEN secret reference, not a test-only override.
 bash "$ROOT/bin/qwen38fast" --pi --network tailnet > "$TMP/tailnet.out"
 grep -Fq 'https://' "$TMP/tailnet.out"
-grep -Fq '.example.ts.net/v1' "$TMP/tailnet.out"
+grep -Fq 'https://template-lean.example.ts.net/v1' "$TMP/tailnet.out"
 grep -Fq 'no guaranteed auto-stop' "$TMP/tailnet.out"
 grep -Fq 'runpodctl pod delete pod-ci' "$TMP/tailnet.out"
 if grep -Fq 'then RunPod terminates it itself' "$ROOT/bin/qwen38fast"; then
@@ -181,14 +186,13 @@ test "$(stat -c %a "$HOME/.runpod/current-endpoint.json")" = 600
 python3 - "$HOME/.runpod/current-endpoint.json" <<'PY'
 import json,sys
 d=json.load(open(sys.argv[1]))
-assert d["api_url"].startswith("https://qwen38-")
-assert d["api_url"].endswith(".example.ts.net/v1")
+assert d["api_url"]=="https://template-lean.example.ts.net/v1"
 PY
 
 echo "=== tailnet full stack with deferred web UI ==="
 bash "$ROOT/bin/qwen38fast" --network tailnet > "$TMP/tailnet-full.out"
 grep -Fq 'https://' "$TMP/tailnet-full.out"
-grep -Fq '.example.ts.net:8443' "$TMP/tailnet-full.out"
+grep -Fq 'https://llm.example.ts.net:8443' "$TMP/tailnet-full.out"
 
 echo "=== public CLI without TS_AUTHKEY ==="
 unset TS_AUTHKEY
@@ -212,16 +216,33 @@ assert private["ts_key_ref"]=="{{ RUNPOD_SECRET_TS_AUTHKEY }}"
 assert private["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLM_API_KEY }}"
 assert private["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 assert private["has_ts_authkey"] and private["runtime_included"]
+assert private["ts_hostname"]=="template-lean", "tailnet CLI must keep selected template hostname"
 assert private["template"]=="private-pi" and private["serve_webui"]=="0"
 assert full["mode"]=="tailnet" and full["disable_runpod_ssh"]
 assert full["has_ts_authkey"] and full["template"]=="private-full"
+assert full["ts_hostname"]=="llm", "Full CLI must keep template hostname"
 assert full["serve_webui"]=="1"
 assert public["mode"]=="runpod" and not public["disable_runpod_ssh"]
 assert not public["has_ts_authkey"] and public["template"]=="legacy-pi"
+assert public["ts_hostname"]=="llm", "Public CLI must also keep template hostname"
 assert public["sglang_key_ref"]=="{{ RUNPOD_SECRET_LLM_API_KEY }}"
 assert public["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 print("test-launch-network: ok")
 PY
+
+echo "=== template-owned hostname negative tests: fail before creating pods ==="
+baseline="$(grep -c '"kind": "pod"' "$TEST_EVENTS")"
+if bash "$ROOT/bin/qwen38fast" --pi --network tailnet --ts-hostname override >"$TMP/cli-hostname.out" 2>&1; then
+    echo "FAIL: CLI --ts-hostname overrode selected template" >&2; exit 1
+fi
+grep -Fq 'cannot override the RunPod template' "$TMP/cli-hostname.out"
+for invalid in '' 'INVALID.HOST'; do
+    if QWEN38_TEST_TEMPLATE_HOSTNAME="$invalid" bash "$ROOT/bin/qwen38fast" --pi --network tailnet >"$TMP/invalid-template-hostname.out" 2>&1; then
+        echo "FAIL: empty or invalid template hostname accepted" >&2; exit 1
+    fi
+    grep -Fq 'Selected template TS_HOSTNAME is missing/invalid' "$TMP/invalid-template-hostname.out"
+done
+test "$(grep -c '"kind": "pod"' "$TEST_EVENTS")" = "$baseline"
 
 echo "=== legacy LLAMA_API_KEY override remains supported in Qwen38 only ==="
 QWEN38_API_SECRET_NAME=LLAMA_API_KEY QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \

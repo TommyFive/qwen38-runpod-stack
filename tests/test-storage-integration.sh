@@ -34,6 +34,11 @@ if [[ "${1:-}" == template && "${2:-}" == create ]]; then
   done
   exit 1
 fi
+if [[ "${1:-}" == template && "${2:-}" == get ]]; then
+  [[ "${3:-}" == mock-template ]] || exit 1
+  echo '{"id":"mock-template","env":{"NETWORK_MODE":"runpod","TS_HOSTNAME":"llm"}}'
+  exit
+fi
 if [[ "${1:-}" == template && "${2:-}" == update ]] ||
    [[ "${1:-}" == pod && "${2:-}" == create ]]; then
   action=$1; shift 2
@@ -112,6 +117,7 @@ import base64, json, pathlib, sys
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
 envs = [json.loads(line) for line in lines]
 assert len(envs) >= 4, f"wanted template + launcher objects: {len(envs)}"
+assert all(e.get("TS_HOSTNAME")=="llm" for e in envs), "all template and CLI envs inherit llm"
 expected_b = (pathlib.Path(sys.argv[2]) / 'scripts/bootstrap-sglang-openwebui.sh').read_bytes()
 expected_h = (pathlib.Path(sys.argv[2]) / 'scripts/model-storage.py').read_bytes()
 for env in envs:

@@ -113,6 +113,11 @@ elif args[:2] == ["template", "create"]:
     assert "--registry-auth-id" not in args
     assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
     print(json.dumps({"id":"template-ci-"+name,"name":name}))
+elif args[:2] == ["template", "get"]:
+    # The credential-fallback launcher uses a fully specified existing
+    # public template, whose hostname must come from the template itself.
+    tid=args[2]
+    print(json.dumps({"id":tid,"env":{"NETWORK_MODE":"runpod","TS_HOSTNAME":"llm"}}))
 elif args[:2] == ["template", "update"]:
     env=json.loads(args[args.index("--env")+1])
     assert env["DEBUG"] == "0"
@@ -148,6 +153,7 @@ assert env["WEBUI_ADMIN_PASSWORD"] == os.environ["WEBUI_ADMIN_PASSWORD"]
 assert env["DEBUG"] == os.environ["QWEN38_DEBUG"]
 assert env["HF_TOKEN"] == os.environ["TEST_EXPECTED_LAUNCH_HF"]
 assert env["SERVE_WEBUI"] == "1"
+assert env["TS_HOSTNAME"] == "llm", "launcher must preserve selected public template hostname"
 with open(os.environ["TEST_LAUNCH_FLAGS"],"w") as f:
     json.dump({"hf_override": True, "webui_auth_supplied": True, "debug": env["DEBUG"]},f)
 print('{"id":"privacy-test-pod"}')
