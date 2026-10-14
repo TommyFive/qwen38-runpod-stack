@@ -54,6 +54,8 @@ qwen38fast --image custom --storage ssd
 
 Official upstream is still a separate image family: `./create-templates.sh --image official`, then `qwen38pi --image official`.
 
+All four templates expose an optional, initially empty `TS_HOSTNAME` variable. Empty preserves the automatic Tailscale name; set a unique lowercase DNS label to choose a fixed **Tailscale-only** hostname (it does not rename the RunPod Pod).
+
 Tailnet templates have **zero published RunPod ports**. Public Lean publishes only API port 8000; public Full publishes API port 8000 and OpenWebUI port 8080. Full requires `WEBUI_ADMIN_EMAIL` and a password of at least 16 characters. The generator takes `QWEN38_WEBUI_ADMIN_EMAIL` (default `admin@qwen38.example.com`) and a RunPod Secret named `QWEN38_WEBUI_ADMIN_PASSWORD` by default; override its **name** with `QWEN38_WEBUI_PASSWORD_SECRET_NAME`. The API defaults to RunPod Secret `LLM_API_KEY`; to reuse an existing `LLAMA_API_KEY`, set `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` **when creating templates**. Tailscale uses RunPod Secret `TS_AUTHKEY`; Hugging Face optionally uses `HF_TOKEN`.
 
 ```bash

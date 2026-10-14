@@ -95,6 +95,7 @@ elif args[:2] == ["template", "update"]:
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
+    assert "TS_HOSTNAME" in env and env["TS_HOSTNAME"]=="", "visible but blank TS_HOSTNAME preserves automatic naming"
     if env["SERVE_WEBUI"]=="1":
         assert env["WEBUI_ADMIN_PASSWORD"]=="{{ RUNPOD_SECRET_QWEN38_WEBUI_ADMIN_PASSWORD }}"
         assert "@" in env["WEBUI_ADMIN_EMAIL"]
