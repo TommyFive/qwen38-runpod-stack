@@ -17,6 +17,7 @@ class TemplatesV022(unittest.TestCase):
         self.assertIn('if sys.argv[4]=="1" else {}',s)
         self.assertIn('WEBUI_PASSWORD_SECRET_NAME',s)
         self.assertIn('DEFAULT_DISK_GB=30',s)
+        self.assertIn('\"TS_HOSTNAME\":\"\",',s)
         self.assertNotIn("'8000/http,8080/http,22/tcp'",s)
     def test_launcher_secret_mode_not_plaintext_admin_password(self):
         s=(ROOT/"bin/qwen38fast").read_text()
