@@ -18,6 +18,9 @@ export QWEN38_WORKSPACE="$RAM/workspace" RUNTIME_LOG_DIR="$RAM/runtime"
 export WEBUI_DATA_DIR="$RAM/data" TEST_WEBUI_FLAGS="$TMP/webui-flags.json"
 export TEST_LAUNCH_FLAGS="$TMP/launch-flags.json"
 export TEST_TEMPLATE_FLAGS="$TMP/template-flags.jsonl"
+export TEST_TEMPLATE_DIR="$TMP/template-config"
+mkdir -p "$TEST_TEMPLATE_DIR"
+export QWEN38_TEMPLATE_RESOLVER="$ROOT/scripts/resolve-template-launch.py"
 export MODEL_ID="example/test-model" SPEC=none SERVE_WEBUI=1
 # Offline privacy tests use tmpfs-backed SSD-mode cache; the RAM admission
 # budget itself is independently tested in test_model_storage.py.
@@ -114,10 +117,14 @@ elif args[:2] == ["template", "create"]:
     assert args[args.index("--image")+1]=="ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7"
     print(json.dumps({"id":"template-ci-"+name,"name":name}))
 elif args[:2] == ["template", "get"]:
-    # The credential-fallback launcher uses a fully specified existing
-    # public template, whose hostname must come from the template itself.
+    from pathlib import Path
     tid=args[2]
-    print(json.dumps({"id":tid,"env":{"NETWORK_MODE":"runpod","TS_HOSTNAME":"llm"}}))
+    p=Path(os.environ["TEST_TEMPLATE_DIR"])/(tid+".json")
+    if not p.is_file():
+        p=Path(os.environ["TEST_TEMPLATE_DIR"])/("template-ci-"+tid+".json")
+    data=json.loads(p.read_text())
+    data["id"]=tid
+    print(json.dumps(data))
 elif args[:2] == ["template", "update"]:
     env=json.loads(args[args.index("--env")+1])
     assert env["DEBUG"] == "0"
@@ -135,6 +142,12 @@ elif args[:2] == ["template", "update"]:
     else:
         assert "WEBUI_ADMIN_PASSWORD" not in env
     tid=args[2]
+    from pathlib import Path
+    name=tid.removeprefix("template-ci-") if hasattr(tid,"removeprefix") else tid[len("template-ci-"):]
+    obj={"id":tid,"name":name,"env":env,"imageName":"ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+         "containerDiskInGb":30,"ports":[] if env["NETWORK_MODE"]=="tailnet" else
+          ["8000/http"] if env["SERVE_WEBUI"]=="0" else ["8000/http","8080/http"]}
+    (Path(os.environ["TEST_TEMPLATE_DIR"])/(tid+".json")).write_text(json.dumps(obj))
     with open(os.environ["TEST_TEMPLATE_FLAGS"], "a") as out:
         out.write(json.dumps({"ui":env["SERVE_WEBUI"],"ports":"8000/http" if env["NETWORK_MODE"]=="runpod" and env["SERVE_WEBUI"]=="0" else ("8000/http,8080/http" if env["NETWORK_MODE"]=="runpod" else ""), "mode":env["NETWORK_MODE"]})+"\n")
     print(json.dumps({"id":tid,"env":env}))
@@ -266,6 +279,7 @@ export QWEN38_TEMPLATE=template-ci-qwen38-v0.2.2-full-public
 export QWEN38_TEMPLATE_PI=template-ci-qwen38-v0.2.2-lean-public
 export QWEN38_CREDENTIAL_MODE=local
 export QWEN38_DEBUG=1
+export QWEN38_WEBUI_ADMIN_PASSWORD="$WEBUI_ADMIN_PASSWORD"
 export TEST_EXPECTED_LAUNCH_HF="$HF_TOKEN"
 mkdir -p "$HOME/.cache/huggingface"
 echo 'SENTINEL_STALE_HF_FILE_5b' > "$HOME/.cache/huggingface/token"

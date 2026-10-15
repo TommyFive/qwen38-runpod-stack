@@ -19,6 +19,9 @@ exec "$QWEN38_TEST_REAL_PYTHON" "$@"
 PY_WRAPPER
 chmod +x "$TMP/bin/python3"
 export TEST_EVENTS="$TMP/events.jsonl"
+export TEST_TEMPLATE_DIR="$TMP/templates"
+mkdir -p "$TEST_TEMPLATE_DIR"
+export QWEN38_TEMPLATE_RESOLVER="$ROOT/scripts/resolve-template-launch.py"
 
 cat > "$TMP/bin/ports-helper" <<'MOCK_PORTS'
 #!/usr/bin/env python3
@@ -55,18 +58,20 @@ elif args[:2] == ["template", "list"]:
             res.append(item)
     print(json.dumps(res))
 elif args[:2] == ["template", "get"]:
-    tid = args[2]
-    # A selected template's hostname is authoritative even when it differs
-    # from the generator default or the launching shell's TS_HOSTNAME.
-    hostname = os.environ.get("QWEN38_TEST_TEMPLATE_HOSTNAME",
-                              "template-lean" if tid == "private-pi" else "llm")
-    mode = "tailnet" if tid in ("private-full", "private-pi") or "tailnet" in tid else "runpod"
-    result = {"id":tid,"ports":[],"portsConfig":[],
-              "env":{"NETWORK_MODE":mode, "TS_HOSTNAME":hostname,
-                     "SGLANG_API_KEY":"{{ RUNPOD_SECRET_LLM_API_KEY }}"}}
-    if tid.startswith("template-qwen38-official-"):
-        result["imageName"]="lmsysorg/sglang:dev-qwen38-27b-dflash2"
-    print(json.dumps(result))
+    from pathlib import Path
+    tid=args[2]
+    alias={"private-pi":"qwen38-v0.2.2-lean-tailnet",
+           "private-full":"qwen38-v0.2.2-full-tailnet",
+           "legacy-pi":"qwen38-v0.2.2-lean-public",
+           "legacy-full":"qwen38-v0.2.2-full-public"}
+    source="template-"+alias[tid] if tid in alias else tid
+    d=json.loads((Path(os.environ["TEST_TEMPLATE_DIR"])/(source+".json")).read_text())
+    d["id"]=tid
+    if tid=="private-pi":
+        d["env"]["TS_HOSTNAME"]=os.environ.get("QWEN38_TEST_TEMPLATE_HOSTNAME","template-lean")
+    elif "QWEN38_TEST_TEMPLATE_HOSTNAME" in os.environ:
+        d["env"]["TS_HOSTNAME"]=os.environ["QWEN38_TEST_TEMPLATE_HOSTNAME"]
+    print(json.dumps(d))
 elif args[:2] == ["template", "create"]:
     name = args[args.index("--name") + 1]
     public = "--ports" in args
@@ -114,6 +119,16 @@ elif args[:2] == ["template", "update"]:
                             "has_ports":public,"serve_webui":env["SERVE_WEBUI"],
                             "api_secret_ref":env["SGLANG_API_KEY"],
                             "ts_hostname":env["TS_HOSTNAME"]})+"\n")
+    from pathlib import Path
+    official=name.startswith("qwen38-official-")
+    image=("lmsysorg/sglang:dev-qwen38-27b-dflash2" if official else
+           "ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7")
+    disk=(150 if env["MODEL_STORAGE"]=="ssd" else 20 if official else 30)
+    obj={"id":tid,"name":name,"env":env,"imageName":image,"containerDiskInGb":disk,
+         "ports":[] if env["NETWORK_MODE"]=="tailnet" else
+                  ["8000/http"] if env["SERVE_WEBUI"]=="0" else ["8000/http","8080/http"],
+         "portsConfig":[]}
+    (Path(os.environ["TEST_TEMPLATE_DIR"])/(tid+".json")).write_text(json.dumps(obj))
     print(json.dumps({"id":tid,"env":env}))
 else:
     raise SystemExit(f"Unexpected runpodctl arguments: {args[:3]}")
@@ -123,7 +138,18 @@ cat > "$TMP/bin/rp" <<'PY'
 import json, os, sys
 args = sys.argv[1:]
 assert args[1:3] == ["pod", "create"]
-env = json.loads(args[args.index("--env") + 1])
+from pathlib import Path
+tid=args[args.index("--template-id")+1]
+alias={"private-pi":"qwen38-v0.2.2-lean-tailnet",
+       "private-full":"qwen38-v0.2.2-full-tailnet",
+       "legacy-pi":"qwen38-v0.2.2-lean-public",
+       "legacy-full":"qwen38-v0.2.2-full-public"}
+source="template-"+alias[tid] if tid in alias else tid
+env=dict(json.loads((Path(os.environ["TEST_TEMPLATE_DIR"])/(source+".json")).read_text())["env"])
+if tid=="private-pi":
+    env["TS_HOSTNAME"]=os.environ.get("QWEN38_TEST_TEMPLATE_HOSTNAME","template-lean")
+overrides=json.loads(args[args.index("--env")+1]) if "--env" in args else {}
+env.update(overrides)
 with open(os.environ["TEST_EVENTS"], "a") as f:
     f.write(json.dumps({"kind":"pod","mode":env["NETWORK_MODE"],
                         "disk_gib":int(args[args.index("--container-disk-in-gb")+1]),
@@ -136,7 +162,9 @@ with open(os.environ["TEST_EVENTS"], "a") as f:
                         "template":args[args.index("--template-id")+1],
                         "disable_runpod_ssh":"--ssh=false" in args,
                         "serve_webui":env["SERVE_WEBUI"],
-                        "runtime_included":bool(env["TAILSCALE_RUNTIME_B64"])})+"\n")
+                        "runtime_included":bool(env["TAILSCALE_RUNTIME_B64"]),
+                        "override_keys":sorted(overrides),
+                        "env_flag_supplied":"--env" in args})+"\n")
 print(json.dumps({"id":"pod-ci"}))
 PY
 cat > "$TMP/bin/curl" <<'MOCK'
@@ -158,16 +186,12 @@ QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" bash "$ROOT/create-templates.sh" > "
 grep -Fq 'QWEN38_TEMPLATE_TAILNET_PI=' "$TMP/templates.output"
 
 echo "=== tailnet CLI launch mock ==="
-# A shell setting must never override the selected RunPod template hostname.
-export TS_HOSTNAME=ignored-from-shell
+# Template default is authoritative unless the operator explicitly overrides.
+unset TS_HOSTNAME || true
 export QWEN38_TEMPLATE_TAILNET=private-full
 export QWEN38_TEMPLATE_TAILNET_PI=private-pi
 export QWEN38_TEMPLATE=legacy-full
 export QWEN38_TEMPLATE_PI=legacy-pi
-export QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh"
-export QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh"
-export QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
-export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
 export QWEN38_COLDSTART_TRACE=0
 export QWEN38_TAILNET_DOMAIN=example.ts.net
 unset TS_AUTHKEY || true
@@ -230,19 +254,37 @@ assert public["hf_key_ref"]=="{{ RUNPOD_SECRET_HF_TOKEN }}"
 print("test-launch-network: ok")
 PY
 
-echo "=== template-owned hostname negative tests: fail before creating pods ==="
+echo "=== no explicit ENV options: no --env flag at all ==="
+(unset QWEN38_COLDSTART_TRACE; bash "$ROOT/bin/qwen38fast" --pi --network runpod > "$TMP/zero-overrides.out")
+python3 - "$TEST_EVENTS" <<'PY_ZERO'
+import json,sys
+rows=[json.loads(v) for v in open(sys.argv[1])]
+item=rows[-1]
+assert item["kind"]=="pod"
+assert item["override_keys"]==[],item["override_keys"]
+assert item["env_flag_supplied"] is False
+assert item["ts_hostname"]=="llm" and item["runtime_included"]
+print("zero-override pod: template env preserved, --env omitted")
+PY_ZERO
+
+echo "=== explicit hostname overrides only its selected ENV key ==="
 baseline="$(grep -c '"kind": "pod"' "$TEST_EVENTS")"
-if bash "$ROOT/bin/qwen38fast" --pi --network tailnet --ts-hostname override >"$TMP/cli-hostname.out" 2>&1; then
-    echo "FAIL: CLI --ts-hostname overrode selected template" >&2; exit 1
-fi
-grep -Fq 'cannot override the RunPod template' "$TMP/cli-hostname.out"
+bash "$ROOT/bin/qwen38fast" --pi --network tailnet --ts-hostname override > "$TMP/cli-hostname.out"
+grep -Fq 'https://override.example.ts.net/v1' "$TMP/cli-hostname.out"
+python3 - "$TEST_EVENTS" <<'PY_HOST'
+import json,sys
+rows=[json.loads(x) for x in open(sys.argv[1])]
+p=rows[-1]
+assert p["kind"]=="pod" and p["ts_hostname"]=="override"
+assert p["override_keys"]==["COLDSTART_TRACE","TS_HOSTNAME"],p["override_keys"]
+PY_HOST
 for invalid in '' 'INVALID.HOST'; do
     if QWEN38_TEST_TEMPLATE_HOSTNAME="$invalid" bash "$ROOT/bin/qwen38fast" --pi --network tailnet >"$TMP/invalid-template-hostname.out" 2>&1; then
         echo "FAIL: empty or invalid template hostname accepted" >&2; exit 1
     fi
-    grep -Fq 'Selected template TS_HOSTNAME is missing/invalid' "$TMP/invalid-template-hostname.out"
+    grep -Fq 'TEMPLATE-FIRST VALIDATION FAILED' "$TMP/invalid-template-hostname.out"
 done
-test "$(grep -c '"kind": "pod"' "$TEST_EVENTS")" = "$baseline"
+test "$(grep -c '"kind": "pod"' "$TEST_EVENTS")" = "$((baseline+1))"
 
 echo "=== legacy LLAMA_API_KEY override remains supported in Qwen38 only ==="
 QWEN38_API_SECRET_NAME=LLAMA_API_KEY QWEN38_PORTS_HELPER="$TMP/bin/ports-helper" \
@@ -319,4 +361,4 @@ if QWEN38_FULL_DISK_GB=20 bash "$ROOT/bin/qwen38fast" --storage ssd --image cust
   echo 'FAIL: accepted 20 GiB SSD Pod override' >&2
   exit 1
 fi
-grep -Fq 'SSD model downloads require >=50 GiB' "$TMP/undersized-pod.out"
+grep -Fq 'SSD requires >=50 GiB Container Disk' "$TMP/undersized-pod.out"

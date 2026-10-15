@@ -6,7 +6,7 @@
 
 The most straightforward way to run a Pod is through the **RunPod Control UI**: open one of the four QWEN38 templates, edit its **environment variables**, save the template and deploy a **new Pod**. Template edits do **not** rewrite an existing running Pod. Keep the original public/private port distinction and the embedded launch/bootstrap payloads.
 
-**Important difference for command-line users:** `qwen38fast` creates its own full `--env` JSON for a Pod. That overrides the template's environment object, so **changes to the template's ENV alone are not guaranteed to affect Pods launched through `qwen38fast`**. Configure the corresponding local `QWEN38_*` launcher variables when using the CLI.
+**Template-first CLI:** By default, qwen38fast/qwen38pi inherit ENV directly from the selected RunPod template, including secrets and embedded helpers. Only explicitly supplied flags or supported local QWEN38_* overrides change individual Pod ENV keys. GPU/GraphQL merges partial ENV with template ENV (live-tested). `qwen38fast --dry-run` shows the effective nonsecret configuration and override-key names.
 
 Credentials should normally be supplied using RunPod Secret references (e.g. `{{ RUNPOD_SECRET_LLM_API_KEY }}`), not literal values in a public repository, shell-history command or shared diagnostics. A private template must publish **no public RunPod ports**; a mode switch by itself cannot undo published port mappings.
 
@@ -14,7 +14,7 @@ Credentials should normally be supplied using RunPod Secret references (e.g. `{{
 
 This is the **configuration reference for external/user-configurable ENV switches implemented at `v0.2.0`**. There are two distinct layers:
 
-- **Launcher ENV** is set on the local machine before `qwen38fast` / `qwen38pi`, typically with the `QWEN38_` prefix. The launcher assembles the entire RunPod ENV object; merely adding an arbitrary Pod variable to your local shell does **not** mean it is forwarded.
+- **Launcher ENV** is set explicitly on the local machine before `qwen38fast` / `qwen38pi`, typically with the `QWEN38_` prefix. The launcher forwards only supported explicit settings. Arbitrary local ENV is not forwarded.
 - **Pod ENV** is supplied directly through RunPod template/console or forwarded by the launcher. Variables with the same concept may have different names at these layers (for example `QWEN38_NETWORK_MODE` → `NETWORK_MODE`).
 
 Defaults below are code defaults, not a guarantee that the live RunPod templates or local installation have been refreshed.
@@ -29,7 +29,7 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `QWEN38_TEMPLATE_TAILNET_PI` | Discover matching image variant's private Lean template | Override private Lean ID, still subject to live portless verification |
 | `QWEN38_NETWORK_MODE` | `runpod` | `runpod` = public RunPod proxy; `tailnet` = private portless template |
 | `QWEN38_TAILNET_DOMAIN` | detect from local Tailscale | Your `*.ts.net` tailnet DNS suffix; required if detection fails |
-| `TS_HOSTNAME` | Selected RunPod template (generated default: `llm`) | Tailscale-only hostname (not the RunPod Pod name). CLI copies the selected template value into Pod ENV rather than generating/overriding it; Tailnet CLI launches require nonempty value. Concurrent Pods may receive a suffix. |
+| `TS_HOSTNAME` | Selected RunPod template (generated default: `llm`) | Explicit shell or `--ts-hostname` overrides only this Pod ENV key; otherwise use template. Tailnet requires a nonempty effective hostname. |
 | `TS_ENABLE_SSH` | `1` | Enable **native** Tailscale SSH on a connected Pod; `0` disables |
 | `TS_AUTHKEY` | unset | Used by the **opt-in local-credential** mode; default RunPod-secret mode references secret `TS_AUTHKEY` instead |
 | `QWEN38_CREDENTIAL_MODE` | `runpod_secrets` | `runpod_secrets` (default) or `local`; legacy local mode exposes credentials to the RunPod CLI ENV call |
@@ -72,8 +72,8 @@ select/create the corresponding family instead.
 | `--image custom\|official` | `custom` | Command-line image selector for `create-templates.sh` and `qwen38fast`/`qwen38pi` |
 | `QWEN38_IMAGE_VARIANT` | `custom` | Shell-level selector, same behavior as `--image` |
 | `QWEN38_IMAGE_REF` | unset | Legacy explicit image reference: tested custom digest or exact upstream tag. Conflicting selectors rejected |
-| `QWEN38_FULL_DISK_GB` | `20` RAM-first; `100` SSD mode | Full/OpenWebUI writable Container Disk for either image; **20 GiB Full is not yet live-validated** |
-| `QWEN38_LEAN_DISK_GB` | `20` RAM-first; `100` SSD mode | Lean writable Container Disk for either image; **only Custom Lean at 20 GiB was GPU-tested** |
+| `QWEN38_FULL_DISK_GB` | Selected template disk (Custom v0.2.2 = 30 GiB, Official = 20 GiB); on explicit RAM→SSD switch = 150 GiB | Only explicitly set value overrides disk size. Minimum 50 GiB for SSD mode. |
+| `QWEN38_LEAN_DISK_GB` | Selected template disk (Custom v0.2.2 = 30 GiB, Official = 20 GiB); on explicit RAM→SSD switch = 150 GiB | Only explicitly set value overrides disk size. Minimum 50 GiB for SSD mode. |
 | `QWEN38_MODEL_STORAGE` | `ram` | RAM-first weights; **if changed to `ssd`, also increase Container Disk or attached SSD storage** (100 GiB default, >=50 GiB enforced) |
 
 Custom is pinned to the immutable GPU-tested image:
@@ -108,7 +108,7 @@ Full and Lean, both public/tailnet, both image variants use **20 GiB by
 default** when main+draft weights download into RAM-backed `/dev/shm`.
 Only Custom Lean has been live-tested with that 20-GiB setting so far.
 Switching to `QWEN38_MODEL_STORAGE=ssd` or `--storage ssd` selects
-**100 GiB** by default instead; an explicit disk override must be at least
+**150 GiB** when the template was RAM-first; an explicit disk override must be at least
 **50 GiB** but this lower limit is not a tested recommendation.
 In the RunPod UI changing an existing template's `MODEL_STORAGE` does
 **not** resize Container Disk automatically — increase its disk or a
@@ -160,7 +160,7 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | `NETWORK_MODE` | `runpod` | `runpod` or `tailnet`; **requires correct matching published port configuration** |
 | `SGLANG_API_KEY` | **required** | Engine-specific Pod variable for SGLang Bearer authentication; new Qwen38 template references RunPod Secret `LLM_API_KEY` (legacy selector: `LLAMA_API_KEY`) |
 | `TS_AUTHKEY` | empty | Tailnet enrollment, required in private mode; recommended RunPod Secret reference |
-| `TS_HOSTNAME`, `TS_ENABLE_SSH` | Selected template hostname (generated default: `llm`), `1` | CLI preserves template hostname in Pod ENV; no launcher hostname override |
+| `TS_HOSTNAME`, `TS_ENABLE_SSH` | Selected template (default `llm`, `1`) | CLI inherits unless explicitly overridden |
 | `MODEL_ID`, `SERVED_NAME` | required model, `qwen38-uncensored` | HF model ID and OpenAI-visible model name |
 | `SPEC`, `MAX_LEN` | `dflash2`, `262144` | Speculative decoding mode (`none`, `mtp`, `dflash2`, `dspark`) and context window |
 | `MEM_FRAC`, `MAMBA_RATIO` | `0.85`, `4.59` | SGLang GPU memory fraction and Mamba ratio |
@@ -185,9 +185,9 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | `TS_RUNTIME_DIR` | helper fallback `/dev/shm/qwen38-tailscale` | Tailscale certificate/state/socket root; **bootstrap sets this under `RUNTIME_LOG_DIR/tailscale`** (must stay on tmpfs) |
 | `TS_BIN_DIR` | `/tmp/qwen38-tailscale-bin` | Staging for **public, checksum-verified executable binaries**, not private credentials |
 
-**Internal/generated variables are not configuration switches:** for example `BOOTSTRAP_B64`, `TAILSCALE_RUNTIME_B64`, `STORAGE_HELPER_B64`, `BENCHMARK_B64`, `QWEN38_STATE_DIR`, `MODEL_PATH`, `DRAFT_PATH` and the auto-populated `HF_*_CACHE` variables are passed/derived by the launcher or storage helper. Do not set them manually to bypass guardrails.
+**Internal/generated variables are not ordinary switches:** `BOOTSTRAP_B64`, `TAILSCALE_RUNTIME_B64`, `STORAGE_HELPER_B64`, `BENCHMARK_B64`, etc. In template-first mode embedded helpers come from the selected template; only explicit advanced source-file paths override those payloads.
 
-**CLI overrides (rather than ENV):** `qwen38fast [1h|4h] --gpu pro6000|b200|b300|5090 --spec dflash2|mtp|dspark|none --model REPO --max-len N --storage ram|ssd --ram-dir PATH --ssd-dir PATH --network runpod|tailnet --benchmark`. The currently supported checkpoint/quantization path is primarily tested with **RTX PRO 6000 Blackwell**, NVFP4 and DFlash2; other GPUs/settings need their own tests.
+**CLI overrides (rather than ENV):** `qwen38fast [1h|4h] --gpu pro6000|b200|b300|5090 --spec dflash2|mtp|dspark|none --model REPO --max-len N --storage ram|ssd --ram-dir PATH --ssd-dir PATH --network runpod|tailnet --ts-hostname NAME --benchmark --dry-run`. The currently supported checkpoint/quantization path is primarily tested with **RTX PRO 6000 Blackwell**, NVFP4 and DFlash2; other GPUs/settings need their own tests.
 
 
 ## Source of truth
