@@ -107,9 +107,11 @@ class ColdstartTests(unittest.TestCase):
         self.assertIn("cold_mark health_generate_ready", bootstrap)
         self.assertIn("cold_mark main_download_end", bootstrap)
         self.assertIn("cold_mark first_inference_ok", launcher)
-        self.assertIn('"COLDSTART_TRACE": sys.argv[25]', launcher)
+        self.assertIn('export QWEN38_COLDSTART_TRACE="$COLDSTART_TRACE"', launcher)
+        resolver = (ROOT / "scripts/resolve-template-launch.py").read_text()
+        self.assertIn('("COLDSTART_TRACE","QWEN38_COLDSTART_TRACE")', resolver)
         self.assertIn('"COLDSTART_TRACE":"1"', template)
-        self.assertIn("QWEN38_COLDSTART_TRACE:-1", launcher)
+        self.assertIn('COLDSTART_TRACE="$(plan_get coldstart)"', launcher)
         # No change to serving / speculative decoding flags is needed to measure.
         self.assertIn("--speculative-algorithm DFLASH", bootstrap)
 

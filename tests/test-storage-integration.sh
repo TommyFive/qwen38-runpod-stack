@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline launcher / template smoke: --env replaces every template variable.
+# Offline launcher / template smoke: partial Pod ENV overlays the template.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 TMP=$(mktemp -d)
@@ -35,12 +35,32 @@ if [[ "${1:-}" == template && "${2:-}" == create ]]; then
   exit 1
 fi
 if [[ "${1:-}" == template && "${2:-}" == get ]]; then
-  [[ "${3:-}" == mock-template ]] || exit 1
-  echo '{"id":"mock-template","env":{"NETWORK_MODE":"runpod","TS_HOSTNAME":"llm"}}'
+  python3 - "$3" <<'PY_GET'
+import json,sys,os
+rows=[json.loads(v) for v in open(os.environ["MOCK_OUTPUT_FILE"])]
+tid=sys.argv[1]; lean=tid=="mock-pi"
+env=rows[1 if lean else 0]
+print(json.dumps({"id":tid,"imageName":"ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+                  "env":env,"containerDiskInGb":30,
+                  "ports":["8000/http"] if lean else ["8000/http","8080/http"]}))
+PY_GET
   exit
 fi
-if [[ "${1:-}" == template && "${2:-}" == update ]] ||
-   [[ "${1:-}" == pod && "${2:-}" == create ]]; then
+if [[ "${1:-}" == pod && "${2:-}" == create ]]; then
+  shift 2
+  python3 - "$@" <<'PY_POD'
+import json,sys,os
+args=sys.argv[1:]
+rows=[json.loads(v) for v in open(os.environ["MOCK_OUTPUT_FILE"])]
+tid=args[args.index("--template-id")+1]
+env=dict(rows[1 if tid=="mock-pi" else 0])
+if "--env" in args:env.update(json.loads(args[args.index("--env")+1]))
+with open(os.environ["MOCK_OUTPUT_FILE"],"a") as out:out.write(json.dumps(env)+"\n")
+print(json.dumps({"error":"test deliberately blocks deployment"}))
+PY_POD
+  exit
+fi
+if [[ "${1:-}" == template && "${2:-}" == update ]]; then
   action=$1; shift 2
   id="mock-template"
   if [[ "$action" == template ]]; then id="$1"; shift; fi
@@ -78,15 +98,12 @@ export QWEN38_PORTS_HELPER="$TMP/bin/ports-helper"
 chmod +x "$TMP/bin/runpodctl"
 export HOME="$TMP/home" PATH="$ROOT/bin:$TMP/bin:$PATH" \
        RUNPODCTL_BIN="$TMP/bin/runpodctl" \
-       QWEN38_BOOTSTRAP="$ROOT/scripts/bootstrap-sglang-openwebui.sh" \
-       QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py" \
-       QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh" \
-       QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py" \
+       QWEN38_TEMPLATE_RESOLVER="$ROOT/scripts/resolve-template-launch.py" \
        QWEN38_COLDSTART_TRACE=0
 
 bash "$ROOT/create-templates.sh" > "$TMP/templates.out"
 # Test benchmark/storage ENV independently of RunPod template-discovery code.
-export QWEN38_TEMPLATE=mock-template QWEN38_TEMPLATE_PI=mock-template
+export QWEN38_TEMPLATE=mock-full QWEN38_TEMPLATE_PI=mock-pi
 if QWEN38_MODEL_STORAGE=ram QWEN38_RAM_PEAK_FACTOR=1.75 qwen38fast --pi > "$TMP/pi.out" 2>&1; then
   echo 'ERROR: mock pod should never be deployed (pi)' >&2; exit 1
 fi

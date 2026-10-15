@@ -54,7 +54,7 @@ qwen38fast --image custom --storage ssd
 
 Official upstream is still a separate image family: `./create-templates.sh --image official`, then `qwen38pi --image official`.
 
-All four generated templates (Custom and Official, Full/Lean × Public/Tailnet) default to `TS_HOSTNAME=llm`. This sets the **Tailscale-only** hostname, not the RunPod Pod name. You can override the value in RunPod; set it to empty to restore automatic Tailscale naming. Concurrent Pods requesting `llm` may receive suffixed Tailscale names to resolve a collision. The `qwen38fast` / `qwen38pi` CLI launchers read `TS_HOSTNAME` from the selected live template and preserve it in Pod ENV. Shell overrides and `--ts-hostname` cannot override it. For CLI Tailnet launches, the template needs a nonempty hostname to construct the endpoint URL.
+All four generated templates (Custom and Official, Full/Lean × Public/Tailnet) default to `TS_HOSTNAME=llm`. This sets the **Tailscale-only** hostname, not the RunPod Pod name. You can override the value in RunPod; set it to empty to restore automatic Tailscale naming. Concurrent Pods requesting `llm` may receive suffixed Tailscale names to resolve a collision. The `qwen38fast` / `qwen38pi` CLI launchers inherit this setting from the selected live template by default. An explicit `--ts-hostname NAME` (or explicitly exported `TS_HOSTNAME`) overrides only this key for a new Pod. For CLI Tailnet launches, the effective hostname must be nonempty to construct its URL.
 
 Tailnet templates have **zero published RunPod ports**. Public Lean publishes only API port 8000; public Full publishes API port 8000 and OpenWebUI port 8080. Full requires `WEBUI_ADMIN_EMAIL` and a password of at least 16 characters. The generator takes `QWEN38_WEBUI_ADMIN_EMAIL` (default `admin@qwen38.example.com`) and a RunPod Secret named `QWEN38_WEBUI_ADMIN_PASSWORD` by default; override its **name** with `QWEN38_WEBUI_PASSWORD_SECRET_NAME`. The API defaults to RunPod Secret `LLM_API_KEY`; to reuse an existing `LLAMA_API_KEY`, set `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` **when creating templates**. Tailscale uses RunPod Secret `TS_AUTHKEY`; Hugging Face optionally uses `HF_TOKEN`.
 
@@ -239,7 +239,7 @@ verify that private templates have **no published ports**. See [Security](docs/S
 
 **Primary workflow — RunPod Control UI:** Select the appropriate **Full** (with OpenWebUI) or **Lean** (API-only), **Public** or **Private** template. Adjust the relevant template **Environment Variables** in RunPod, deploy a new Pod, and wait until SGLang is ready. For Private Full, connect through Tailscale HTTPS `https://<pod-host>.ts.net:8443`; the API uses HTTPS `https://<pod-host>.ts.net/v1`. A private template must have **no published ports** and requires Tailnet authorization, `SGLANG_API_KEY` and (for Full) WebUI admin credentials.
 
-The commands below are **optional** local alternatives. A CLI-created Pod may **override the RunPod template's ENV**, so use the corresponding CLI/host options for such launches.
+The commands below are optional local alternatives. The CLI is **template-first**: without an explicit runtime override, it preserves the selected RunPod template's environment, including bootstrap payloads, secrets, model settings and hostname. Explicit CLI options (for example, --model, --spec, --storage or --ts-hostname) change only their corresponding Pod ENV keys. The GPU/GraphQL API merge behavior was verified live; `--dry-run` validates the selected template and prints only override **names**, without renting a GPU. Container Disk is inherited from the template and adjusted for explicit SSD selection if necessary.
 
 
 ### Private Full (recommended for sensitive access)
@@ -298,7 +298,7 @@ For authenticated HTTP status testing, the correct external API returns `401` wi
 
 **Authentication settings:** Pod variable `SGLANG_API_KEY` (new RunPod Secret `LLM_API_KEY`, or legacy `LLAMA_API_KEY` when explicitly selected) is mandatory. Private templates additionally require `TS_AUTHKEY` (RunPod Secret); Full templates require `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (minimum 16 characters). Do **not** store real credentials in Git.
 
-**Important:** These template settings apply to Pods started via the **RunPod Control UI**. The optional local `qwen38fast` launcher creates its own full environment, so changing the template's ENV does **not automatically override** that launcher's settings.
+**Important:** Template ENV settings apply both in the RunPod Control UI and through the template-first `qwen38fast`/`qwen38pi` launcher. Only explicitly requested CLI/launcher options override the selected template. Inspect the proposed launch using `qwen38fast --dry-run` without starting a Pod.
 
 Advanced options—RAM admission factors, benchmark repetitions, Secrets configuration, template helper variables, proxy settings and the complete distinction between Pod and launcher ENV—are documented in **[Advanced environment reference](docs/ENV_REFERENCE.md)**. You normally do not need them.
 

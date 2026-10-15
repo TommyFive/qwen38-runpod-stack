@@ -28,6 +28,7 @@ install -m 700 "$HERE/scripts/tailscale-runtime.sh" "$BOOTSTRAP_DIR/tailscale-ru
 install -m 600 "$HERE/scripts/model-storage.py" "$BOOTSTRAP_DIR/model-storage.py"
 install -m 600 "$HERE/scripts/benchmark_sglang.py" "$BOOTSTRAP_DIR/benchmark_sglang.py"
 install -m 600 "$HERE/scripts/private-template-ports.py" "$BOOTSTRAP_DIR/private-template-ports.py"
+install -m 600 "$HERE/scripts/resolve-template-launch.py" "$BOOTSTRAP_DIR/resolve-template-launch.py"
 install -m 700 \
   "$HERE/scripts/tailscale-runtime.sh" \
   "$BOOTSTRAP_DIR/tailscale-runtime.sh"
