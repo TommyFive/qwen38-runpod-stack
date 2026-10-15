@@ -21,7 +21,10 @@ class TemplatesV022(unittest.TestCase):
         self.assertNotIn("'8000/http,8080/http,22/tcp'",s)
     def test_launcher_secret_mode_not_plaintext_admin_password(self):
         s=(ROOT/"bin/qwen38fast").read_text()
-        self.assertIn('WEBUI_ADMIN_PASSWORD="{{ RUNPOD_SECRET_',s)
-        self.assertIn('RunPod Secret mode rejects plaintext',s)
-        self.assertIn('DEFAULT_DISK_GB=30',s)
+        resolver=(ROOT/"scripts/resolve-template-launch.py").read_text()
+        self.assertIn('validate_secret("WEBUI_ADMIN_PASSWORD",env)',resolver)
+        self.assertIn('QWEN38_WEBUI_ADMIN_PASSWORD',resolver)
+        self.assertIn('Plaintext WebUI password forbidden',resolver)
+        self.assertIn('template_disk=size(t.get("containerDiskInGb"))',resolver)
+        self.assertIn('ENV_JSON="$(plan_get env_overrides)"',s)
 if __name__=="__main__": unittest.main()
