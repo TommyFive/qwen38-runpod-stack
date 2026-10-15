@@ -158,8 +158,14 @@ cat > "$TMP/bin/rp" <<'MOCK'
 #!/usr/bin/env python3
 import json, os, sys
 args=sys.argv[1:]
-env=json.loads(args[args.index("--env")+1])
 from pathlib import Path
+tid=args[args.index("--template-id")+1]
+path=Path(os.environ["TEST_TEMPLATE_DIR"])/(tid+".json")
+if not path.is_file():
+    path=Path(os.environ["TEST_TEMPLATE_DIR"])/("template-ci-"+tid+".json")
+env=dict(json.loads(path.read_text())["env"])
+if "--env" in args:
+    env.update(json.loads(args[args.index("--env")+1]))
 assert env["SGLANG_API_KEY"] == (Path.home() / ".runpod/qwen38.key").read_text().strip()
 assert env["SGLANG_API_KEY"] != env["HF_TOKEN"]
 assert env["WEBUI_ADMIN_PASSWORD"] == os.environ["WEBUI_ADMIN_PASSWORD"]
