@@ -138,6 +138,26 @@ cat > "$TMP/bin/rp" <<'PY'
 import json, os, sys
 args = sys.argv[1:]
 assert args[1:3] == ["pod", "create"]
+failure=os.environ.get("QWEN38_TEST_POD_CREATE_FAILURE")
+if failure:
+    cloud=args[args.index("--cloud-type")+1]
+    with open(os.environ["TEST_EVENTS"],"a") as f:
+        f.write(json.dumps({"kind":"attempt","cloud":cloud,"failure":failure})+"\n")
+    print("rp: no server-side timer",file=sys.stderr)
+    print("rp: local reaper fallback",file=sys.stderr)
+    if failure=="template":
+        print(json.dumps({"error":"template not found: stale-id SENTINEL_SECRET_NOT_FOR_LOGS","code":"not_found"}))
+        sys.exit(1)
+    if failure=="capacity" and cloud=="COMMUNITY":
+        print(json.dumps({"error":"No GPUs available for this instance type","code":"no_capacity"}))
+        sys.exit(1)
+    if failure=="capacity" and cloud=="SECURE":
+        print(json.dumps({"id":"pod-ci"}))
+        sys.exit(0)
+    if failure=="billing":
+        print(json.dumps({"error":"insufficient account balance","code":"billing_error"}))
+        sys.exit(1)
+    raise SystemExit("invalid mock failure mode")
 from pathlib import Path
 tid=args[args.index("--template-id")+1]
 alias={"private-pi":"qwen38-v0.2.2-lean-tailnet",
@@ -362,3 +382,27 @@ if QWEN38_FULL_DISK_GB=20 bash "$ROOT/bin/qwen38fast" --storage ssd --image cust
   exit 1
 fi
 grep -Fq 'SSD requires >=50 GiB Container Disk' "$TMP/undersized-pod.out"
+
+echo "=== secure retry only for actual GPU capacity errors ==="
+if QWEN38_TEST_POD_CREATE_FAILURE=template bash "$ROOT/bin/qwen38fast" --pi --network runpod > "$TMP/template-error.out" 2>&1; then
+  echo "FAIL: missing template unexpectedly succeeded" >&2; exit 1
+fi
+grep -Fq 'RunPod create failed [template_missing]' "$TMP/template-error.out"
+grep -Fq 'no Secure Cloud retry' "$TMP/template-error.out"
+if grep -Eq 'wrapper notice suppressed|SENTINEL_SECRET_NOT_FOR_LOGS|Community GPU capacity unavailable' "$TMP/template-error.out"; then
+  echo 'FAIL: duplicate notice, secret leak, or wrong fallback' >&2; exit 1
+fi
+QWEN38_TEST_POD_CREATE_FAILURE=capacity bash "$ROOT/bin/qwen38fast" --pi --network runpod > "$TMP/capacity.out" 2>&1
+grep -Fq 'RunPod create failed [gpu_capacity]' "$TMP/capacity.out"
+grep -Fq 'retrying once on Secure Cloud' "$TMP/capacity.out"
+test "$(grep -c 'RunPod create failed' "$TMP/capacity.out")" = 1
+python3 - "$TEST_EVENTS" <<'PY_ATTEMPTS'
+import json,sys
+items=[json.loads(x) for x in open(sys.argv[1])]
+a=[x for x in items if x.get("kind")=="attempt"]
+assert len(a)==3,a
+assert [(x["failure"],x["cloud"]) for x in a]==[
+    ("template","COMMUNITY"),("capacity","COMMUNITY"),("capacity","SECURE")
+],a
+print("Launch failures: one attempt for permanent errors, two only for GPU capacity")
+PY_ATTEMPTS

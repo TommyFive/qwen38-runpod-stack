@@ -346,26 +346,80 @@ create_pod() {
         --cloud-type "$1" \
         --name "$POD_NAME" \
         --container-disk-in-gb "$DISK_GB" \
-        "${options[@]}" 2>&1 | python3 -c "
-import sys, json
-raw = sys.stdin.read()
-for line in raw.splitlines():
-    if line.startswith('rp:'):
-        print('rp: wrapper notice suppressed to protect secrets', file=sys.stderr)
-try:
-    d = json.loads(raw[raw.index('{'):])
-except Exception:
-    print('ERROR creating pod (RunPod response redacted to protect env secrets)', file=sys.stderr); sys.exit(1)
-if 'error' in d:
-    print('ERROR: RunPod rejected pod creation (details redacted)', file=sys.stderr); sys.exit(1)
-print(d['id'])"
+        "${options[@]}" 2>&1 | python3 -c '
+import json,re,sys
+raw=sys.stdin.read()
+# The rp wrapper emits routine notices before the API response; they are not
+# reasons to print duplicate, identical redaction lines.
+dec=json.JSONDecoder()
+response=None
+for i,char in enumerate(raw):
+    if char!="{":continue
+    try: item,_=dec.raw_decode(raw[i:])
+    except ValueError:continue
+    if isinstance(item,dict) and ("id" in item or "error" in item or "errors" in item):
+        response=item
+        break
+if response is None:
+    print("RunPod create failed: no structured API response (wrapper/network error).",file=sys.stderr)
+    sys.exit(65)
+if "error" not in response and "errors" not in response:
+    pod=response.get("id")
+    if isinstance(pod,str) and re.fullmatch(r"[A-Za-z0-9_-]{4,64}",pod):
+        print(pod)
+        sys.exit(0)
+    print("RunPod returned an invalid Pod ID; check the Pod list before retrying.",file=sys.stderr)
+    sys.exit(65)
+error=response.get("error",response.get("errors"))
+if isinstance(error,list):
+    error=" ".join(str(x.get("message","")) if isinstance(x,dict) else str(x) for x in error)
+elif isinstance(error,dict):
+    error=error.get("message","")
+if not isinstance(error,str):error=""
+code=response.get("code","")
+if not isinstance(code,str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,47}",code):
+    code=""
+low=(error+" "+code).lower()
+# Never print raw API error strings: they can echo arguments, ENV or tokens.
+if re.search(r"template.{0,45}(not found|does not exist|unknown)|(?:not found|unknown).{0,45}template",low):
+    kind="template_missing"
+    hint="Selected template missing or inaccessible in this RunPod account."
+elif re.search(r"insufficient (funds|balance|credits)|payment|billing|account balance|add credits|not enough credits",low):
+    kind="billing"
+    hint="Account balance or payment restriction; no cloud retry."
+elif re.search(r"unauthoriz|unauthenticat|permission denied|forbidden|invalid api.key|api.key expired",low):
+    kind="authentication"
+    hint="Authentication or permissions error; no cloud retry."
+elif re.search(r"(no|not enough|insufficient|zero|out of).{0,60}(available |free |suitable )?(gpu|instance|capacity|stock)|(?:gpu|instance).{0,60}(unavailable|out of stock|not available|no capacity)|insufficient.capacity|resource.exhausted",low):
+    kind="gpu_capacity"
+    hint="Requested GPU capacity unavailable in this cloud."
+elif re.search(r"invalid|bad request|validation|malformed|not found|missing|unsupported",low):
+    kind="configuration"
+    hint="RunPod rejected a Pod configuration parameter; no cloud retry."
+else:
+    kind="unknown"
+    hint="Unclassified RunPod server error; no automatic cloud retry."
+print("RunPod create failed ["+kind+"]"+(" (code="+code+")" if code else "")+": "+hint,file=sys.stderr)
+sys.exit(75 if kind=="gpu_capacity" else 65)
+'
 }
 
 cold_mark pod_create_request
-POD_ID=$(create_pod "$CLOUD")
-if [[ -z "$POD_ID" && "$CLOUD" == "COMMUNITY" ]]; then
-    echo "Community cloud has no free card, trying secure cloud." >&2
-    POD_ID=$(create_pod SECURE)
+POD_ID=""
+if POD_ID="$(create_pod "$CLOUD")"; then
+    :
+else
+    create_rc=$?
+    if [[ "$CLOUD" == "COMMUNITY" && "$create_rc" == 75 ]]; then
+        echo "Community GPU capacity unavailable; retrying once on Secure Cloud." >&2
+        if ! POD_ID="$(create_pod SECURE)"; then
+            echo "Secure Cloud attempt also failed; stopped without further retries." >&2
+            exit 1
+        fi
+    else
+        echo "Pod creation failed; no Secure Cloud retry for this error." >&2
+        exit 1
+    fi
 fi
 
 unset ENV_JSON WEBUI_ADMIN_PASSWORD
