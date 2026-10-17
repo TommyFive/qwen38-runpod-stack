@@ -37,7 +37,8 @@ Defaults below are code defaults, not a guarantee that the live RunPod templates
 | `QWEN38_API_SECRET_NAME` | Auto-selected release template's existing Secret reference name (when not explicitly set); otherwise `LLM_API_KEY` | The v0.2.0 launcher derives only the selected template's `SGLANG_API_KEY` **reference name** (for example `LLAMA_API_KEY`), never its value. Explicitly setting `QWEN38_API_SECRET_NAME` overrides that. When using explicitly selected older template IDs, the normal default remains `LLM_API_KEY`. |
 | `QWEN38_SGLANG_CLIENT_KEY_FILE` | unset | Optional local matching SGLang API key file for launcher's positive readiness/inference probes |
 | `QWEN38_WEBUI_ADMIN_EMAIL` | `admin@qwen38.example.com` | Pre-provisioned Full WebUI admin email |
-| `QWEN38_WEBUI_ADMIN_PASSWORD` | generated protected file | Full WebUI admin password override; must be at least 16 characters |
+| `QWEN38_WEBUI_ADMIN_PASSWORD` | generated protected file | Authenticated Full WebUI admin password override; must be at least 16 characters |
+| `QWEN38_WEBUI_AUTH` | selected template, normally `1` | Explicit Full WebUI authentication switch: `0` disables login **only** for portless Tailnet Full; public or Lean rejects `0` |
 | `HF_TOKEN` | unset (local mode) | Optional local Hugging Face token in `local` credential mode; file fallback `~/.cache/huggingface/token` |
 | `RUNPOD_CLOUD` | `COMMUNITY` | First attempt to launch on Community; launcher tries Secure if Community creation fails |
 
@@ -170,7 +171,8 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | `MODEL_RAM_RELEASE_AFTER_LOAD` | `0` | Opt-in post-inference weight release; RAM mode only |
 | `HF_TOKEN` | unset | Optional Hugging Face credential; related `HUGGING_FACE_HUB_TOKEN` is derived internally |
 | `SERVE_WEBUI`, `ENABLE_SSH` | `1`, `0` | Enable Full UI and optional legacy OpenSSH debugging |
-| `WEBUI_ADMIN_EMAIL`, `WEBUI_ADMIN_PASSWORD` | **required for Full** | Explicit pre-provisioned admin; password length >=16; otherwise UI does not start |
+| `WEBUI_ADMIN_EMAIL`, `WEBUI_ADMIN_PASSWORD` | **required for authenticated Full** | Pre-provisioned admin; password length >=16. Not required with Tailnet Full `QWEN38_WEBUI_AUTH=0` |
+| `QWEN38_WEBUI_AUTH` | `1` | `1` enforces OpenWebUI login. `0` is supported only for Tailnet Full, with a fresh WebUI user database; bootstrap rejects public/Lean no-auth before model download. The underlying OpenWebUI `WEBUI_AUTH` variable is derived internally. |
 | `OPENWEBUI_VERSION` | `0.11.4` | OpenWebUI version installed in a separate venv |
 | `WEBUI_SECRET_KEY` | random if unset | Optional stable WebUI session signing secret; handle as a secret |
 | `WEBUI_DATA_DIR` | `/dev/shm/qwen38-webui-data` | WebUI DB/data root (tmpfs by default) |

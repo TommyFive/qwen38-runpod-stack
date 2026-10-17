@@ -99,6 +99,31 @@ class TemplateFirst(unittest.TestCase):
         t=fixture(mode="tailnet");t["env"]["TS_HOSTNAME"]=""
         with self.assertRaises(mod.Invalid):mod.resolve(t,args(mode="tailnet"),{})
 
+    def test_webui_noauth_only_tailnet_full(self):
+        t=fixture(mode="tailnet")
+        d=mod.resolve(t,args(mode="tailnet"),{"QWEN38_WEBUI_AUTH":"0"})
+        self.assertEqual(d["env_overrides"],{"QWEN38_WEBUI_AUTH":"0"})
+        self.assertEqual(d["webui_auth"],"0")
+        t["env"]["QWEN38_WEBUI_AUTH"]="0"
+        t["env"].pop("WEBUI_ADMIN_EMAIL")
+        t["env"].pop("WEBUI_ADMIN_PASSWORD")
+        self.assertEqual(mod.resolve(t,args(mode="tailnet"),{})["env_overrides"],{})
+        with self.assertRaises(mod.Invalid):
+            mod.resolve(t,args(mode="tailnet"),{"QWEN38_WEBUI_AUTH":"1"})
+        for bad in ("invalid","false","","2"):
+            with self.subTest(value=bad),self.assertRaises(mod.Invalid):
+                mod.resolve(fixture(mode="tailnet"),args(mode="tailnet"),{"QWEN38_WEBUI_AUTH":bad})
+        with self.assertRaises(mod.Invalid):
+            mod.resolve(fixture(),args(),{"QWEN38_WEBUI_AUTH":"0"})
+        with self.assertRaises(mod.Invalid):
+            mod.resolve(fixture(lean=True,mode="tailnet"),args(lean=True,mode="tailnet"),{"QWEN38_WEBUI_AUTH":"0"})
+        t=fixture()
+        t["env"]["QWEN38_WEBUI_AUTH"]="0"
+        with self.assertRaises(mod.Invalid):mod.resolve(t,args(),{})
+        t=fixture(mode="tailnet");t["ports"]=["8080/http"]
+        with self.assertRaises(mod.Invalid):
+            mod.resolve(t,args(mode="tailnet"),{"QWEN38_WEBUI_AUTH":"0"})
+
     def test_local_override_uses_template_codec(self):
         data=b"#!/bin/bash\\necho test\\n"
         for compressed in (False, True):

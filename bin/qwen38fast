@@ -243,6 +243,7 @@ BENCHMARK="$(plan_get benchmark)"
 COLDSTART_TRACE="$(plan_get coldstart)"
 TS_HOSTNAME="$(plan_get hostname)"
 API_SECRET_NAME="$(plan_get api_secret_name)"
+WEBUI_AUTH_EXPECTED="$(plan_get webui_auth)"
 ENV_JSON="$(plan_get env_overrides)"
 OVERRIDE_KEYS="$(printf '%s' "$PLAN_JSON" | python3 -c 'import json,sys; print(",".join(json.load(sys.stdin)["override_keys"]))')"
 unset PLAN_JSON
@@ -283,7 +284,7 @@ if [[ "$CREDENTIAL_MODE" == local ]]; then
         echo "Local Tailnet mode requires TS_AUTHKEY" >&2; exit 64
     fi
     WEBUI_ADMIN_PASSWORD="${QWEN38_WEBUI_ADMIN_PASSWORD:-}"
-    if [[ "$PI_MODE" == 0 && -z "$WEBUI_ADMIN_PASSWORD" ]]; then
+    if [[ "$PI_MODE" == 0 && "$WEBUI_AUTH_EXPECTED" == 1 && -z "$WEBUI_ADMIN_PASSWORD" ]]; then
         if [[ ! -s "$WEBUI_PASSWORD_FILE" ]]; then
             mkdir -p "$(dirname "$WEBUI_PASSWORD_FILE")"
             (umask 077; python3 -c 'import secrets;print(secrets.token_urlsafe(36))' > "$WEBUI_PASSWORD_FILE")
@@ -291,10 +292,10 @@ if [[ "$CREDENTIAL_MODE" == local ]]; then
         fi
         WEBUI_ADMIN_PASSWORD="$(cat "$WEBUI_PASSWORD_FILE")"
     fi
-    if [[ "$PI_MODE" == 0 && ${#WEBUI_ADMIN_PASSWORD} -lt 16 ]]; then
+    if [[ "$PI_MODE" == 0 && "$WEBUI_AUTH_EXPECTED" == 1 && ${#WEBUI_ADMIN_PASSWORD} -lt 16 ]]; then
         echo "Local WebUI password must be at least 16 chars" >&2; exit 64
     fi
-    ENV_JSON="$(QWEN38_PLAN_ENV="$ENV_JSON" QWEN38_LOCAL_API="$API_KEY" QWEN38_LOCAL_WEBUI="$WEBUI_ADMIN_PASSWORD"       QWEN38_LOCAL_TOKEN_FILE="$TOKEN_FILE" QWEN38_LOCAL_MODE="$NETWORK_MODE" QWEN38_LOCAL_FULL="$((1-PI_MODE))" python3 - <<'PY_LOCAL'
+    ENV_JSON="$(QWEN38_PLAN_ENV="$ENV_JSON" QWEN38_LOCAL_API="$API_KEY" QWEN38_LOCAL_WEBUI="$WEBUI_ADMIN_PASSWORD" QWEN38_LOCAL_WEBUI_AUTH="$WEBUI_AUTH_EXPECTED"       QWEN38_LOCAL_TOKEN_FILE="$TOKEN_FILE" QWEN38_LOCAL_MODE="$NETWORK_MODE" QWEN38_LOCAL_FULL="$((1-PI_MODE))" python3 - <<'PY_LOCAL'
 import json,os,pathlib
 v=json.loads(os.environ["QWEN38_PLAN_ENV"])
 v["SGLANG_API_KEY"]=os.environ["QWEN38_LOCAL_API"]
@@ -303,7 +304,8 @@ token=os.environ.get("HF_TOKEN","")
 p=pathlib.Path(os.environ["QWEN38_LOCAL_TOKEN_FILE"])
 if not token and p.is_file():token=p.read_text().strip()
 if token:v["HF_TOKEN"]=token
-if os.environ["QWEN38_LOCAL_FULL"]=="1":v["WEBUI_ADMIN_PASSWORD"]=os.environ["QWEN38_LOCAL_WEBUI"]
+if os.environ["QWEN38_LOCAL_FULL"]=="1" and os.environ["QWEN38_LOCAL_WEBUI_AUTH"]=="1":
+    v["WEBUI_ADMIN_PASSWORD"]=os.environ["QWEN38_LOCAL_WEBUI"]
 print(json.dumps(v,separators=(",",":")))
 PY_LOCAL
 )" || exit 64
@@ -499,14 +501,14 @@ if [[ $PI_MODE -eq 0 ]]; then
     ui_ready=0
     for ((attempt=0; attempt<60; attempt++)); do
         if curl -fsS --max-time 10 "$OWUI/api/config" 2>/dev/null |
-            python3 -c 'import json,sys; c=json.load(sys.stdin); sys.exit(0 if c.get("features", {}).get("auth") is True else 1)' 2>/dev/null; then
+            python3 -c 'import json,sys; c=json.load(sys.stdin); expected=sys.argv[1]=="1"; sys.exit(0 if c.get("features", {}).get("auth") is expected else 1)' "$WEBUI_AUTH_EXPECTED" 2>/dev/null; then
             ui_ready=1
             break
         fi
         sleep 5
     done
     if [[ "$ui_ready" != 1 ]]; then
-        echo "ERROR: OpenWebUI authentication not verified; do not open UI" >&2
+        echo "ERROR: OpenWebUI authentication mode not verified; do not open UI" >&2
         exit 70
     fi
     cold_mark webui_ready

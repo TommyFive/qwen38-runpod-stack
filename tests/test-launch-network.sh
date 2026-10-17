@@ -193,7 +193,12 @@ cat > "$TMP/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
 case " $* " in
   *"/models"*) echo '{"data":[{"id":"qwen38-uncensored"}]}' ;;
-  *"/api/config"*) echo '{"features":{"auth":true}}' ;;
+  *"/api/config"*)
+    if [[ "${QWEN38_WEBUI_AUTH:-1}" == 0 ]]; then
+      echo '{"features":{"auth":false}}'
+    else
+      echo '{"features":{"auth":true}}'
+    fi ;;
   *) echo OK ;;
 esac
 MOCK
