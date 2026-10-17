@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "observation": "v2b-20261017-community-us-ram-preflight-failure",
+  "date_utc": "2026-10-17",
+  "cloud": "RunPod Community Cloud (user-supplied classification)",
+  "location_label": "US (user screenshot); specific datacenter unknown",
+  "image_ref": "ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+  "image_version": "v0.2.2 / minimal-v2 B",
+  "hardware": {
+    "gpu": "RTX PRO 6000 (RunPod provider metadata for active Pod; GPU SKU not shown in supplied screenshot)",
+    "gpu_count": 1,
+    "pod_memory_gb_reported_by_provider": 125,
+    "container_disk_gb": 30,
+    "cpu": "unknown",
+    "datacenter_id": "unknown",
+    "pod_to_uploaded_log_identity": "inferred from conversation and matching image/start configuration; no pod identifier appears in supplied evidence",
+    "source": "user screenshot + read-only RunPod API for concurrently running Pod"
+  },
+  "source_evidence": [
+    {
+      "name": "logs (3).txt",
+      "type": "provider Docker image pull events",
+      "sha256": "74fcff7027b76ef3a94f4fa0b46a57e981170c3e6596309050aada97a0a75083",
+      "lines": 4709,
+      "bytes": 221225
+    },
+    {
+      "name": "logs (2)(1).txt",
+      "type": "container repeated bootstrap failures",
+      "sha256": "7f44324697bf3a269176b9628817b94c00aeca26f1470ea901e2a3da83cd1c65",
+      "lines": 80,
+      "bytes": 7768
+    },
+    {
+      "name": "image(20261017-154549).png",
+      "type": "RunPod GPU location screenshot",
+      "sha256": "b169ab0349cc6c674f37547cf8cca635a97d7799975a802c95ee4a7c4a835fdf",
+      "dimensions_px": [
+        1338,
+        188
+      ],
+      "bytes": 17994
+    }
+  ],
+  "cold_start": {
+    "initial_image_pull_started_utc": "2026-10-17T15:38:21Z",
+    "last_layer_download_completed_utc": "2026-10-17T15:43:08Z",
+    "first_nonempty_layer_extract_started_utc": "2026-10-17T15:38:52Z",
+    "image_ready_utc": "2026-10-17T15:43:49Z",
+    "first_container_start_utc": "2026-10-17T15:43:52Z",
+    "first_bootstrap_started_utc": "2026-10-17T15:43:52.939Z",
+    "first_ram_preflight_failure_utc": "2026-10-17T15:43:53.780Z",
+    "first_container_exit_logged_utc": "2026-10-17T15:43:53.849Z",
+    "durations_seconds": {
+      "pull_to_last_download": 287,
+      "first_extraction_to_image_ready": 297,
+      "last_download_to_image_ready": 41,
+      "pull_to_image_ready": 328,
+      "image_ready_to_first_container_start": 3,
+      "pull_to_first_container_start": 331,
+      "first_bootstrap_start_to_preflight_failure": 0.841,
+      "pull_to_first_preflight_failure": 332.78
+    },
+    "layer_count": 8,
+    "download_complete_markers": 8,
+    "pull_complete_markers": 8,
+    "cached_layer_markers": 0,
+    "layers": [
+      {
+        "layer_prefix": "811ba24a0a46",
+        "download_completed_utc": "2026-10-17T15:38:52Z",
+        "extract_started_utc": "2026-10-17T15:38:52Z",
+        "pull_completed_utc": "2026-10-17T15:39:27Z"
+      },
+      {
+        "layer_prefix": "bf8d0582c21b",
+        "download_completed_utc": "2026-10-17T15:38:59Z",
+        "extract_started_utc": "2026-10-17T15:39:27Z",
+        "pull_completed_utc": "2026-10-17T15:39:51Z"
+      },
+      {
+        "layer_prefix": "58c5909db254",
+        "download_completed_utc": "2026-10-17T15:39:15Z",
+        "extract_started_utc": "2026-10-17T15:39:51Z",
+        "pull_completed_utc": "2026-10-17T15:40:15Z"
+      },
+      {
+        "layer_prefix": "bba4c4fa8bc7",
+        "download_completed_utc": "2026-10-17T15:42:25Z",
+        "extract_started_utc": "2026-10-17T15:42:25Z",
+        "pull_completed_utc": "2026-10-17T15:42:54Z"
+      },
+      {
+        "layer_prefix": "d06795969af1",
+        "download_completed_utc": "2026-10-17T15:42:48Z",
+        "extract_started_utc": "2026-10-17T15:42:54Z",
+        "pull_completed_utc": "2026-10-17T15:43:20Z"
+      },
+      {
+        "layer_prefix": "1b7d52170636",
+        "download_completed_utc": "2026-10-17T15:43:08Z",
+        "extract_started_utc": "2026-10-17T15:43:20Z",
+        "pull_completed_utc": "2026-10-17T15:43:39Z"
+      },
+      {
+        "layer_prefix": "90eb9e17f661",
+        "download_completed_utc": "2026-10-17T15:42:49Z",
+        "extract_started_utc": "2026-10-17T15:43:39Z",
+        "pull_completed_utc": "2026-10-17T15:43:49Z"
+      },
+      {
+        "layer_prefix": "4f4fb700ef54",
+        "download_completed_utc": "2026-10-17T15:42:48Z",
+        "extract_started_utc": "2026-10-17T15:43:49Z",
+        "pull_completed_utc": "2026-10-17T15:43:49Z"
+      }
+    ]
+  },
+  "bootstrap_failure": {
+    "failure_stage": "model-storage.py prepare / preflight, before weights downloaded or SGLang launched",
+    "bootstraps_attempted_in_uploaded_log": 5,
+    "bootstraps_start_utc": [
+      "2026-10-17T15:43:52.939Z",
+      "2026-10-17T15:44:01.970Z",
+      "2026-10-17T15:44:18.675Z",
+      "2026-10-17T15:44:35.466Z",
+      "2026-10-17T15:44:52.189Z"
+    ],
+    "ram_preflight_failure_count": 5,
+    "model_id": "sakamakismile/Huihui-Qwen3.8-27B-abliterated-NVFP4",
+    "speculative_mode": "dflash2",
+    "max_len": 262144,
+    "memory_fraction": 0.85,
+    "storage_mode": "ram",
+    "tailscale": "disabled (no Tailscale auth key; unrelated to RAM failure)",
+    "required_tmpfs_gib": 64.9,
+    "available_tmpfs_gib": 57.74,
+    "tmpfs_shortfall_gib": 7.16,
+    "model_plus_draft_estimate_gib": 22.76,
+    "default_multiplier": 2.5,
+    "default_shm_headroom_gib": 8,
+    "default_cgroup_additional_process_headroom_gib": 8,
+    "required_cgroup_if_default_passed_gib": 72.9,
+    "cgroup_available_gib": null,
+    "host_memavailable_gib": null,
+    "result": "admission check fails closed; no SSD fallback; no download; no inference"
+  },
+  "comparison": {
+    "previous_runs": [
+      {
+        "date": "2026-10-12",
+        "cloud": "Secure Cloud",
+        "location": "US-KS-2",
+        "docker_pull_to_ready_seconds": 190,
+        "notes": "later full bootstrap measured after cached restart"
+      },
+      {
+        "date": "2026-10-13",
+        "cloud": "Secure Cloud",
+        "location": "US-NC-1",
+        "docker_pull_to_ready_seconds": 85,
+        "continuous_pull_to_health_seconds": 177.698
+      }
+    ],
+    "new_community_pull_seconds": 328,
+    "previous_v2b_measured_tmpfs_peak_gib": 30.619,
+    "experiment_note": "No controlled comparison across provider cloud/host/cache/network conditions; earlier tmpfs peak does not guarantee Community Pod cgroup/host capacity."
+  },
+  "possible_followup": {
+    "override_name": "MODEL_RAM_PEAK_FACTOR",
+    "override_value_for_exploratory_test": 2,
+    "first_guard_required_gib_with_override": 53.52,
+    "cgroup_guard_required_gib_with_override": 61.52,
+    "host_and_cgroup_checks_after_shm": "not reached in supplied log",
+    "not_executed": true,
+    "safety_note": "Do not automatically change defaults, resize tmpfs, switch to SSD, or start/stop Pods based on this document."
+  },
+  "privacy_and_limitations": [
+    "Raw logs and screenshot remain in conversation, not public GitHub; derive timings and record SHA256 only.",
+    "No exact US datacenter, CPU, Pod identifiers, IPs, hostname, environment secrets, or credential values are published.",
+    "Only provider current Pod metadata supplied memory 125 GB; not independently proven same host by raw uploaded logs.",
+    "Five starts after the initial uncached pull are crash/restarts, not new image cold pulls or new Pods.",
+    "Provider timestamps have one-second resolution; container bootstrap timestamps include milliseconds.",
+    "No model download, SGLang health, OpenWebUI, or external API timings were observed after RAM preflight failure."
+  ]
+}
