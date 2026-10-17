@@ -33,6 +33,8 @@ so original timestamps remain machine-comparable.
 | [v2-coldstart.json](evidence/v2-coldstart.json) | Subsequent uncached pull and separate cached restart, layer timings and source checksums |
 | [2026-10-13 US-NC-1 cold-start report](evidence/v2-coldstart-20261013-us-nc1.md) | **New v0.2.2 first-pull→health continuous trace**, 8 layer timestamps, US-NC-1 screenshot hardware and comparison cautions |
 | [2026-10-13 structured telemetry](evidence/v2-coldstart-20261013-us-nc1.json) | Machine-readable timestamp intervals and SHA-256 of the uploaded logs/screenshot |
+| [2026-10-17 Community US cold-pull + RAM failure](evidence/v2-coldstart-20261017-community-us-ram-failure.md) | 328-second uncached OCI pull, five repeated RAM preflight failures, safe tuning analysis |
+| [2026-10-17 structured telemetry](evidence/v2-coldstart-20261017-community-us-ram-failure.json) | 8 layer timestamps, 5 failure markers, exact sizing formula, source SHA-256 |
 | [v2-sglang-benchmark.json](evidence/v2-sglang-benchmark.json) | Initial GPU run's 15 raw server-usage-derived measurements, model revision and settings; not the later Full/Lean benchmark |
 
 All retained JSON measurements are historical observations, not synthetic new
@@ -105,6 +107,21 @@ remain outside text-serving acceptance. Historical initial Full failures are
 retained as such, not silently changed into passes.
 
 ## Cold-start: do not combine distinct runs
+
+**October 17 Community Cloud (US, exact datacenter not shown):** identical
+v0.2.2 / minimal-v2 B OCI digest, but **328 s** uncached 8-layer image pull
+(15:38:21–15:43:49 UTC); first container at 15:43:52, then **five**
+bootstraps failed before model download. RAM-mode admission requested
+**64.90 GiB free tmpfs**, found **57.74 GiB**, and stopped without SSD fallback:
+`22.76 GiB checkpoint+draft × MODEL_RAM_PEAK_FACTOR=2.5 + 8 GiB headroom`.
+Community provider Pod memory was reported as 125 GB, versus larger previously
+tested Secure Cloud hosts. This is **policy admission**, not observed GPU OOM or
+failed inference. The prior v2-B tmpfs peak was **30.619 GiB**, so a targeted
+`MODEL_RAM_PEAK_FACTOR=2.0` test could pass the tmpfs guard at **53.52 GiB**,
+but cgroup/host memory and successful load are **unverified**. Keep the
+default safe and do not infer regional causality from one sample.
+[Source timeline, caveats and remediation](evidence/v2-coldstart-20261017-community-us-ram-failure.md).
+
 
 | Stage, seconds | v1 initial | v1 second | initial v2 B |
 |---|---:|---:|---:|
