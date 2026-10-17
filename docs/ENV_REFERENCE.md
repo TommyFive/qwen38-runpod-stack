@@ -185,7 +185,7 @@ These are not automatically read from your local shell by `qwen38fast`. Template
 | `TS_RUNTIME_DIR` | helper fallback `/dev/shm/qwen38-tailscale` | Tailscale certificate/state/socket root; **bootstrap sets this under `RUNTIME_LOG_DIR/tailscale`** (must stay on tmpfs) |
 | `TS_BIN_DIR` | `/tmp/qwen38-tailscale-bin` | Staging for **public, checksum-verified executable binaries**, not private credentials |
 
-**Internal/generated variables are not ordinary switches:** `BOOTSTRAP_B64`, `TAILSCALE_RUNTIME_B64`, `STORAGE_HELPER_B64`, `BENCHMARK_B64`, etc. In template-first mode embedded helpers come from the selected template; only explicit advanced source-file paths override those payloads.
+**Internal/generated variables are not ordinary switches:** `BOOTSTRAP_B64`, `TAILSCALE_RUNTIME_B64`, `STORAGE_HELPER_B64`, `BENCHMARK_B64`, etc. The four payloads are **gzip-compressed, then Base64-encoded** in newly generated templates, reducing their RunPod UI size. The `_B64` suffix is retained for compatibility. The Docker start command and in-Pod helper decoders must match this format. In template-first mode helpers come from the selected template; explicit advanced source-file overrides automatically follow its legacy/plain or gzip encoding.
 
 **CLI overrides (rather than ENV):** `qwen38fast [1h|4h] --gpu pro6000|b200|b300|5090 --spec dflash2|mtp|dspark|none --model REPO --max-len N --storage ram|ssd --ram-dir PATH --ssd-dir PATH --network runpod|tailnet --ts-hostname NAME --benchmark --dry-run`. The currently supported checkpoint/quantization path is primarily tested with **RTX PRO 6000 Blackwell**, NVFP4 and DFlash2; other GPUs/settings need their own tests.
 
