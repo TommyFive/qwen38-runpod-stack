@@ -270,13 +270,33 @@ class StorageTests(unittest.TestCase):
             with self.assertRaisesRegex(ms.StorageError, "missing cgroup"):
                 ms.preflight(self.ram, str(self.ram.parent))
         self.assertIn("shm_available=90.00 GiB", err.getvalue())
-        self.assertIn("shm_required=33.00 GiB", err.getvalue())
+        self.assertIn("shm_required=23.00 GiB", err.getvalue())
+
+    def test_ram_peak_default_1_5_and_explicit_override_2_5(self):
+        err = io.StringIO()
+        with patch.object(ms, "repo_bytes", return_value=10 * ms.GIB), \
+             patch.object(ms, "cgroup_available", return_value=100 * ms.GIB), \
+             patch.object(ms, "host_available", return_value=100 * ms.GIB), \
+             patch("os.statvfs", return_value=SimpleNamespace(f_bavail=90, f_frsize=ms.GIB)), \
+             patch("sys.stderr", err):
+            ms.preflight(self.ram, str(self.ram.parent))
+            self.assertIn("peak_factor=1.50", err.getvalue())
+            self.assertIn("shm_required=23.00 GiB", err.getvalue())
+            os.environ["MODEL_RAM_PEAK_FACTOR"] = "2.5"
+            err.seek(0)
+            err.truncate(0)
+            ms.preflight(self.ram, str(self.ram.parent))
+            self.assertIn("peak_factor=2.50", err.getvalue())
+            self.assertIn("shm_required=33.00 GiB", err.getvalue())
+            os.environ["MODEL_RAM_PEAK_FACTOR"] = "1.49"
+            with self.assertRaisesRegex(ms.StorageError, "must be >= 1.5"):
+                ms.preflight(self.ram, str(self.ram.parent))
 
     def test_ram_full_cgroup_full_and_host_ram_limited(self):
         with patch.object(ms, "repo_bytes", return_value=10 * ms.GIB), \
              patch.object(ms, "cgroup_available", return_value=200 * ms.GIB), \
              patch.object(ms, "host_available", return_value=200 * ms.GIB), \
-             patch("os.statvfs", return_value=SimpleNamespace(f_bavail=30, f_frsize=ms.GIB)):
+             patch("os.statvfs", return_value=SimpleNamespace(f_bavail=20, f_frsize=ms.GIB)):
             with self.assertRaisesRegex(ms.StorageError, "tmpfs needs"):
                 ms.preflight(self.ram, str(self.ram.parent))
         with patch.object(ms, "repo_bytes", return_value=10 * ms.GIB), \

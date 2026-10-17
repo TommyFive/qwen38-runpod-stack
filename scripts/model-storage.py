@@ -260,7 +260,7 @@ def positive_setting(name, default, minimum):
 def preflight(root, mount):
     """Conservative admission: size model+draft * multiplier + operational room."""
     size = repo_bytes(model_repos())
-    multiplier = positive_setting("MODEL_RAM_PEAK_FACTOR", 2.5, 1.5)
+    multiplier = positive_setting("MODEL_RAM_PEAK_FACTOR", 1.5, 1.5)
     headroom = positive_setting("MODEL_RAM_HEADROOM_GIB", 8, 2) * GIB
     process = positive_setting("MODEL_RAM_PROCESS_HEADROOM_GIB", 8, 2) * GIB
     # hf_xet may hold partial data, staging buffers and duplicate checkpoint data.

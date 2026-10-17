@@ -122,7 +122,7 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     "ENABLE_SSH":"0", "NETWORK_MODE":sys.argv[5], "TS_ENABLE_SSH":"1",
     "TS_HOSTNAME":"llm",  # Default Tailscale hostname for generated templates, not the RunPod Pod name.
     "STORAGE_HELPER_B64":sys.argv[6], "BENCHMARK_B64":sys.argv[7],
-    "MODEL_STORAGE":sys.argv[8], "MODEL_RAM_DIR":sys.argv[9],
+    "MODEL_STORAGE":sys.argv[8], "MODEL_RAM_PEAK_FACTOR":"1.5", "MODEL_RAM_DIR":sys.argv[9],
     "MODEL_SSD_DIR":sys.argv[10], "BENCHMARK":"0",
     "MODEL_RAM_RELEASE_AFTER_LOAD":"0",
     "DEBUG":"0", "COLDSTART_TRACE":"1",

@@ -45,6 +45,8 @@ qwen38pi --image custom --network tailnet    # Lean: direct SGLang API
 qwen38fast --image custom --network tailnet  # Full: API + optional OpenWebUI
 ```
 
+The default RAM admission multiplier is **`MODEL_RAM_PEAK_FACTOR=1.5`** (previously 2.5). All four generated templates expose this value; you can increase it per template for additional temporary-download headroom. The independent `/dev/shm`, host RAM and cgroup memory capacity checks remain active. A smaller multiplier does not guarantee successful loading on every Community Cloud host.
+
 Custom `v0.2.2` templates use **30 GiB Container Disk** in RAM-first mode (verified with both Lean and Full). The original upstream image variant continues to default to **20 GiB**. In RAM mode main and DFlash2 draft weights download directly to `/dev/shm`. For SSD downloads, both generator and launcher choose **150 GiB** unless overridden; **50 GiB** is the minimum accepted override, not an independently validated recommendation:
 
 ```bash
