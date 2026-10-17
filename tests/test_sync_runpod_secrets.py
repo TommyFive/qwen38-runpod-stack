@@ -168,7 +168,7 @@ class SyncTests(unittest.TestCase):
             if method=="PATCH":
                 state.update(payload)
             return dict(state)
-        with patch.object(sync.ports,"request",side_effect=request), \\
+        with patch.object(sync.ports,"request",side_effect=request), \
              patch.object(sync.ports,"repair"):
             sync.sync("abc123","tailnet","HF_TOKEN",
                       helpers=sync.read_bundled_helpers())
