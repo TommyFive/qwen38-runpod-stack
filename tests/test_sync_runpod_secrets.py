@@ -157,6 +157,25 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(calls[1][1]["env"]["HF_TOKEN"],
                          "{{ RUNPOD_SECRET_HF_TOKEN }}")
 
+    def test_helper_refresh_updates_decoder_atomically(self):
+        state=stub()
+        state["dockerStartCmd"]=["bash","-c",
+            'umask 077; echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh']
+        state["env"].update({"STORAGE_HELPER_B64":"old","BENCHMARK_B64":"old"})
+        calls=[]
+        def request(method, template_id, payload=None):
+            calls.append((method,payload))
+            if method=="PATCH":
+                state.update(payload)
+            return dict(state)
+        with patch.object(sync.ports,"request",side_effect=request), \\
+             patch.object(sync.ports,"repair"):
+            sync.sync("abc123","tailnet","HF_TOKEN",
+                      helpers=sync.read_bundled_helpers())
+        self.assertEqual([x[0] for x in calls],["GET","PATCH","GET"])
+        self.assertEqual(calls[1][1]["dockerStartCmd"],sync.GZIP_START_COMMAND)
+        self.assertEqual(state["dockerStartCmd"],sync.GZIP_START_COMMAND)
+
     def test_do_not_update_on_wrong_network_mode(self):
         with patch.object(sync.ports, "request", return_value=stub(mode="runpod")) as req:
             with self.assertRaises(sync.ports.PortSafetyError):
