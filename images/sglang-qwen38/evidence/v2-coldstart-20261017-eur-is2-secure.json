@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "measurement_id": "v2b-20261017-eur-is2-secure-first-pull-full",
+  "date_utc": "2026-10-17",
+  "provider": "RunPod",
+  "location": "EUR-IS-2",
+  "cloud": "Secure Cloud",
+  "image": "ghcr.io/tommyfive/qwen38-sglang@sha256:820c0ef5e0752c0243946dbdce342cc8d363c1d5e115aa19c04fe497e51400c7",
+  "scope": "continuous uncached eight-layer Docker image pull, initial container start and Full-mode bootstrap",
+  "screenshot_hardware_limit": "Only EUR-IS-2 and Secure Cloud are visible; CPU, GPU SKU, RAM and disk capacity are not evidenced here.",
+  "source_evidence": [
+    {
+      "file": "logs (5)(1).txt",
+      "sha256": "3508b67f1cd1644855c79376d85e404adcb87f790b3bb285880e1f9c8b0d57ec",
+      "bytes": 196060,
+      "lines": 4207,
+      "type": "provider image pull/extract events"
+    },
+    {
+      "file": "logs (4).txt",
+      "sha256": "aed08e8d76d908e1483cae4acdbd27f968779ad0b4f9b88293d2bfb1aa9cfded",
+      "bytes": 3728,
+      "lines": 35,
+      "type": "bootstrap and internal generation health"
+    },
+    {
+      "file": "image(20261017-162036).png",
+      "sha256": "999afdad424673bee24d87e7f5b9238f796116fe11549eab7c4a835fdf",
+      "bytes": 44531,
+      "dimensions_px": [
+        1322,
+        326
+      ],
+      "type": "provider location screenshot"
+    }
+  ],
+  "provider_timeline_utc": {
+    "first_create_request": "2026-10-17T16:11:46Z",
+    "first_pull_event": "2026-10-17T16:11:47Z",
+    "first_nonempty_extraction": "2026-10-17T16:12:28Z",
+    "last_layer_download": "2026-10-17T16:13:04Z",
+    "last_layer_pull_complete": "2026-10-17T16:15:38Z",
+    "image_downloaded": "2026-10-17T16:15:38Z",
+    "immediate_cached_status_after_new_pull": "2026-10-17T16:15:39Z",
+    "first_container_start": "2026-10-17T16:15:40Z"
+  },
+  "provider_intervals_seconds": {
+    "first_create_to_image_ready": 232,
+    "first_pull_to_image_ready": 231,
+    "first_create_to_last_download": 78,
+    "first_pull_to_last_download": 77,
+    "first_extraction_to_image_ready": 190,
+    "last_download_to_image_ready": 154,
+    "image_ready_to_container_start": 2,
+    "first_create_to_container_start": 234
+  },
+  "docker_layers": [
+    {
+      "prefix": "811ba24a0a46",
+      "download_complete_utc": "2026-10-17T16:12:28Z",
+      "first_extract_utc": "2026-10-17T16:12:28Z",
+      "pull_complete_utc": "2026-10-17T16:13:06Z"
+    },
+    {
+      "prefix": "bf8d0582c21b",
+      "download_complete_utc": "2026-10-17T16:12:36Z",
+      "first_extract_utc": "2026-10-17T16:13:06Z",
+      "pull_complete_utc": "2026-10-17T16:13:34Z"
+    },
+    {
+      "prefix": "58c5909db254",
+      "download_complete_utc": "2026-10-17T16:12:59Z",
+      "first_extract_utc": "2026-10-17T16:13:35Z",
+      "pull_complete_utc": "2026-10-17T16:14:03Z"
+    },
+    {
+      "prefix": "bba4c4fa8bc7",
+      "download_complete_utc": "2026-10-17T16:12:38Z",
+      "first_extract_utc": "2026-10-17T16:14:03Z",
+      "pull_complete_utc": "2026-10-17T16:14:36Z"
+    },
+    {
+      "prefix": "d06795969af1",
+      "download_complete_utc": "2026-10-17T16:12:50Z",
+      "first_extract_utc": "2026-10-17T16:14:36Z",
+      "pull_complete_utc": "2026-10-17T16:15:05Z"
+    },
+    {
+      "prefix": "1b7d52170636",
+      "download_complete_utc": "2026-10-17T16:13:04Z",
+      "first_extract_utc": "2026-10-17T16:15:05Z",
+      "pull_complete_utc": "2026-10-17T16:15:26Z"
+    },
+    {
+      "prefix": "90eb9e17f661",
+      "download_complete_utc": "2026-10-17T16:12:20Z",
+      "first_extract_utc": "2026-10-17T16:15:26Z",
+      "pull_complete_utc": "2026-10-17T16:15:38Z"
+    },
+    {
+      "prefix": "4f4fb700ef54",
+      "download_complete_utc": "2026-10-17T16:11:47Z",
+      "first_extract_utc": "2026-10-17T16:15:38Z",
+      "pull_complete_utc": "2026-10-17T16:15:38Z"
+    }
+  ],
+  "docker_evidence": {
+    "layers": 8,
+    "download_complete_markers": 8,
+    "pull_complete_markers": 8,
+    "already_exists_markers": 0,
+    "verified_pinned_digest": true
+  },
+  "bootstrap_timeline_utc": {
+    "bootstrap_start": "2026-10-17T16:15:40.901Z",
+    "network_probe_start": "2026-10-17T16:15:44.500Z",
+    "network_probe_end": "2026-10-17T16:15:44.753Z",
+    "main_download_start": "2026-10-17T16:15:44.842Z",
+    "main_download_end": "2026-10-17T16:16:46.168Z",
+    "sglang_start": "2026-10-17T16:16:46.259Z",
+    "sglang_process_started": "2026-10-17T16:16:46.287Z",
+    "openwebui_install_start": "2026-10-17T16:16:46.322Z",
+    "health_generate_ready": "2026-10-17T16:18:31.910Z",
+    "openwebui_install_end": "2026-10-17T16:19:01.141Z",
+    "bootstrap_done": "2026-10-17T16:19:01.146Z"
+  },
+  "bootstrap_intervals_seconds": {
+    "network_probe": 0.253,
+    "ram_model_draft_download": 61.326,
+    "sglang_to_internal_generation_health": 105.651,
+    "webui_installation_parallel": 134.819,
+    "bootstrap_to_internal_generation_health": 171.009,
+    "bootstrap_to_done": 200.245,
+    "container_to_generation_health": 171.91,
+    "first_create_to_generation_health": 405.91,
+    "first_create_to_bootstrap_done": 435.146
+  },
+  "observations": {
+    "model_spec": "dflash2",
+    "model_ram_cache_path": "/dev/shm/qwen38-hf",
+    "ram_mode_main_and_draft_verified": true,
+    "tailscale_connected": true,
+    "internal_sglang_generation_health": true,
+    "webui_installation_end": true,
+    "bootstrap_done": true,
+    "webui_http_health_pass_recorded": false,
+    "webui_login_recorded": false,
+    "external_authenticated_inference_recorded": false,
+    "actual_ram_multiplier_logged": false,
+    "benchmark_run_recorded": false
+  },
+  "previous_image_pull_seconds": [
+    {
+      "date": "2026-10-12",
+      "datacenter": "US-KS-2",
+      "tier": "Secure",
+      "seconds": 190
+    },
+    {
+      "date": "2026-10-13",
+      "datacenter": "US-NC-1",
+      "tier": "Secure",
+      "seconds": 85
+    },
+    {
+      "date": "2026-10-17",
+      "datacenter": "US unspecified",
+      "tier": "Community",
+      "seconds": 328,
+      "failed_ram_admission": true
+    }
+  ],
+  "limitations": [
+    "The first create at 16:11:46 and first layer pull event at 16:11:47 are distinct possible start clocks. Preferred image-first-activity baseline is create→ready, 232s.",
+    "The 16:15:39 Image is up to date status is a second immediate provider check after a genuine first download, not a warm-start case.",
+    "Download and extraction overlap, do not sum independent intervals.",
+    "RAM model download successfully completed, but the effective MODEL_RAM_PEAK_FACTOR and peak /dev/shm occupancy are not logged.",
+    "Internal health_generate_ready is not independently measured external time-to-first-token or user chat.",
+    "OpenWebUI install_end is not proof of positive HTTP /health, login, or UI chat.",
+    "SGLang and OpenWebUI initialization overlap.",
+    "Network probe read 0.0 MB/s but is not a trustworthy bandwidth measurement; model downloads subsequently succeed.",
+    "Region/network/cache/CPU/host effects are uncontrolled; identical image content does not explain the pull-time differences.",
+    "Provider timestamps are second-resolution; container bootstrap markers are millisecond-resolution.",
+    "Only derived metrics and source checksums published. No account tokens, Tailnet hostname, Pod IDs, secrets or raw private logs are published.",
+    "No changes to running Pods, templates, image or registry were made."
+  ]
+}
