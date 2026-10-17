@@ -147,7 +147,8 @@ for env in envs:
 assert {e['SERVE_WEBUI'] for e in envs} == {'0', '1'}
 assert {e['MODEL_STORAGE'] for e in envs} == {'ram', 'ssd'}, [(e['MODEL_STORAGE'],e.get('MODEL_RAM_PEAK_FACTOR')) for e in envs]
 assert any(e.get('MODEL_RAM_PEAK_FACTOR') == '1.75' for e in envs if e['MODEL_STORAGE'] == 'ram')
-assert all('MODEL_RAM_PEAK_FACTOR' not in e for e in envs if e['MODEL_STORAGE'] == 'ssd')
+assert all(e.get('MODEL_RAM_PEAK_FACTOR') == '1.5' for e in envs[:4]), 'all four generated templates must default to 1.5'
+assert all(e.get('MODEL_RAM_PEAK_FACTOR') in (None,'1.5') for e in envs if e['MODEL_STORAGE'] == 'ssd')
 assert all(e.get('MODEL_RAM_RELEASE_AFTER_LOAD', '0') in ('0','1') for e in envs)
 assert any(e.get('MODEL_RAM_RELEASE_AFTER_LOAD') == '1' for e in envs)
 assert all(e.get('MODEL_RAM_RELEASE_AFTER_LOAD', '0') == '0'
