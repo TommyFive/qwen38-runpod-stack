@@ -30,8 +30,11 @@ export QWEN38_STORAGE_HELPER="$ROOT/scripts/model-storage.py"
 export QWEN38_TAILSCALE_RUNTIME="$ROOT/scripts/tailscale-runtime.sh"
 export QWEN38_BENCHMARK_SCRIPT="$ROOT/scripts/benchmark_sglang.py"
 # Direct in-pod bootstrap must receive the same embedded storage helper as RunPod.
+gzip_b64() {
+    "$QWEN38_TEST_REAL_PYTHON" -c 'import base64,gzip,pathlib,sys; print(base64.b64encode(gzip.compress(pathlib.Path(sys.argv[1]).read_bytes(),mtime=0)).decode())' "$1"
+}
 export STORAGE_HELPER_B64
-STORAGE_HELPER_B64="$(base64 < "$ROOT/scripts/model-storage.py" | tr -d '\n')"
+STORAGE_HELPER_B64="$(gzip_b64 "$ROOT/scripts/model-storage.py")"
 export SGLANG_API_KEY="SENTINEL_API_KEY_91e6f9"
 export HF_TOKEN="SENTINEL_HF_TOKEN_8174bd"
 export WEBUI_ADMIN_EMAIL="admin@example.invalid"
@@ -336,8 +339,8 @@ Path(os.environ["TEST_BENCH_MARKER"]).write_text("benchmark invoked without serv
 FAKE_BENCH
 export TEST_BENCH_MARKER="$TMP/benchmark.started"
 export TAILSCALE_RUNTIME_B64 BENCHMARK_B64 TS_AUTHKEY
-TAILSCALE_RUNTIME_B64="$(base64 < "$RAM/fake-tailnet.sh" | tr -d '\n')"
-BENCHMARK_B64="$(base64 < "$RAM/mock-benchmark.py" | tr -d '\n')"
+TAILSCALE_RUNTIME_B64="$(gzip_b64 "$RAM/fake-tailnet.sh")"
+BENCHMARK_B64="$(gzip_b64 "$RAM/mock-benchmark.py")"
 TS_AUTHKEY="SENTINEL_TS_AUTHKEY_44b870"
 rm -rf "$RUNTIME_LOG_DIR" "$WEBUI_DATA_DIR"
 if ! NETWORK_MODE=tailnet BENCHMARK=1 COLDSTART_TRACE=1 DEBUG=0 \
