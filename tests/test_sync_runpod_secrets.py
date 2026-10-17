@@ -115,6 +115,7 @@ class SyncTests(unittest.TestCase):
     def test_bundled_helpers_refresh_only_declared_keys(self):
         from unittest.mock import patch
         import base64
+        import gzip
         current = stub()["env"]
         current.update({
             "BENCHMARK_B64": "old",
@@ -129,7 +130,7 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(updated["TS_AUTHKEY"], "{{ RUNPOD_SECRET_TS_AUTHKEY }}")
         self.assertEqual(updated["HF_TOKEN"], "{{ RUNPOD_SECRET_HF_TOKEN }}")
         for key, relative in sync.BUNDLED_HELPERS.items():
-            self.assertEqual(base64.b64decode(updated[key]),
+            self.assertEqual(gzip.decompress(base64.b64decode(updated[key])),
                              (sync.Path(__file__).resolve().parents[1] / relative).read_bytes())
         with self.assertRaises(sync.ports.PortSafetyError):
             sync.make_env(current, "tailnet", "", {"BOOTSTRAP_B64": "partial"})
