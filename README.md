@@ -296,6 +296,7 @@ For authenticated HTTP status testing, the correct external API returns `401` wi
 | `MAX_LEN` | `262144` | Model context length; larger contexts need adequate GPU memory. |
 | `TS_ENABLE_SSH` | `1` | Native Tailscale SSH on private/Tailscale-connected Pods; `0` disables it. |
 | `ENABLE_SSH` | `0` | Optional **classic OpenSSH** access/debugging; separate from native Tailscale SSH. |
+| `QWEN38_WEBUI_AUTH` | `1` (Full) | Set `0` **only on Tailnet Full** to remove OpenWebUI login; all Tailnet peers allowed to access port 8443 share the UI. |
 | `OPENWEBUI_VERSION` | `0.11.4` | Pin the Full template's OpenWebUI version; use a version verified with the image. |
 
 **Authentication settings:** Pod variable `SGLANG_API_KEY` (new RunPod Secret `LLM_API_KEY`, or legacy `LLAMA_API_KEY` when explicitly selected) is mandatory. Private templates additionally require `TS_AUTHKEY` (RunPod Secret); Authenticated Full templates require `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (minimum 16 characters); Tailnet Full may set `QWEN38_WEBUI_AUTH=0` instead. Do **not** store real credentials in Git.

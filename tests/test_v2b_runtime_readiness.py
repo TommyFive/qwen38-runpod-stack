@@ -36,7 +36,7 @@ class V2BRuntimeReadiness(unittest.TestCase):
 
     def test_source_has_no_unconditional_uv_or_webui_install(self):
         s=BOOT.read_text()
-        self.assertLess(s.index('if [[ "$SERVE_WEBUI" == 1 ]]; then\n  # Public OpenWebUI'),
+        self.assertLess(s.index('if [[ "$SERVE_WEBUI" == 1 ]]; then\n  # Admin credentials'),
                         s.index('if ! provision_uv_runtime; then'))
         self.assertIn('SERVE_WEBUI=0, skipping OpenWebUI, SGLang API only',s)
 
