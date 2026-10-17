@@ -57,7 +57,11 @@ def make_env(existing, mode, hf_secret, helpers=None, api_secret_name=DEFAULT_AP
             r"[A-Za-z][A-Za-z0-9_]*", api_secret_name):
         raise ports.PortSafetyError("invalid or missing API secret name")
     if "WEBUI_ADMIN_PASSWORD" in existing:
-        raise ports.PortSafetyError("pre-existing WEBUI_ADMIN_PASSWORD; refuses to copy it")
+        # Keep safe RunPod Secret references in Full templates; reject plaintext.
+        # The helper refresh must not require changing the existing admin secret.
+        if not re.fullmatch(r"\{\{ RUNPOD_SECRET_[A-Za-z][A-Za-z0-9_]* \}\}",
+                            existing["WEBUI_ADMIN_PASSWORD"]):
+            raise ports.PortSafetyError("pre-existing plaintext WEBUI_ADMIN_PASSWORD")
     new = dict(existing)
     new.setdefault("MODEL_RAM_RELEASE_AFTER_LOAD", "0")
     if helpers is not None:
