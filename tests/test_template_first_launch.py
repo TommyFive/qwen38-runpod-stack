@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Offline contract tests for template-first overrides; no RunPod API calls."""
 import importlib.util
+import base64
+import gzip
+import tempfile
 import pathlib
 import types
 import unittest
@@ -95,6 +98,25 @@ class TemplateFirst(unittest.TestCase):
         with self.assertRaises(mod.Invalid):mod.resolve(t,args(lean=True),{})
         t=fixture(mode="tailnet");t["env"]["TS_HOSTNAME"]=""
         with self.assertRaises(mod.Invalid):mod.resolve(t,args(mode="tailnet"),{})
+
+    def test_local_override_uses_template_codec(self):
+        data=b"#!/bin/bash\\necho test\\n"
+        for compressed in (False, True):
+            with self.subTest(compressed=compressed), tempfile.TemporaryDirectory() as td:
+                path=pathlib.Path(td)/"helper.sh"
+                path.write_bytes(data)
+                template=fixture()
+                original=gzip.compress(b"base", mtime=0) if compressed else b"base"
+                template["env"]["BOOTSTRAP_B64"]=base64.b64encode(original).decode()
+                result=mod.resolve(template,args(),{"QWEN38_BOOTSTRAP":str(path)})
+                encoded=base64.b64decode(result["env_overrides"]["BOOTSTRAP_B64"])
+                self.assertEqual(gzip.decompress(encoded) if compressed else encoded, data)
+
+    def test_invalid_bootstrap_base64_fails_closed(self):
+        template=fixture()
+        template["env"]["BOOTSTRAP_B64"]="not!base64"
+        with self.assertRaisesRegex(mod.Invalid,"Invalid bootstrap Base64"):
+            mod.resolve(template,args(),{})
 
     def test_invalid_values(self):
         for key,value in (

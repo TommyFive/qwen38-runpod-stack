@@ -197,7 +197,9 @@ so insufficient `/dev/shm` can be diagnosed without downloading weights.
 Run `python3 scripts/sync-runpod-secrets.py --refresh-helpers` with all four
 `--public-full`, `--public-lean`, `--private-full`, `--private-lean`
 arguments (see existing setup instructions) to replace exactly the four
-bundled script payloads: bootstrap, Tailscale, model storage and benchmark.
+bundled script payloads (gzip + Base64): bootstrap, Tailscale, model storage
+and benchmark. It also updates the Docker start command to decompress gzip,
+so `--refresh-helpers` is an **atomic codec migration per template**.
 The operation preserves template IDs and all unrelated environment values,
 revalidates Secret references, PATCHes `ports: []` on private templates and
 verifies live persisted state. Do not start a GUI template until refreshed.

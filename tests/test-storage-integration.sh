@@ -130,7 +130,7 @@ if [[ $(wc -l < "$MOCK_OUTPUT_FILE") -eq 4 ]]; then
   tail -n 8 "$TMP/full.out" >&2
 fi
 python3 - "$MOCK_OUTPUT_FILE" "$ROOT" <<'PY'
-import base64, json, pathlib, sys
+import base64, gzip, json, pathlib, sys
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
 envs = [json.loads(line) for line in lines]
 assert len(envs) >= 4, f"wanted template + launcher objects: {len(envs)}"
@@ -138,8 +138,8 @@ assert all(e.get("TS_HOSTNAME")=="llm" for e in envs), "all template and CLI env
 expected_b = (pathlib.Path(sys.argv[2]) / 'scripts/bootstrap-sglang-openwebui.sh').read_bytes()
 expected_h = (pathlib.Path(sys.argv[2]) / 'scripts/model-storage.py').read_bytes()
 for env in envs:
-    assert base64.b64decode(env['BOOTSTRAP_B64']) == expected_b
-    assert base64.b64decode(env['STORAGE_HELPER_B64']) == expected_h
+    assert gzip.decompress(base64.b64decode(env['BOOTSTRAP_B64'])) == expected_b
+    assert gzip.decompress(base64.b64decode(env['STORAGE_HELPER_B64'])) == expected_h
     assert env['MODEL_STORAGE'] in ('ram', 'ssd')
     assert env['MODEL_RAM_DIR'] == '/dev/shm/qwen38-hf'
     assert env['MODEL_SSD_DIR'] == '/workspace/hf'

@@ -33,7 +33,7 @@ MOCK_PORTS
 chmod +x "$TMP/bin/ports-helper"
 cat > "$TMP/bin/runpodctl" <<'PY'
 #!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, base64, gzip
 args = sys.argv[1:]
 if args[:2] == ["pod", "list"]:
     print("[]")
@@ -102,6 +102,8 @@ elif args[:2] == ["template", "update"]:
     public = "-public" in name
     assert bool(env["TAILSCALE_RUNTIME_B64"])
     assert bool(env["BOOTSTRAP_B64"])
+    for key in ("BOOTSTRAP_B64", "TAILSCALE_RUNTIME_B64", "STORAGE_HELPER_B64", "BENCHMARK_B64"):
+        assert gzip.decompress(base64.b64decode(env[key])), key
     assert env["NETWORK_MODE"] in ("runpod", "tailnet")
     assert env.get("TS_HOSTNAME")=="llm", "all generated templates must set TS_HOSTNAME=llm"
     if env["SERVE_WEBUI"]=="1":

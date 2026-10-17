@@ -18,13 +18,13 @@
 #                   the lean path for a coding agent like pi that talks the API
 #   ENABLE_SSH      1 starts legacy OpenSSH; 0 disables it
 #   NETWORK_MODE   runpod | tailnet (loopback and Tailscale Serve only)
-#   TAILSCALE_RUNTIME_B64 optional bundled native SSH userspace helper
-#   STORAGE_HELPER_B64 required bundled RAM/SSD cache helper
+#   TAILSCALE_RUNTIME_B64 optional gzip+Base64 native SSH userspace helper
+#   STORAGE_HELPER_B64 required gzip+Base64 RAM/SSD cache helper
 #   MODEL_STORAGE   ram (default), ssd opt-in
 #   MODEL_RAM_RELEASE_AFTER_LOAD  0 (default), 1 opt-in release after inference
 #   BENCHMARK       0 (default), 1 bounded authenticated offline benchmark
 #   BENCHMARK_BLOCKING 0 (default), 1 requires complete benchmark before OpenWebUI
-#   BENCHMARK_B64   bundled Python benchmark when enabled
+#   BENCHMARK_B64   gzip+Base64 Python benchmark when enabled
 #   COLDSTART_TRACE 1 (default), 0 disables timing milestones
 set -uo pipefail
 # Never trace inherited RunPod secrets, even if the caller invoked bash -x.
@@ -141,7 +141,7 @@ echo "model=$MODEL_ID spec=$SPEC max_len=$MAX_LEN mem_frac=$MEM_FRAC"
 
 # --- Optional native Tailscale SSH and HTTPS Serve (no TCP/22 forwarding) ----
 if [[ -n "${TAILSCALE_RUNTIME_B64:-}" ]]; then
-    if ! printf '%s' "$TAILSCALE_RUNTIME_B64" | base64 -d > "$RUNTIME_LOG_DIR/tailscale-runtime.sh"; then
+    if ! printf '%s' "$TAILSCALE_RUNTIME_B64" | base64 -d | gzip -dc > "$RUNTIME_LOG_DIR/tailscale-runtime.sh"; then
         echo "ERROR: invalid TAILSCALE_RUNTIME_B64" >&2
         exit 70
     fi
@@ -261,7 +261,7 @@ if [[ "$NETWORK_MODE" == tailnet && "${TS_ACTIVE:-0}" != 1 ]]; then
 fi
 # Preflight and select all model and temporary caches BEFORE Hugging Face imports.
 [[ -n "${STORAGE_HELPER_B64:-}" ]] || { echo "ERROR: STORAGE_HELPER_B64 is required" >&2; exit 64; }
-if ! printf '%s' "$STORAGE_HELPER_B64" | base64 -d > "$RUNTIME_LOG_DIR/model-storage.py"; then
+if ! printf '%s' "$STORAGE_HELPER_B64" | base64 -d | gzip -dc > "$RUNTIME_LOG_DIR/model-storage.py"; then
     echo "ERROR: cannot decode storage helper" >&2
     exit 64
 fi
@@ -437,7 +437,7 @@ if [[ "$BENCHMARK" == 1 && "$BENCHMARK_BLOCKING" == 1 ]]; then
           "${BENCHMARK_REPORT_PATH:-}" == *"/../"* ]]; then
         echo "ERROR: blocking benchmark report must be inside /dev/shm" >&2; exit 70
     fi
-    if ! printf '%s' "$BENCHMARK_B64" | base64 -d > "$RUNTIME_LOG_DIR/benchmark_sglang.py"; then
+    if ! printf '%s' "$BENCHMARK_B64" | base64 -d | gzip -dc > "$RUNTIME_LOG_DIR/benchmark_sglang.py"; then
         echo "ERROR: invalid blocking benchmark worker" >&2; exit 70
     fi
     chmod 600 "$RUNTIME_LOG_DIR/benchmark_sglang.py"
@@ -655,7 +655,7 @@ BENCH_PID=""
 if [[ "$BENCHMARK" == 1 && "$BENCHMARK_BLOCKING" == 0 ]]; then
     if [[ -z "${BENCHMARK_B64:-}" ]]; then
         echo "WARNING: benchmark requested without bundled worker"
-    elif printf '%s' "$BENCHMARK_B64" | base64 -d > "$RUNTIME_LOG_DIR/benchmark_sglang.py"; then
+    elif printf '%s' "$BENCHMARK_B64" | base64 -d | gzip -dc > "$RUNTIME_LOG_DIR/benchmark_sglang.py"; then
         chmod 600 "$RUNTIME_LOG_DIR/benchmark_sglang.py"
         export MODEL_ID MODEL_PATH SERVED_NAME MAX_LEN SPEC MEM_FRAC MAMBA_RATIO
         export BENCHMARK_REPORT_PATH="${BENCHMARK_REPORT_PATH:-/dev/shm/qwen38-benchmark.json}"

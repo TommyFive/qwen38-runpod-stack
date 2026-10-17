@@ -2,6 +2,7 @@
 """RunPod template-first launch plan: only explicitly requested ENV overrides."""
 import argparse
 import base64
+import gzip
 import json
 import math
 import os
@@ -58,6 +59,13 @@ def resolve(t, args, source=None):
         raise Invalid("Lean template contains WebUI credentials")
     for k in HELPERS+("MODEL_ID","SPEC","MAX_LEN","MEM_FRAC","MODEL_STORAGE","MODEL_RAM_DIR","MODEL_SSD_DIR"):
         if not env.get(k): raise Invalid("Template missing "+k)
+    # Keep explicit local helper overrides compatible with still-existing legacy
+    # templates, while new gzip templates receive gzip-compressed overrides.
+    try:
+        bootstrap_wire = base64.b64decode(env["BOOTSTRAP_B64"], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise Invalid("Invalid bootstrap Base64 payload") from exc
+    gzip_template = bootstrap_wire.startswith(b"\x1f\x8b")
     overrides={}
     for key,cli,local in (
         ("MODEL_ID","CLI_MODEL","QWEN38_OVERRIDE_MODEL_ID"),
@@ -151,7 +159,10 @@ def resolve(t, args, source=None):
         if local in e:
             p=pathlib.Path(e[local])
             if not p.is_file() or p.stat().st_size==0:raise Invalid(local+" file missing")
-            overrides[key]=base64.b64encode(p.read_bytes()).decode("ascii")
+            data=p.read_bytes()
+            if gzip_template:
+                data=gzip.compress(data, compresslevel=9, mtime=0)
+            overrides[key]=base64.b64encode(data).decode("ascii")
     return {
       "env_overrides":overrides,"override_keys":sorted(overrides),
       "disk_gb":disk,"template_disk_gb":template_disk,

@@ -55,6 +55,13 @@ class SyncTests(unittest.TestCase):
         with self.assertRaises(sync.ports.PortSafetyError):
             sync.make_env(e, "tailnet", "")
 
+    def test_preserve_existing_full_admin_secret_reference(self):
+        original = "{{ RUNPOD_SECRET_QWEN38_WEBUI_ADMIN_PASSWORD }}"
+        e = stub()["env"]
+        e["WEBUI_ADMIN_PASSWORD"] = original
+        updated = sync.make_env(e, "tailnet", "HF_TOKEN")
+        self.assertEqual(updated["WEBUI_ADMIN_PASSWORD"], original)
+
     def test_migration_uses_hf_token_secret_by_default(self):
         import io
         import os
@@ -115,6 +122,7 @@ class SyncTests(unittest.TestCase):
     def test_bundled_helpers_refresh_only_declared_keys(self):
         from unittest.mock import patch
         import base64
+        import gzip
         current = stub()["env"]
         current.update({
             "BENCHMARK_B64": "old",
@@ -129,7 +137,7 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(updated["TS_AUTHKEY"], "{{ RUNPOD_SECRET_TS_AUTHKEY }}")
         self.assertEqual(updated["HF_TOKEN"], "{{ RUNPOD_SECRET_HF_TOKEN }}")
         for key, relative in sync.BUNDLED_HELPERS.items():
-            self.assertEqual(base64.b64decode(updated[key]),
+            self.assertEqual(gzip.decompress(base64.b64decode(updated[key])),
                              (sync.Path(__file__).resolve().parents[1] / relative).read_bytes())
         with self.assertRaises(sync.ports.PortSafetyError):
             sync.make_env(current, "tailnet", "", {"BOOTSTRAP_B64": "partial"})
@@ -155,6 +163,25 @@ class SyncTests(unittest.TestCase):
         self.assertEqual([x[0] for x in calls], ["GET", "PATCH", "GET"])
         self.assertEqual(calls[1][1]["env"]["HF_TOKEN"],
                          "{{ RUNPOD_SECRET_HF_TOKEN }}")
+
+    def test_helper_refresh_updates_decoder_atomically(self):
+        state=stub()
+        state["dockerStartCmd"]=["bash","-c",
+            'umask 077; echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh']
+        state["env"].update({"STORAGE_HELPER_B64":"old","BENCHMARK_B64":"old"})
+        calls=[]
+        def request(method, template_id, payload=None):
+            calls.append((method,payload))
+            if method=="PATCH":
+                state.update(payload)
+            return dict(state)
+        with patch.object(sync.ports,"request",side_effect=request), \
+             patch.object(sync.ports,"repair"):
+            sync.sync("abc123","tailnet","HF_TOKEN",
+                      helpers=sync.read_bundled_helpers())
+        self.assertEqual([x[0] for x in calls],["GET","PATCH","GET"])
+        self.assertEqual(calls[1][1]["dockerStartCmd"],sync.GZIP_START_COMMAND)
+        self.assertEqual(state["dockerStartCmd"],sync.GZIP_START_COMMAND)
 
     def test_do_not_update_on_wrong_network_mode(self):
         with patch.object(sync.ports, "request", return_value=stub(mode="runpod")) as req:

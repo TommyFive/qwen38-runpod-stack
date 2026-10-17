@@ -100,12 +100,18 @@ if [[ "$IMAGE_VARIANT" == custom ]]; then
   }
 fi
 
+# gzip+Base64 keeps executable scripts below the RunPod web editor payload limit.
+# Use Python for portable macOS/Linux gzip with reproducible mtime=0.
+encode_helper() {
+  python3 -c 'import base64,gzip,pathlib,sys; data=pathlib.Path(sys.argv[1]).read_bytes(); print(base64.b64encode(gzip.compress(data,compresslevel=9,mtime=0)).decode("ascii"))' "$1"
+}
+
 mk() { # name ports labels serve_webui network_mode disk_gib
   local BS TS SH BENCH ENV
-  BS=$(base64 -i "$BOOTSTRAP" | tr -d '\n')
-  TS=$(base64 -i "$TS_RUNTIME" | tr -d '\n')
-  SH=$(base64 -i "$STORAGE_HELPER" | tr -d '\n')
-  BENCH=$(base64 -i "$BENCH_SCRIPT" | tr -d '\n')
+  BS=$(encode_helper "$BOOTSTRAP")
+  TS=$(encode_helper "$TS_RUNTIME")
+  SH=$(encode_helper "$STORAGE_HELPER")
+  BENCH=$(encode_helper "$BENCH_SCRIPT")
   ENV=$(python3 -c 'import json,sys; print(json.dumps({
     "BOOTSTRAP_B64":sys.argv[1],
     "TAILSCALE_RUNTIME_B64":sys.argv[2],
@@ -126,7 +132,7 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     **({"HF_TOKEN":"{{ RUNPOD_SECRET_"+sys.argv[11]+" }}"} if sys.argv[11] else {})
   }))' "$BS" "$TS" "$MODEL" "$4" "$5" "$SH" "$BENCH" "$MODEL_STORAGE" "$MODEL_RAM_DIR" "$MODEL_SSD_DIR" "$HF_SECRET_NAME" "$API_SECRET_NAME" "$WEBUI_ADMIN_EMAIL" "$WEBUI_PASSWORD_SECRET_NAME")
 
-  # CLI/backend may reject large --env on CREATE (observed HTTP 500).
+  # RunPod may reject large --env on CREATE (historical HTTP 500), even with compression.
   # Provision no-secret skeleton then UPDATE only that new template.
   # The bootstrap command fails closed until BOOTSTRAP_B64 is installed.
   local args=(template create --name "$1" --image "$IMAGE" --container-disk-in-gb "$6")
@@ -135,7 +141,7 @@ mk() { # name ports labels serve_webui network_mode disk_gib
   if [[ "$5" == runpod ]]; then
     args+=(--ports "$2" --port-labels "$3")
   fi
-  args+=(--docker-start-cmd 'bash,-c,umask 077; echo "$BOOTSTRAP_B64" | base64 -d > /bootstrap.sh && bash /bootstrap.sh' -o json)
+  args+=(--docker-start-cmd 'bash,-c,umask 077; printf "%s" "$BOOTSTRAP_B64" | base64 -d | gzip -dc > /bootstrap.sh && bash /bootstrap.sh' -o json)
   local template_id="" attempt
   # Provider CREATE can fail transiently. Retry only when the name is absent.
   for attempt in 1 2 3; do
