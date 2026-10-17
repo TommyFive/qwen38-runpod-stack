@@ -5,6 +5,7 @@ No pods launched, no secret values read or printed. Requires RUNPOD_API_KEY.
 """
 import importlib.util
 import base64
+import gzip
 import os
 from pathlib import Path
 import re
@@ -32,8 +33,12 @@ def read_bundled_helpers():
         source = repo / relative
         if not source.is_file() or source.is_symlink():
             raise ports.PortSafetyError("missing or symlinked bundled helper: " + relative)
-        result[key] = base64.b64encode(source.read_bytes()).decode("ascii")
+        result[key] = base64.b64encode(gzip.compress(source.read_bytes(), compresslevel=9, mtime=0)).decode("ascii")
     return result
+
+# When refreshing helpers, the start command must switch to gzip together with
+# BOOTSTRAP_B64; otherwise the updated template would fail at startup.
+GZIP_START_COMMAND = ["bash", "-c", 'umask 077; printf "%s" "$BOOTSTRAP_B64" | base64 -d | gzip -dc > /bootstrap.sh && bash /bootstrap.sh']
 
 DEFAULT_API_SECRET_NAME = "LLM_API_KEY"
 TS_REFERENCE = "{{ RUNPOD_SECRET_TS_AUTHKEY }}"
@@ -83,10 +88,20 @@ def sync(template_id, mode, hf_secret, helpers=None, api_secret_name=DEFAULT_API
     old_ports = before.get("ports", [])
     if not isinstance(old_ports, list):
         raise ports.PortSafetyError("unexpected ports format")
-    ports.request("PATCH", template_id, {"env": new_env})
+    patch = {"env": new_env}
+    if helpers is not None:
+        previous = before.get("dockerStartCmd")
+        if (not isinstance(previous, list) or previous[:2] != ["bash", "-c"] or
+                len(previous) != 3 or "BOOTSTRAP_B64" not in previous[2] or
+                "base64 -d" not in previous[2]):
+            raise ports.PortSafetyError("unexpected bootstrap Docker start command")
+        patch["dockerStartCmd"] = GZIP_START_COMMAND
+    ports.request("PATCH", template_id, patch)
     after = ports.request("GET", template_id)
     if after.get("id") != template_id or after.get("env") != new_env:
         raise ports.PortSafetyError("template env did not persist as expected")
+    if helpers is not None and after.get("dockerStartCmd") != GZIP_START_COMMAND:
+        raise ports.PortSafetyError("updated bootstrap command did not persist")
     if mode == "tailnet":
         ports.repair(template_id)
     elif after.get("ports", []) != old_ports:
