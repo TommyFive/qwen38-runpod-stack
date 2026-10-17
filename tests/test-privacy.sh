@@ -83,15 +83,17 @@ if [[ "$1" == venv ]]; then
 python3 - <<'PY'
 import json, os
 from pathlib import Path
-v = {key: os.getenv(key) for key in ("WEBUI_AUTH","ENABLE_SIGNUP","ENABLE_PERSISTENT_CONFIG","WEBUI_SESSION_COOKIE_SECURE","DATA_DIR","DO_NOT_TRACK")}
+v = {key: os.getenv(key) for key in ("WEBUI_AUTH","ENABLE_SIGNUP","ENABLE_LOGIN_FORM","ENABLE_PERSISTENT_CONFIG","WEBUI_SESSION_COOKIE_SECURE","DATA_DIR","DO_NOT_TRACK")}
 Path(os.environ["TEST_WEBUI_FLAGS"]).write_text(json.dumps(v))
-assert v["WEBUI_AUTH"] == "True"
+expected_auth = "False" if os.getenv("QWEN38_WEBUI_AUTH","1") == "0" else "True"
+assert v["WEBUI_AUTH"] == expected_auth
+assert v["ENABLE_LOGIN_FORM"] == expected_auth
 assert v["ENABLE_SIGNUP"] == "False"
 assert v["WEBUI_SESSION_COOKIE_SECURE"] == "True"
 assert v["DATA_DIR"].startswith("/dev/shm/")
-assert os.getenv("WEBUI_ADMIN_PASSWORD")
+assert bool(os.getenv("WEBUI_ADMIN_PASSWORD")) == (expected_auth == "True")
 Path(v["DATA_DIR"], "private-db.sqlite").write_text("ephemeral")
-print(os.environ["SGLANG_API_KEY"] + " " + os.environ["WEBUI_ADMIN_PASSWORD"], flush=True)
+print(os.environ["SGLANG_API_KEY"] + " " + os.getenv("WEBUI_ADMIN_PASSWORD",""), flush=True)
 PY
 WEBUI
     chmod +x "$dest/bin/open-webui"
@@ -209,6 +211,19 @@ if SGLANG_API_KEY='{{ RUNPOD_SECRET_LLM_API_KEY }}' \
     echo "unresolved RunPod API Secret reference was accepted" >&2; exit 1
 fi
 grep -Fq 'unresolved secret reference' "$TMP/unresolved-api"
+echo '=== WebUI no-auth rejects public, lean and invalid values before download ==='
+if QWEN38_WEBUI_AUTH=0 NETWORK_MODE=runpod bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/public-noauth" 2>&1; then
+    echo "public no-auth was accepted" >&2; exit 1
+fi
+grep -Fq 'requires NETWORK_MODE=tailnet' "$TMP/public-noauth"
+if QWEN38_WEBUI_AUTH=invalid bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/invalid-auth" 2>&1; then
+    echo "invalid WebUI auth switch was accepted" >&2; exit 1
+fi
+grep -Fq 'QWEN38_WEBUI_AUTH must be 0 or 1' "$TMP/invalid-auth"
+if QWEN38_WEBUI_AUTH=0 SERVE_WEBUI=0 NETWORK_MODE=tailnet bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/lean-noauth" 2>&1; then
+    echo "lean no-auth override was accepted" >&2; exit 1
+fi
+grep -Fq 'requires NETWORK_MODE=tailnet and SERVE_WEBUI=1' "$TMP/lean-noauth"
 set +e
 NETWORK_MODE=tailnet bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/no-ts" 2>&1
 tailnet_rc=$?
@@ -343,7 +358,7 @@ TAILSCALE_RUNTIME_B64="$(gzip_b64 "$RAM/fake-tailnet.sh")"
 BENCHMARK_B64="$(gzip_b64 "$RAM/mock-benchmark.py")"
 TS_AUTHKEY="SENTINEL_TS_AUTHKEY_44b870"
 rm -rf "$RUNTIME_LOG_DIR" "$WEBUI_DATA_DIR"
-if ! NETWORK_MODE=tailnet BENCHMARK=1 COLDSTART_TRACE=1 DEBUG=0 \
+if ! NETWORK_MODE=tailnet QWEN38_WEBUI_AUTH=0 WEBUI_ADMIN_EMAIL="" WEBUI_ADMIN_PASSWORD="" BENCHMARK=1 COLDSTART_TRACE=1 DEBUG=0 \
     bash "$ROOT/scripts/bootstrap-sglang-openwebui.sh" > "$TMP/private-integrated" 2>&1; then
     echo "Cross-feature bootstrap failed; sanitized output:" >&2
     sed -E 's/SENTINEL_[A-Za-z0-9_]+/[REDACTED]/g; s/sk-qwen38-[A-Za-z0-9_-]+/[REDACTED]/g' "$TMP/private-integrated" >&2
@@ -353,6 +368,14 @@ fi
 test -f "$TEST_BENCH_MARKER"
 test -f "$RUNTIME_LOG_DIR/start-sglang.sh"
 test -f "$RUNTIME_LOG_DIR/start-openwebui.sh"
+grep -Fq 'WEBUI_AUTH=False' "$RUNTIME_LOG_DIR/start-openwebui.sh"
+python3 - "$TEST_WEBUI_FLAGS" <<'PY_NOAUTH'
+import json,sys
+v=json.load(open(sys.argv[1]))
+assert v["WEBUI_AUTH"]=="False"
+assert v["ENABLE_LOGIN_FORM"]=="False"
+assert v["ENABLE_SIGNUP"]=="False"
+PY_NOAUTH
 grep -Fq 'QWEN38_COLDSTART' "$RUNTIME_LOG_DIR/bootstrap.log"
 grep -Fq 'TAILSCALE: mock private enrollment' "$RUNTIME_LOG_DIR/bootstrap.log"
 grep -Fq -- 'source "$RUNTIME_LOG_DIR/model-storage-env.sh"' "$RUNTIME_LOG_DIR/start-sglang.sh"

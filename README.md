@@ -56,7 +56,7 @@ Official upstream is still a separate image family: `./create-templates.sh --ima
 
 All four generated templates (Custom and Official, Full/Lean × Public/Tailnet) default to `TS_HOSTNAME=llm`. This sets the **Tailscale-only** hostname, not the RunPod Pod name. You can override the value in RunPod; set it to empty to restore automatic Tailscale naming. Concurrent Pods requesting `llm` may receive suffixed Tailscale names to resolve a collision. The `qwen38fast` / `qwen38pi` CLI launchers inherit this setting from the selected live template by default. An explicit `--ts-hostname NAME` (or explicitly exported `TS_HOSTNAME`) overrides only this key for a new Pod. For CLI Tailnet launches, the effective hostname must be nonempty to construct its URL.
 
-Tailnet templates have **zero published RunPod ports**. Public Lean publishes only API port 8000; public Full publishes API port 8000 and OpenWebUI port 8080. Full requires `WEBUI_ADMIN_EMAIL` and a password of at least 16 characters. The generator takes `QWEN38_WEBUI_ADMIN_EMAIL` (default `admin@qwen38.example.com`) and a RunPod Secret named `QWEN38_WEBUI_ADMIN_PASSWORD` by default; override its **name** with `QWEN38_WEBUI_PASSWORD_SECRET_NAME`. The API defaults to RunPod Secret `LLM_API_KEY`; to reuse an existing `LLAMA_API_KEY`, set `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` **when creating templates**. Tailscale uses RunPod Secret `TS_AUTHKEY`; Hugging Face optionally uses `HF_TOKEN`.
+Tailnet templates have **zero published RunPod ports**. Public Lean publishes only API port 8000; public Full publishes API port 8000 and OpenWebUI port 8080. Authenticated Full requires `WEBUI_ADMIN_EMAIL` and a password of at least 16 characters. The generator takes `QWEN38_WEBUI_ADMIN_EMAIL` (default `admin@qwen38.example.com`) and a RunPod Secret named `QWEN38_WEBUI_ADMIN_PASSWORD` by default; override its **name** with `QWEN38_WEBUI_PASSWORD_SECRET_NAME`. The API defaults to RunPod Secret `LLM_API_KEY`; to reuse an existing `LLAMA_API_KEY`, set `QWEN38_API_SECRET_NAME=LLAMA_API_KEY` **when creating templates**. Tailscale uses RunPod Secret `TS_AUTHKEY`; Hugging Face optionally uses `HF_TOKEN`.
 
 ```bash
 QWEN38_API_SECRET_NAME=LLAMA_API_KEY ./create-templates.sh --image custom
@@ -89,7 +89,7 @@ The core idea from upstream remains: rent a GPU, start SGLang, and connect a loc
 | **Private networking** | Four Public/Private Full/Lean templates; private templates publish **zero RunPod ports**. Tailscale Serve provides authenticated HTTPS API on **443** and optional OpenWebUI on **8443** to permitted Tailnet peers. |
 | **Startup compatibility fix** | Upstream's `pip install open-webui` modifies the live SGLang/PyTorch environment, which can break the NCCL/DeepEP startup check. This fork installs OpenWebUI in a **separate virtual environment**, protecting SGLang's GPU dependencies and allowing the Full stack to start cleanly. |
 | **TLS on ephemeral Pods** | Tailscale machine identity and certificate state stored in RAM: `--state=mem:` plus a `/dev/shm` `--statedir`, with verified TLS on both endpoints. |
-| **Authentication and privacy** | Mandatory SGLang API key; OpenWebUI authentication enabled, signup disabled, pre-provisioned admin, runtime logs and WebUI data on tmpfs by default, `DEBUG=0` quiet mode and redacted diagnostics. |
+| **Authentication and privacy** | Mandatory SGLang API key; OpenWebUI login on by default, optional login-free Tailnet Full via `QWEN38_WEBUI_AUTH=0` (never public), signup disabled, admin required when authenticated, runtime logs and WebUI data on tmpfs by default, `DEBUG=0` quiet mode and redacted diagnostics. |
 | **RunPod Secrets** | Default use of RunPod secret **references** (`LLM_API_KEY`, optional `HF_TOKEN`, private `TS_AUTHKEY`) rather than injecting local cleartext into the launcher; optional explicit local-credential mode. |
 | **Real RAM-only model downloads** | **Both the main model and DFlash2 draft are downloaded directly from Hugging Face into a RAM-backed `/dev/shm` cache**, not downloaded to SSD and copied afterward. Since the ~22.7 GiB model blobs do not occupy the container SSD, you can provision **significantly less disk** for a new Pod/template, subject to space needed by the Docker image, OpenWebUI installation and other runtime files. **Custom v0.2.2 templates default to 30 GiB in RAM-first mode** (Lean and Full were GPU-tested at 30 GiB). Switching to SSD model downloads requires a larger disk; the tooling defaults to 150 GiB in SSD mode. `MODEL_STORAGE=ssd` remains available as an opt-in fallback. |
 | **Optional RAM reclaim** | Experimental post-inference checkpoint-blob release after authenticated model use; **off by default** and only allowed with RAM storage. |
@@ -170,7 +170,7 @@ Local Mac / agent
 | Private Full | `qwen38fast --network tailnet` | Tailscale HTTPS API **443**, WebUI **8443**, native Tailscale SSH | **None** |
 | Private Lean | `qwen38pi --network tailnet` | Tailscale HTTPS API **443**, native Tailscale SSH; no WebUI | **None** |
 
-Private Tailnet-only mode requires a valid Tailscale enrollment key, HTTPS certificates and a policy allowing the client to reach Pod 443 (and 8443 for Full). Tailscale authorization **does not replace** API/WebUI authentication. Public RunPod templates **are deliberately internet-reachable**.
+Private Tailnet-only mode requires a valid Tailscale enrollment key, HTTPS certificates and a policy allowing the client to reach Pod 443 (and 8443 for Full). Tailscale authorization **does not replace SGLang API-key authentication**; it gates the WebUI only when explicitly opting out of its login. Public RunPod templates **are deliberately internet-reachable**.
 
 ## Requirements and installation
 
@@ -233,11 +233,11 @@ deliberately rejects, so create each family **once**. If updating existing
 templates, use the controlled `scripts/sync-runpod-secrets.py` helper and
 verify that private templates have **no published ports**. See [Security](docs/SECURITY.md).
 
-**Direct RunPod console launches:** Provide `SGLANG_API_KEY`, plus `TS_AUTHKEY` for private mode, and `WEBUI_ADMIN_EMAIL` / `WEBUI_ADMIN_PASSWORD` (at least 16 characters) for Full mode. Template defaults hold references to the API/Tailscale/HF secrets, **not** a default admin password. Missing required credentials must fail closed.
+**Direct RunPod console launches:** Provide `SGLANG_API_KEY`, plus `TS_AUTHKEY` for private mode, and `WEBUI_ADMIN_EMAIL` / `WEBUI_ADMIN_PASSWORD` (at least 16 characters) for authenticated Full mode. Template defaults hold references to the API/Tailscale/HF secrets, **not** a default admin password. Missing required credentials must fail closed.
 
 ## Run and connect
 
-**Primary workflow — RunPod Control UI:** Select the appropriate **Full** (with OpenWebUI) or **Lean** (API-only), **Public** or **Private** template. Adjust the relevant template **Environment Variables** in RunPod, deploy a new Pod, and wait until SGLang is ready. For Private Full, connect through Tailscale HTTPS `https://<pod-host>.ts.net:8443`; the API uses HTTPS `https://<pod-host>.ts.net/v1`. A private template must have **no published ports** and requires Tailnet authorization, `SGLANG_API_KEY` and (for Full) WebUI admin credentials.
+**Primary workflow — RunPod Control UI:** Select the appropriate **Full** (with OpenWebUI) or **Lean** (API-only), **Public** or **Private** template. Adjust the relevant template **Environment Variables** in RunPod, deploy a new Pod, and wait until SGLang is ready. For Private Full, connect through Tailscale HTTPS `https://<pod-host>.ts.net:8443`; the API uses HTTPS `https://<pod-host>.ts.net/v1`. A private template must have **no published ports** and requires Tailnet authorization, `SGLANG_API_KEY` and (for Full) WebUI admin credentials unless `QWEN38_WEBUI_AUTH=0`.
 
 The commands below are optional local alternatives. The CLI is **template-first**: without an explicit runtime override, it preserves the selected RunPod template's environment, including bootstrap payloads, secrets, model settings and hostname. Explicit CLI options (for example, --model, --spec, --storage or --ts-hostname) change only their corresponding Pod ENV keys. The GPU/GraphQL API merge behavior was verified live; `--dry-run` validates the selected template and prints only override **names**, without renting a GPU. Container Disk is inherited from the template and adjusted for explicit SSD selection if necessary.
 
@@ -247,8 +247,10 @@ The commands below are optional local alternatives. The CLI is **template-first*
 ```bash
 QWEN38_NETWORK_MODE=tailnet qwen38fast 1h --network tailnet
 # The launcher prints the Pod ID, API URL, and (Full) HTTPS WebUI URL.
-# Login is required in OpenWebUI.
+# Login is required by default (Tailnet Full may opt out).
 ```
+
+**Optional login-free Tailnet Full:** set `QWEN38_WEBUI_AUTH=0` in the **Full Tailnet RunPod template ENV**, or explicitly for a CLI launch (`QWEN38_WEBUI_AUTH=0 qwen38fast --network tailnet`). This disables the OpenWebUI login only, not the SGLang API key. Default is `1`; Public Full and Lean reject `0` before downloading a model. Admin email/password are not needed in no-auth mode. Use a **fresh WebUI database** (default tmpfs path `/dev/shm/qwen38-webui-data`); OpenWebUI cannot switch an existing user database into no-auth mode. Everyone permitted by Tailnet ACLs/grants to reach HTTPS port **8443** can access the same WebUI data and settings. Never publish the private template's ports to RunPod.
 
 The launcher creates a unique Tailnet hostname by default. Your Tailnet policy must permit the client to connect on TCP 443 and 8443. The Full admin username defaults to `admin@qwen38.example.com`; the generated local password is in `~/.runpod/qwen38-webui-password` (file mode 0600). You can override both as described below.
 
@@ -294,9 +296,10 @@ For authenticated HTTP status testing, the correct external API returns `401` wi
 | `MAX_LEN` | `262144` | Model context length; larger contexts need adequate GPU memory. |
 | `TS_ENABLE_SSH` | `1` | Native Tailscale SSH on private/Tailscale-connected Pods; `0` disables it. |
 | `ENABLE_SSH` | `0` | Optional **classic OpenSSH** access/debugging; separate from native Tailscale SSH. |
+| `QWEN38_WEBUI_AUTH` | `1` (Full) | Set `0` **only on Tailnet Full** to remove OpenWebUI login; all Tailnet peers allowed to access port 8443 share the UI. |
 | `OPENWEBUI_VERSION` | `0.11.4` | Pin the Full template's OpenWebUI version; use a version verified with the image. |
 
-**Authentication settings:** Pod variable `SGLANG_API_KEY` (new RunPod Secret `LLM_API_KEY`, or legacy `LLAMA_API_KEY` when explicitly selected) is mandatory. Private templates additionally require `TS_AUTHKEY` (RunPod Secret); Full templates require `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (minimum 16 characters). Do **not** store real credentials in Git.
+**Authentication settings:** Pod variable `SGLANG_API_KEY` (new RunPod Secret `LLM_API_KEY`, or legacy `LLAMA_API_KEY` when explicitly selected) is mandatory. Private templates additionally require `TS_AUTHKEY` (RunPod Secret); Authenticated Full templates require `WEBUI_ADMIN_EMAIL` and a strong `WEBUI_ADMIN_PASSWORD` (minimum 16 characters); Tailnet Full may set `QWEN38_WEBUI_AUTH=0` instead. Do **not** store real credentials in Git.
 
 **Important:** Template ENV settings apply both in the RunPod Control UI and through the template-first `qwen38fast`/`qwen38pi` launcher. Only explicitly requested CLI/launcher options override the selected template. Inspect the proposed launch using `qwen38fast --dry-run` without starting a Pod.
 
@@ -304,7 +307,7 @@ Advanced options—RAM admission factors, benchmark repetitions, Secrets configu
 
 ## Security and costs
 
-- **Public versus private:** public RunPod proxies are reachable from the Internet and rely on application authentication. Private templates publish no RunPod ports; Tailnet Serve requires working ACL/grants *and* valid TLS, plus API/WebUI authentication.
+- **Public versus private:** public RunPod proxies are reachable from the Internet and require application authentication. Private templates publish no RunPod ports; Tailnet Serve requires working ACL/grants and TLS, plus SGLang API-key authentication. Tailnet Full can explicitly disable only the WebUI login.
 - **Secrets:** default RunPod Secret references keep the launcher from expanding local API/HF/Tailscale secret values in `--env`. In `local` mode, the CLI request can carry plaintext secrets via arguments/control plane. SGLang also exposes its key in process argv to privileged Pod users. A rented GPU host and its provider remain in the trust boundary; RAM/tmpfs is **not** end-to-end encryption.
 - **Persistence:** runtime/credential state is designed for RAM by default, but this should not be interpreted as a guarantee about host-level snapshots, provider diagnostics or all application caches.
 - **Stop/TTL risk:** `qwen38fast stop`, `qwen38pi stop` and the old `runpod-reaper` are **account-wide**. The launcher uses a requested `Nh` runtime window, **not** a guaranteed RunPod billing or auto-stop guarantee. Monitor cost and delete **the exact Pod ID**. Do not enable the legacy reaper in mixed-project RunPod accounts.

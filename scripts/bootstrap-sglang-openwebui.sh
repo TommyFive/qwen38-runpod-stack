@@ -36,6 +36,13 @@ SERVE_WEBUI="${SERVE_WEBUI:-1}"
 [[ "$SERVE_WEBUI" == 0 || "$SERVE_WEBUI" == 1 ]] || { echo "ERROR: SERVE_WEBUI must be 0 or 1" >&2; exit 64; }
 NETWORK_MODE="${NETWORK_MODE:-runpod}"
 [[ "$NETWORK_MODE" == runpod || "$NETWORK_MODE" == tailnet ]] || { echo "ERROR: NETWORK_MODE must be runpod or tailnet" >&2; exit 64; }
+# Opt-in unauthenticated OpenWebUI is only safe behind portless Tailscale Serve.
+QWEN38_WEBUI_AUTH="${QWEN38_WEBUI_AUTH:-1}"
+[[ "$QWEN38_WEBUI_AUTH" == 0 || "$QWEN38_WEBUI_AUTH" == 1 ]] || { echo "ERROR: QWEN38_WEBUI_AUTH must be 0 or 1" >&2; exit 64; }
+if [[ "$QWEN38_WEBUI_AUTH" == 0 && ( "$NETWORK_MODE" != tailnet || "$SERVE_WEBUI" != 1 ) ]]; then
+    echo "ERROR: QWEN38_WEBUI_AUTH=0 requires NETWORK_MODE=tailnet and SERVE_WEBUI=1" >&2
+    exit 64
+fi
 # Issue #7 initializes Tailscale later, before the SSH and model phases.
 # Validate its completed connection below rather than blocking startup here.
 [[ -n "${SGLANG_API_KEY:-}" ]] || { echo "ERROR: SGLANG_API_KEY required (no unauthenticated public API)" >&2; exit 64; }
@@ -67,7 +74,7 @@ if [[ "$(stat -f -c %T "$WEBUI_DATA_DIR" 2>/dev/null)" != tmpfs &&
     echo "ERROR: WEBUI_DATA_DIR must be tmpfs unless ALLOW_PERSISTENT_WEBUI_DATA=1" >&2
     exit 70
 fi
-export DEBUG RUNTIME_LOG_DIR WEBUI_DATA_DIR API_BIND_HOST WEBUI_BIND_HOST NETWORK_MODE SERVE_WEBUI
+export DEBUG RUNTIME_LOG_DIR WEBUI_DATA_DIR API_BIND_HOST WEBUI_BIND_HOST NETWORK_MODE SERVE_WEBUI QWEN38_WEBUI_AUTH
 # One streaming redactor for console/bootstrap and opt-in child diagnostics.
 # No raw stdout/stderr is written to disk before passing through this filter.
 cat > "$RUNTIME_LOG_DIR/redact-log.py" <<'REDACTOR'
@@ -108,7 +115,7 @@ if [[ "$BENCHMARK_BLOCKING" == 1 ]]; then
     [[ "$BENCHMARK" == 1 ]] || { echo "ERROR: BENCHMARK_BLOCKING requires BENCHMARK=1" >&2; exit 64; }
     [[ -n "${BENCHMARK_B64:-}" ]] || { echo "ERROR: blocking benchmark requires BENCHMARK_B64" >&2; exit 64; }
     # Full/Tailnet live tests must never report readiness with no WebUI admin.
-    if [[ "$SERVE_WEBUI" == 1 ]]; then
+    if [[ "$SERVE_WEBUI" == 1 && "$QWEN38_WEBUI_AUTH" == 1 ]]; then
         admin_password_value="${WEBUI_ADMIN_PASSWORD:-}"
         [[ -n "${WEBUI_ADMIN_EMAIL:-}" && ${#admin_password_value} -ge 16 ]] || {
             echo "ERROR: blocking Full mode requires WebUI admin email/password (>=16 chars)" >&2; exit 64;
@@ -561,15 +568,16 @@ wait_for_webui_ready() {
 }
 
 if [[ "$SERVE_WEBUI" == 1 ]]; then
-  # Public OpenWebUI must have a preprovisioned administrator. In particular,
-  # allowing first-user signup on an internet-facing port is NOT acceptable.
-  admin_pwd="${WEBUI_ADMIN_PASSWORD:-}"
-  if [[ -z "${WEBUI_ADMIN_EMAIL:-}" || ${#admin_pwd} -lt 16 ||
-        "$admin_pwd" == *'{{ RUNPOD_SECRET_'* || "$admin_pwd" == *'${ '* ]]; then
-    echo "ERROR: requested Full mode requires WEBUI_ADMIN_EMAIL and WEBUI_ADMIN_PASSWORD >=16 chars" >&2
-    echo "QWEN38_WEBUI status=failed phase=credentials"
-    exit 73
-  else
+  # Admin credentials are mandatory when auth is enabled (public and private).
+  if [[ "$QWEN38_WEBUI_AUTH" == 1 ]]; then
+    admin_pwd="${WEBUI_ADMIN_PASSWORD:-}"
+    if [[ -z "${WEBUI_ADMIN_EMAIL:-}" || ${#admin_pwd} -lt 16 ||
+          "$admin_pwd" == *'{{ RUNPOD_SECRET_'* || "$admin_pwd" == *'${ '* ]]; then
+      echo "ERROR: requested Full mode requires WEBUI_ADMIN_EMAIL and WEBUI_ADMIN_PASSWORD >=16 chars" >&2
+      echo "QWEN38_WEBUI status=failed phase=credentials"
+      exit 73
+    fi
+  fi
     WEBUI_VENV="${QWEN38_WORKSPACE:-/tmp/qwen38-webui}/openwebui-venv"
     install -d -m 700 "$(dirname "$WEBUI_VENV")" || exit 70
     WEBUI_VERSION="${OPENWEBUI_VERSION:-0.11.4}"
@@ -579,11 +587,18 @@ if [[ "$SERVE_WEBUI" == 1 ]]; then
 set -euo pipefail
 set +x
 umask 077
-# Mandatory authentication on BOTH RunPod public and tailnet paths.
-export WEBUI_AUTH=True
+# Authentication is mandatory for public pods; Tailnet Full may explicitly opt out.
+if [[ "${QWEN38_WEBUI_AUTH:-1}" == 0 ]]; then
+    export WEBUI_AUTH=False
+    export ENABLE_LOGIN_FORM=False
+    # Never provision an admin in OpenWebUI's single-user/no-auth mode.
+    unset WEBUI_ADMIN_EMAIL WEBUI_ADMIN_PASSWORD
+else
+    export WEBUI_AUTH=True
+    export ENABLE_LOGIN_FORM=True
+fi
 export ENABLE_SIGNUP=False
 export ENABLE_PERSISTENT_CONFIG=False
-export ENABLE_LOGIN_FORM=True
 export WEBUI_SESSION_COOKIE_SECURE=True
 export ENABLE_OLLAMA_API=False
 export ENABLE_COMMUNITY_SHARING=False
@@ -647,7 +662,6 @@ READY
       exit 73
     fi
     cold_mark openwebui_install_end
-  fi
 else
   echo "--- SERVE_WEBUI=0, skipping OpenWebUI, SGLang API only"
 fi

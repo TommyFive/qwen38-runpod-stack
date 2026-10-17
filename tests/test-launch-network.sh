@@ -193,7 +193,12 @@ cat > "$TMP/bin/curl" <<'MOCK'
 #!/usr/bin/env bash
 case " $* " in
   *"/models"*) echo '{"data":[{"id":"qwen38-uncensored"}]}' ;;
-  *"/api/config"*) echo '{"features":{"auth":true}}' ;;
+  *"/api/config"*)
+    if [[ "${QWEN38_WEBUI_AUTH:-1}" == 0 ]]; then
+      echo '{"features":{"auth":false}}'
+    else
+      echo '{"features":{"auth":true}}'
+    fi ;;
   *) echo OK ;;
 esac
 MOCK
@@ -408,3 +413,19 @@ assert [(x["failure"],x["cloud"]) for x in a]==[
 ],a
 print("Launch failures: one attempt for permanent errors, two only for GPU capacity")
 PY_ATTEMPTS
+
+echo "=== Tailnet Full can disable OpenWebUI login; public Full cannot ==="
+if QWEN38_WEBUI_AUTH=0 bash "$ROOT/bin/qwen38fast" --network runpod --dry-run > "$TMP/public-noauth.out" 2>&1; then
+    echo "FAIL: public Full accepted QWEN38_WEBUI_AUTH=0" >&2; exit 1
+fi
+grep -Fq 'QWEN38_WEBUI_AUTH=0 requires Tailnet Full' "$TMP/public-noauth.out"
+if ! QWEN38_WEBUI_AUTH=0 bash "$ROOT/bin/qwen38fast" --network tailnet > "$TMP/tailnet-noauth.out" 2>&1; then
+    echo "FAIL: Tailnet Full no-auth launch/readiness regression" >&2
+    cat "$TMP/tailnet-noauth.out" >&2
+    exit 1
+fi
+grep -Fq 'OpenWebUI:' "$TMP/tailnet-noauth.out"
+if grep -Fq 'authentication mode not verified' "$TMP/tailnet-noauth.out"; then
+    echo "FAIL: launcher expected auth=true despite explicit opt-out" >&2; exit 1
+fi
+echo "Tailnet Full OpenWebUI no-auth launcher: ok"

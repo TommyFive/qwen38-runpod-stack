@@ -118,6 +118,7 @@ mk() { # name ports labels serve_webui network_mode disk_gib
     "MODEL_ID":sys.argv[3], "SERVED_NAME":"qwen38-uncensored",
     "MAX_LEN":"262144", "SPEC":"dflash2", "MEM_FRAC":"0.85",
     "MAMBA_RATIO":"4.59", "SERVE_WEBUI":sys.argv[4],
+    **({"QWEN38_WEBUI_AUTH":"1"} if sys.argv[4]=="1" else {}),
     "ENABLE_SSH":"0", "NETWORK_MODE":sys.argv[5], "TS_ENABLE_SSH":"1",
     "TS_HOSTNAME":"llm",  # Default Tailscale hostname for generated templates, not the RunPod Pod name.
     "STORAGE_HELPER_B64":sys.argv[6], "BENCHMARK_B64":sys.argv[7],
@@ -214,7 +215,8 @@ echo "  QWEN38_TEMPLATE_TAILNET_PI=$id"
 echo "For tailnet-only templates, verify 'runpodctl template get <id>' has NO public ports."
 echo "Private templates reference existing RunPod Secret TS_AUTHKEY; all templates reference $API_SECRET_NAME for SGLang."
 echo "All templates reference RunPod Secret HF_TOKEN by default (override QWEN38_HF_SECRET_NAME)."
-echo "Full templates use RunPod Secret $WEBUI_PASSWORD_SECRET_NAME and WEBUI_ADMIN_EMAIL."
+echo "Full templates default to QWEN38_WEBUI_AUTH=1; Tailnet Full can opt out with 0 in RunPod ENV."
+echo "Authenticated Full templates use RunPod Secret $WEBUI_PASSWORD_SECRET_NAME and WEBUI_ADMIN_EMAIL."
 echo "Resolved admin passwords must be >=16 characters; otherwise Full fails closed."
 echo "With no credentials, the bootstrap fails closed instead of exposing an open API."
 echo "Image variant: $IMAGE_VARIANT; image: $IMAGE; disk Full=$FULL_DISK_GB GiB / Lean=$LEAN_DISK_GB GiB."

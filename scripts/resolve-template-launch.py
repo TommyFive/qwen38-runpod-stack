@@ -52,11 +52,6 @@ def resolve(t, args, source=None):
         if "TS_AUTHKEY" in env: raise Invalid("Public template contains TS_AUTHKEY")
     validate_secret("SGLANG_API_KEY",env)
     if "HF_TOKEN" in env: validate_secret("HF_TOKEN",env)
-    if not args.lean:
-        validate_secret("WEBUI_ADMIN_PASSWORD",env)
-        if "@" not in env.get("WEBUI_ADMIN_EMAIL",""): raise Invalid("Missing WebUI admin email")
-    elif "WEBUI_ADMIN_PASSWORD" in env or "WEBUI_ADMIN_EMAIL" in env:
-        raise Invalid("Lean template contains WebUI credentials")
     for k in HELPERS+("MODEL_ID","SPEC","MAX_LEN","MEM_FRAC","MODEL_STORAGE","MODEL_RAM_DIR","MODEL_SSD_DIR"):
         if not env.get(k): raise Invalid("Template missing "+k)
     # Keep explicit local helper overrides compatible with still-existing legacy
@@ -91,9 +86,25 @@ def resolve(t, args, source=None):
         ("ENABLE_SSH","QWEN38_ENABLE_SSH"),
         ("TS_ENABLE_SSH","TS_ENABLE_SSH"),
         ("WEBUI_ADMIN_EMAIL","QWEN38_WEBUI_ADMIN_EMAIL"),
+        ("QWEN38_WEBUI_AUTH","QWEN38_WEBUI_AUTH"),
     ):
         if local in e: overrides[key]=e[local]
     effective=dict(env,**overrides)
+    webui_auth=effective.get("QWEN38_WEBUI_AUTH","1")
+    if webui_auth not in ("0","1"): raise Invalid("QWEN38_WEBUI_AUTH must be 0 or 1")
+    if webui_auth=="0" and (args.mode!="tailnet" or args.lean):
+        raise Invalid("QWEN38_WEBUI_AUTH=0 requires Tailnet Full")
+    if args.lean:
+        if "QWEN38_WEBUI_AUTH" in overrides: raise Invalid("Lean has no WebUI auth override")
+        if "WEBUI_ADMIN_PASSWORD" in env or "WEBUI_ADMIN_EMAIL" in env:
+            raise Invalid("Lean template contains WebUI credentials")
+    else:
+        if webui_auth=="1":
+            validate_secret("WEBUI_ADMIN_PASSWORD",env)
+            if "@" not in env.get("WEBUI_ADMIN_EMAIL",""):
+                raise Invalid("Missing WebUI admin email")
+        elif "WEBUI_ADMIN_PASSWORD" in env:
+            validate_secret("WEBUI_ADMIN_PASSWORD",env)
     if effective["MODEL_STORAGE"] not in ("ram","ssd"): raise Invalid("MODEL_STORAGE must be ram or ssd")
     for k in ("BENCHMARK","DEBUG","COLDSTART_TRACE","ENABLE_SSH","TS_ENABLE_SSH","MODEL_RAM_RELEASE_AFTER_LOAD"):
         if effective.get(k,"0") not in ("0","1"): raise Invalid(k+" must be 0 or 1")
@@ -147,7 +158,7 @@ def resolve(t, args, source=None):
                 overrides[key]="{{ RUNPOD_SECRET_"+label+" }}"
         if e.get("QWEN38_WEBUI_ADMIN_PASSWORD"):raise Invalid("Plaintext WebUI password forbidden")
     if args.lean and "WEBUI_ADMIN_EMAIL" in overrides:raise Invalid("Lean cannot override WebUI email")
-    if not args.lean and ("@" not in effective.get("WEBUI_ADMIN_EMAIL","") or
+    if not args.lean and webui_auth=="1" and ("@" not in effective.get("WEBUI_ADMIN_EMAIL","") or
                         any(c.isspace() for c in effective["WEBUI_ADMIN_EMAIL"])):
         raise Invalid("Invalid admin email")
     for local,key in (
@@ -169,7 +180,7 @@ def resolve(t, args, source=None):
       "hostname":name,"model":effective["MODEL_ID"],"spec":effective["SPEC"],
       "max_len":effective["MAX_LEN"],"storage":effective["MODEL_STORAGE"],
       "benchmark":effective.get("BENCHMARK","0"),"ram_release":effective.get("MODEL_RAM_RELEASE_AFTER_LOAD","0"),
-      "coldstart":effective.get("COLDSTART_TRACE","1"),
+      "coldstart":effective.get("COLDSTART_TRACE","1"),"webui_auth":webui_auth,
       "credential_mode":mode,"api_secret_name":SECRET.fullmatch(env["SGLANG_API_KEY"]).group(1),
       "template_id":args.template_id,"env_count":len(env)
     }
