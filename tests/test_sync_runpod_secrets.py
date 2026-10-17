@@ -55,6 +55,13 @@ class SyncTests(unittest.TestCase):
         with self.assertRaises(sync.ports.PortSafetyError):
             sync.make_env(e, "tailnet", "")
 
+    def test_preserve_existing_full_admin_secret_reference(self):
+        original = "{{ RUNPOD_SECRET_QWEN38_WEBUI_ADMIN_PASSWORD }}"
+        e = stub()["env"]
+        e["WEBUI_ADMIN_PASSWORD"] = original
+        updated = sync.make_env(e, "tailnet", "HF_TOKEN")
+        self.assertEqual(updated["WEBUI_ADMIN_PASSWORD"], original)
+
     def test_migration_uses_hf_token_secret_by_default(self):
         import io
         import os
