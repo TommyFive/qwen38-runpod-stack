@@ -35,6 +35,8 @@ so original timestamps remain machine-comparable.
 | [2026-10-13 structured telemetry](evidence/v2-coldstart-20261013-us-nc1.json) | Machine-readable timestamp intervals and SHA-256 of the uploaded logs/screenshot |
 | [2026-10-17 Community US cold-pull + RAM failure](evidence/v2-coldstart-20261017-community-us-ram-failure.md) | 328-second uncached OCI pull, five repeated RAM preflight failures, safe tuning analysis |
 | [2026-10-17 structured telemetry](evidence/v2-coldstart-20261017-community-us-ram-failure.json) | 8 layer timestamps, 5 failure markers, exact sizing formula, source SHA-256 |
+| [2026-10-17 EUR-IS-2 Secure continuous cold start](evidence/v2-coldstart-20261017-eur-is2-secure.md) | **232-second first OCI pull; 61.326-second RAM download; 105.651-second SGLang-to-internal-health**; OpenWebUI installation overlap and comparisons |
+| [2026-10-17 EUR-IS-2 structured telemetry](evidence/v2-coldstart-20261017-eur-is2-secure.json) | All 8 layer milestones, 11 bootstrap timestamps, intervals and source SHA-256 |
 | [v2-sglang-benchmark.json](evidence/v2-sglang-benchmark.json) | Initial GPU run's 15 raw server-usage-derived measurements, model revision and settings; not the later Full/Lean benchmark |
 
 All retained JSON measurements are historical observations, not synthetic new
@@ -175,6 +177,23 @@ registry/cache and hardware do **not** establish regional or image optimization
 causality. The prior successful Full segment came from a different cached
 restart, not a continuous first boot. See the
 [complete US-NC-1 trace](evidence/v2-coldstart-20261013-us-nc1.md).
+
+**2026-10-17 EUR-IS-2 Secure Cloud, v0.2.2 Full:** the same immutable
+image's **continuous first image create/pull and extraction took 232 s**
+(16:11:46–16:15:38 UTC), with 8 uncached layers. The first container
+started at 16:15:40; main + DFlash2 draft downloads completed in RAM
+in **61.326 s**, and SGLang started at 16:16:46.259, reaching internal
+`health_generate_ready` after **105.651 s**. First image activity to
+internal generation health: **405.910 s**. Parallel OpenWebUI installation
+took **134.819 s**; bootstrap finished at 16:19:01.146,
+**435.146 s (7m 15.1s)** after first image activity. The screenshot proves
+**EUR-IS-2 Secure Cloud** only, not its GPU/CPU/RAM size. Successful
+RAM-only main/draft loading is logged, but the effective multiplier,
+peak tmpfs, positive WebUI HTTP health/login and external inference are
+**not independently measured**. Compared to Secure US-KS-2 **190 s**,
+Secure US-NC-1 **85 s**, and Community US **328 s** OCI pulls, this
+single EUR-IS-2 sample has uncontrolled host/storage/cache/network
+conditions. See the [complete timeline and all 8 layers](evidence/v2-coldstart-20261017-eur-is2-secure.md).
 
 Use `tools/analyze-coldstart.py` with archived provider/container markers. A fair
 future comparison needs matched GPU SKU, cloud/region, storage, models/revisions,
